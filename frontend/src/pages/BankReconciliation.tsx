@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useDropzone } from 'react-dropzone'
 import {
   Upload, CheckCircle, AlertCircle, Clock, Link2, Unlink,
-  TrendingUp, TrendingDown, RefreshCw, X, UserPlus, Receipt, Trash2, Check
+  TrendingUp, TrendingDown, RefreshCw, X, UserPlus, Receipt, Trash2, Check, Search, PlusCircle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -20,71 +20,377 @@ const STATUS_INFO: Record<string, { label: string; icon: React.ElementType; cls:
 function MatchModal({
   transaction,
   invoices,
+  clients,
   onMatch,
+  onUnmatch,
   onClose,
 }: {
   transaction: BankTransaction
   invoices: Invoice[]
+  clients: Client[]
   onMatch: (invoiceId: string) => void
+  onUnmatch: () => void
   onClose: () => void
 }) {
-  const [selected, setSelected] = useState('')
-  const candidates = invoices.filter(
-    inv => ['SENT', 'OVERDUE', 'DRAFT', 'PAID'].includes(inv.status)
-  )
+  const qc = useQueryClient()
+  const [tab, setTab] = useState<'existing' | 'create'>('existing')
+  const [search, setSearch] = useState('')
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState(transaction.matched_invoice_id || '')
+  const [markAsPaid, setMarkAsPaid] = useState(true)
+
+  const isDebit = transaction.type === 'DEBIT' || (transaction as any).transaction_type === 'DEBIT'
+  const txDate = transaction.transaction_date || (transaction as any).value_date || new Date().toISOString().slice(0, 10)
+  const counterpartName = transaction.counterpart_name || (transaction as any).contra_account_name || ''
+  const remittance = transaction.remittance_reference || (transaction as any).raw_reference || (transaction as any).description || ''
+
+  // Attempt to detect invoice number in remittance
+  const detectedNumMatch = remittance.match(/\b(202\d[-_]\d{3,5}|\d{4,8})\b/)
+  const detectedNum = detectedNumMatch ? detectedNumMatch[1].replace('_', '-') : `FACT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
+
+  // Match existing client by name
+  const existingClient = clients.find(c => counterpartName && c.name.toLowerCase().trim() === counterpartName.toLowerCase().trim())
+
+  const [createInvoiceNum, setCreateInvoiceNum] = useState(detectedNum)
+  const [createClientId, setCreateClientId] = useState(existingClient ? existingClient.id : 'NEW')
+  const [newClientName, setNewClientName] = useState(counterpartName || 'Nieuwe Klant')
+  const [createVatRate, setCreateVatRate] = useState('21')
+  const [createDesc, setCreateDesc] = useState(remittance || `Diensten volgens betaling ${fmt.date(txDate)}`)
+  const [isCreating, setIsCreating] = useState(false)
+
+  // Filter existing invoices
+  const filteredInvoices = invoices.filter(inv => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return (
+      inv.invoice_number.toLowerCase().includes(q) ||
+      inv.client?.name?.toLowerCase().includes(q) ||
+      String(inv.total_incl_vat).includes(q)
+    )
+  })
+
+  // Sort invoices: best match (amount or invoice number) on top
+  const sortedInvoices = [...filteredInvoices].sort((a, b) => {
+    const aAmount = Math.abs(Number(a.total_incl_vat) - Number(transaction.amount)) < 0.05
+    const bAmount = Math.abs(Number(b.total_incl_vat) - Number(transaction.amount)) < 0.05
+    if (aAmount && !bAmount) return -1
+    if (!aAmount && bAmount) return 1
+    return 0
+  })
+
+  const handleCreateAndMatch = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsCreating(true)
+    try {
+      let finalClientId = createClientId
+      if (createClientId === 'NEW' && newClientName.trim()) {
+        const newC = await clientsApi.create({
+          name: newClientName.trim(),
+          country_code: 'NL',
+          default_payment_term_days: 14,
+        })
+        finalClientId = newC.id
+        qc.invalidateQueries({ queryKey: ['clients'] })
+      }
+
+      const totalIncl = Number(transaction.amount)
+      const multiplier = createVatRate === 'REVERSE_CHARGE' ? 0 : Number(createVatRate) / 100
+      const totalExcl = multiplier > 0 ? Math.round((totalIncl / (1 + multiplier)) * 100) / 100 : totalIncl
+      const totalVat = Math.round((totalIncl - totalExcl) * 100) / 100
+
+      const newInv = await invoicesApi.create({
+        invoice_number: createInvoiceNum.trim(),
+        client_id: finalClientId !== 'NEW' ? finalClientId : undefined,
+        status: markAsPaid ? 'PAID' : 'SENT',
+        issue_date: txDate,
+        due_date: txDate,
+        paid_at: markAsPaid ? txDate : null,
+        subtotal_excl_vat: totalExcl,
+        total_vat: totalVat,
+        total_incl_vat: totalIncl,
+        notes: createDesc,
+        line_items: [
+          {
+            description: createDesc || `Diensten ${createInvoiceNum}`,
+            quantity: 1,
+            unit_price: totalExcl,
+            vat_rate: createVatRate,
+            total_excl_vat: totalExcl,
+            total_vat: totalVat,
+            total_incl_vat: totalIncl,
+          }
+        ]
+      })
+
+      if (newInv && newInv.id) {
+        onMatch(newInv.id)
+        toast.success(`Factuur ${createInvoiceNum} aangemaakt en gekoppeld!`)
+        qc.invalidateQueries({ queryKey: ['invoices'] })
+      }
+    } catch {
+      toast.error('Factuur aanmaken mislukt')
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  const currentMatchedInvoice = invoices.find(i => i.id === transaction.matched_invoice_id)
+
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg animate-fade-in shadow-2xl">
-        <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-slate-800">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg animate-fade-in shadow-2xl my-6">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
           <div>
-            <h3 className="font-semibold text-slate-100 text-sm sm:text-base">Handmatig koppelen</h3>
+            <h3 className="font-semibold text-slate-100 text-sm sm:text-base">Factuur koppelen / opslaan</h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              {fmt.currency(transaction.amount)} van {transaction.counterpart_name ?? 'onbekend'}
+              <span className={isDebit ? 'text-red-400 font-mono font-bold' : 'text-emerald-400 font-mono font-bold'}>
+                {isDebit ? '−' : '+'}{fmt.currency(transaction.amount)}
+              </span>
+              {' · '}
+              <span>{counterpartName || 'Onbekende partij'}</span>
+              {' · '}
+              <span className="font-mono">{fmt.date(txDate)}</span>
             </p>
           </div>
           <button onClick={onClose} className="p-1 rounded text-slate-400 hover:text-white">
             <X size={18} />
           </button>
         </div>
-        <div className="p-3 sm:p-4 space-y-2 max-h-64 sm:max-h-80 overflow-y-auto">
-          {candidates.length === 0 ? (
-            <p className="text-xs sm:text-sm text-slate-500 text-center py-6">Geen facturen gevonden</p>
-          ) : candidates.map(inv => (
-            <label
-              key={inv.id}
+
+        {/* Current status if matched */}
+        {currentMatchedInvoice && (
+          <div className="mx-5 mt-4 p-3 rounded-lg bg-brand-950/40 border border-brand-500/30 flex items-center justify-between">
+            <div className="text-xs">
+              <span className="text-slate-400 block">Momenteel gekoppeld aan:</span>
+              <strong className="text-brand-300 font-mono text-sm">{currentMatchedInvoice.invoice_number}</strong>
+              <span className="text-slate-400 ml-2">({currentMatchedInvoice.client?.name || 'Onbekende klant'})</span>
+            </div>
+            <button
+              onClick={() => { onUnmatch(); onClose(); }}
+              className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1 px-2 border border-red-500/20"
+            >
+              <Unlink size={12} /> Ontkoppelen
+            </button>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="px-5 pt-4">
+          <div className="grid grid-cols-2 p-1 bg-slate-950/80 rounded-xl border border-slate-800 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setTab('existing')}
               className={clsx(
-                'flex items-center gap-3 p-2.5 sm:p-3 rounded-lg border cursor-pointer transition-colors',
-                selected === inv.id
-                  ? 'bg-brand-600/15 border-brand-600/40'
-                  : 'bg-slate-800/60 border-slate-700 hover:border-slate-600',
+                'py-2 rounded-lg transition-all',
+                tab === 'existing'
+                  ? 'bg-brand-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
               )}
             >
+              Bestaande factuur
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('create')}
+              className={clsx(
+                'py-2 rounded-lg transition-all flex items-center justify-center gap-1.5',
+                tab === 'create'
+                  ? 'bg-brand-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              )}
+            >
+              <PlusCircle size={13} />
+              <span>Nieuwe factuur maken</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Tab 1: Existing Invoices */}
+        {tab === 'existing' && (
+          <div className="p-5 space-y-3">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
-                type="radio"
-                name="invoice"
-                value={inv.id}
-                checked={selected === inv.id}
-                onChange={() => setSelected(inv.id)}
-                className="accent-brand-500"
+                className="input pl-8 text-xs sm:text-sm py-2"
+                placeholder="Zoek factuurnummer, klant of bedrag..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                autoFocus
               />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs sm:text-sm font-medium text-slate-200 font-mono">{inv.invoice_number}</div>
-                <div className="text-xs text-slate-400 truncate">{inv.client?.name}</div>
+            </div>
+
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {sortedInvoices.length === 0 ? (
+                <div className="text-center py-6 text-xs text-slate-500">
+                  Geen facturen gevonden. Gebruik het tabblad "Nieuwe factuur maken".
+                </div>
+              ) : (
+                sortedInvoices.map(inv => {
+                  const isExactAmount = Math.abs(Number(inv.total_incl_vat) - Number(transaction.amount)) < 0.05
+                  const isSelected = selectedInvoiceId === inv.id
+
+                  return (
+                    <label
+                      key={inv.id}
+                      className={clsx(
+                        'flex items-center gap-3 p-2.5 sm:p-3 rounded-lg border cursor-pointer transition-colors',
+                        isSelected
+                          ? 'bg-brand-600/20 border-brand-500'
+                          : isExactAmount
+                          ? 'bg-slate-800/80 border-emerald-500/40 hover:border-emerald-500/60'
+                          : 'bg-slate-800/40 border-slate-800 hover:border-slate-700',
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="invoice"
+                        value={inv.id}
+                        checked={isSelected}
+                        onChange={() => setSelectedInvoiceId(inv.id)}
+                        className="accent-brand-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs sm:text-sm font-semibold text-slate-200 font-mono">{inv.invoice_number}</span>
+                          {isExactAmount && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-medium">
+                              Exact bedrag
+                            </span>
+                          )}
+                          <span className="text-[10px] px-1.5 rounded bg-slate-700/60 text-slate-400">{inv.status}</span>
+                        </div>
+                        <div className="text-xs text-slate-400 truncate mt-0.5">
+                          {inv.client?.name || 'Onbekende klant'} · {fmt.date(inv.issue_date)}
+                        </div>
+                      </div>
+                      <div className="font-mono text-xs sm:text-sm font-bold text-slate-100">
+                        {fmt.currency(inv.total_incl_vat)}
+                      </div>
+                    </label>
+                  )
+                })
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={markAsPaid}
+                  onChange={e => setMarkAsPaid(e.target.checked)}
+                  className="accent-brand-500 rounded"
+                />
+                <span>Markeer factuur direct als 'Betaald'</span>
+              </label>
+
+              <div className="flex gap-2">
+                <button type="button" onClick={onClose} className="btn-secondary text-xs sm:text-sm py-1.5 px-3">
+                  Annuleren
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { if (selectedInvoiceId) onMatch(selectedInvoiceId); }}
+                  disabled={!selectedInvoiceId}
+                  className="btn-primary text-xs sm:text-sm py-1.5 px-3.5"
+                >
+                  <Link2 size={13} /> Koppeling opslaan
+                </button>
               </div>
-              <div className="font-mono text-xs sm:text-sm font-semibold text-slate-100">{fmt.currency(inv.total_incl_vat)}</div>
-            </label>
-          ))}
-        </div>
-        <div className="px-4 sm:px-5 py-3 border-t border-slate-800 flex gap-2 justify-end">
-          <button onClick={onClose} className="btn-secondary text-xs sm:text-sm py-1.5 px-3">Annuleren</button>
-          <button
-            onClick={() => { if (selected) onMatch(selected) }}
-            disabled={!selected}
-            className="btn-primary text-xs sm:text-sm py-1.5 px-3.5"
-          >
-            <Link2 size={13} /> Koppelen
-          </button>
-        </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: Create New Invoice & Match */}
+        {tab === 'create' && (
+          <form onSubmit={handleCreateAndMatch} className="p-5 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label text-xs">Factuurnummer *</label>
+                <input
+                  className="input text-xs sm:text-sm font-mono"
+                  value={createInvoiceNum}
+                  onChange={e => setCreateInvoiceNum(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="label text-xs">Btw-tarief</label>
+                <select
+                  className="select text-xs sm:text-sm"
+                  value={createVatRate}
+                  onChange={e => setCreateVatRate(e.target.value)}
+                >
+                  <option value="21">21% hoog</option>
+                  <option value="9">9% laag</option>
+                  <option value="0">0% nul</option>
+                  <option value="REVERSE_CHARGE">Verlegd</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="label text-xs">Opdrachtgever / Klant</label>
+              <select
+                className="select text-xs sm:text-sm"
+                value={createClientId}
+                onChange={e => setCreateClientId(e.target.value)}
+              >
+                <option value="NEW">+ Nieuwe klant: {newClientName || counterpartName || 'Invoeren...'}</option>
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+
+              {createClientId === 'NEW' && (
+                <input
+                  className="input text-xs sm:text-sm mt-1.5"
+                  placeholder="Bedrijfsnaam klant..."
+                  value={newClientName}
+                  onChange={e => setNewClientName(e.target.value)}
+                />
+              )}
+            </div>
+
+            <div>
+              <label className="label text-xs">Omschrijving op factuur</label>
+              <input
+                className="input text-xs sm:text-sm"
+                value={createDesc}
+                onChange={e => setCreateDesc(e.target.value)}
+              />
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-slate-800/40 border border-slate-800 text-xs text-slate-300 flex justify-between items-center font-mono">
+              <span>Factuurbedrag incl. btw:</span>
+              <span className="font-bold text-emerald-400 text-sm">{fmt.currency(transaction.amount)}</span>
+            </div>
+
+            <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={markAsPaid}
+                  onChange={e => setMarkAsPaid(e.target.checked)}
+                  className="accent-brand-500 rounded"
+                />
+                <span>Direct als 'Betaald' boeken</span>
+              </label>
+
+              <div className="flex gap-2">
+                <button type="button" onClick={onClose} className="btn-secondary text-xs sm:text-sm py-1.5 px-3">
+                  Annuleren
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreating}
+                  className="btn-primary text-xs sm:text-sm py-1.5 px-3.5"
+                >
+                  <Check size={14} /> {isCreating ? 'Maken...' : 'Aanmaken & koppelen'}
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   )
@@ -99,10 +405,10 @@ function AddClientFromTxnModal({
   onClose: () => void
   onCreated: () => void
 }) {
-  const [name, setName] = useState(transaction.counterpart_name ?? '')
+  const [name, setName] = useState(transaction.counterpart_name || (transaction as any).contra_account_name || '')
   const [contactPerson, setContactPerson] = useState('')
   const [email, setEmail] = useState('')
-  const [iban, setIban] = useState(transaction.counterpart_iban ?? '')
+  const [iban, setIban] = useState(transaction.counterpart_iban || (transaction as any).contra_account_iban || '')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -200,9 +506,9 @@ function AddExpenseFromTxnModal({
   onClose: () => void
   onCreated: () => void
 }) {
-  const [vendor, setVendor] = useState(transaction.counterpart_name ?? 'Leverancier')
-  const [date, setDate] = useState(transaction.transaction_date ?? new Date().toISOString().slice(0, 10))
-  const [description, setDescription] = useState(transaction.remittance_reference ?? 'Bankafschrijving')
+  const [vendor, setVendor] = useState(transaction.counterpart_name || (transaction as any).contra_account_name || 'Leverancier')
+  const [date, setDate] = useState(transaction.transaction_date || (transaction as any).value_date || new Date().toISOString().slice(0, 10))
+  const [description, setDescription] = useState(transaction.remittance_reference || (transaction as any).raw_reference || (transaction as any).description || 'Bankafschrijving')
   const [category, setCategory] = useState('Other')
   const [amountIncl, setAmountIncl] = useState(Number(transaction.amount))
   const [vatRate, setVatRate] = useState('21')
@@ -508,15 +814,20 @@ export default function BankReconciliation() {
           transactions.map(txn => {
             const si = STATUS_INFO[txn.reconciliation_status] ?? STATUS_INFO.UNMATCHED
             const matched_inv = invoices.find(i => i.id === txn.matched_invoice_id)
-            const isClientKnown = txn.counterpart_name ? clientNameSet.has(txn.counterpart_name.toLowerCase().trim()) : false
+            const isDebit = txn.type === 'DEBIT' || (txn as any).transaction_type === 'DEBIT'
+            const txDate = txn.transaction_date || (txn as any).value_date || (txn as any).entry_date
+            const counterpartName = txn.counterpart_name || (txn as any).contra_account_name || ''
+            const counterpartIban = txn.counterpart_iban || (txn as any).contra_account_iban || ''
+            const remittance = txn.remittance_reference || (txn as any).raw_reference || (txn as any).description || ''
+            const isClientKnown = counterpartName ? clientNameSet.has(counterpartName.toLowerCase().trim()) : false
 
             return (
               <div key={txn.id} className="card p-3.5 space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="font-semibold text-sm text-slate-100 flex items-center gap-1.5 flex-wrap">
-                      <span>{txn.counterpart_name ?? 'Onbekende partij'}</span>
-                      {txn.type === 'CREDIT' && txn.counterpart_name && !isClientKnown && (
+                      <span>{counterpartName || 'Onbekende partij'}</span>
+                      {!isDebit && counterpartName && !isClientKnown && (
                         <button
                           onClick={() => setClientModalTxn(txn)}
                           className="px-1.5 py-0.5 rounded text-[10px] bg-brand-600/20 text-brand-300 hover:bg-brand-600/30 border border-brand-500/30 flex items-center gap-1"
@@ -524,7 +835,7 @@ export default function BankReconciliation() {
                           <UserPlus size={10} /> + Klant
                         </button>
                       )}
-                      {txn.type === 'DEBIT' && txn.counterpart_name && (
+                      {isDebit && counterpartName && (
                         <button
                           onClick={() => setExpenseModalTxn(txn)}
                           className="px-1.5 py-0.5 rounded text-[10px] bg-purple-600/20 text-purple-300 hover:bg-purple-600/30 border border-purple-500/30 flex items-center gap-1"
@@ -533,36 +844,40 @@ export default function BankReconciliation() {
                         </button>
                       )}
                     </div>
-                    {txn.counterpart_iban && (
-                      <div className="text-[11px] text-slate-500 font-mono">{txn.counterpart_iban}</div>
+                    {counterpartIban && (
+                      <div className="text-[11px] text-slate-500 font-mono">{counterpartIban}</div>
                     )}
-                    <div className="text-[11px] text-slate-400 font-mono mt-0.5">{fmt.date(txn.transaction_date)}</div>
+                    <div className="text-[11px] text-slate-400 font-mono mt-0.5">{fmt.date(txDate)}</div>
                   </div>
                   <div className="text-right">
                     <div className={clsx(
                       'font-mono font-bold text-sm',
-                      txn.type === 'CREDIT' ? 'text-emerald-400' : 'text-red-400'
+                      isDebit ? 'text-red-400' : 'text-emerald-400'
                     )}>
-                      {txn.type === 'DEBIT' ? '−' : '+'}{fmt.currency(txn.amount)}
+                      {isDebit ? '−' : '+'}{fmt.currency(txn.amount)}
                     </div>
                     <span className={clsx(si.cls, 'text-[10px] mt-0.5 inline-block')}>{si.label}</span>
                   </div>
                 </div>
 
                 <div className="text-xs text-slate-400 pt-1.5 border-t border-slate-800 flex items-center justify-between gap-2">
-                  <span className="truncate max-w-[200px] text-slate-400 font-mono text-[11px]">{txn.remittance_reference ?? '—'}</span>
-                  {matched_inv ? (
-                    <span className="font-mono text-brand-400 text-xs font-semibold">{matched_inv.invoice_number}</span>
-                  ) : (
-                    txn.type === 'CREDIT' && (
-                      <button
-                        onClick={() => setMatchModal(txn)}
-                        className="btn-secondary btn-sm text-xs py-1 px-2.5 flex items-center gap-1"
-                      >
-                        <Link2 size={12} /> Koppelen
-                      </button>
-                    )
-                  )}
+                  <span className="truncate max-w-[200px] text-slate-400 font-mono text-[11px]">{remittance || '—'}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {matched_inv ? (
+                      <span className="font-mono text-brand-400 text-xs font-semibold flex items-center gap-1">
+                        <Check size={12} /> {matched_inv.invoice_number}
+                      </span>
+                    ) : null}
+                    <button
+                      onClick={() => setMatchModal(txn)}
+                      className={clsx(
+                        'btn-sm text-xs py-1 px-2.5 flex items-center gap-1',
+                        matched_inv ? 'btn-ghost text-slate-400 hover:text-white' : 'btn-secondary text-brand-300'
+                      )}
+                    >
+                      <Link2 size={12} /> {matched_inv ? 'Wijzigen' : 'Koppelen'}
+                    </button>
+                  </div>
                 </div>
               </div>
             )
@@ -592,13 +907,18 @@ export default function BankReconciliation() {
             ) : transactions.map(txn => {
               const si = STATUS_INFO[txn.reconciliation_status] ?? STATUS_INFO.UNMATCHED
               const matched_inv = invoices.find(i => i.id === txn.matched_invoice_id)
-              const isClientKnown = txn.counterpart_name ? clientNameSet.has(txn.counterpart_name.toLowerCase().trim()) : false
+              const isDebit = txn.type === 'DEBIT' || (txn as any).transaction_type === 'DEBIT'
+              const txDate = txn.transaction_date || (txn as any).value_date || (txn as any).entry_date
+              const counterpartName = txn.counterpart_name || (txn as any).contra_account_name || ''
+              const counterpartIban = txn.counterpart_iban || (txn as any).contra_account_iban || ''
+              const remittance = txn.remittance_reference || (txn as any).raw_reference || (txn as any).description || ''
+              const isClientKnown = counterpartName ? clientNameSet.has(counterpartName.toLowerCase().trim()) : false
 
               return (
                 <tr key={txn.id} className="hover:bg-slate-800/50 transition-colors">
-                  <td className="p-3.5 text-xs text-slate-400 whitespace-nowrap">{fmt.date(txn.transaction_date)}</td>
+                  <td className="p-3.5 text-xs text-slate-400 whitespace-nowrap">{fmt.date(txDate)}</td>
                   <td className="p-3.5">
-                    {txn.type === 'CREDIT' ? (
+                    {!isDebit ? (
                       <span className="flex items-center gap-1 text-emerald-400 text-xs font-medium">
                         <TrendingUp size={12} /> Bijschrijving
                       </span>
@@ -610,8 +930,8 @@ export default function BankReconciliation() {
                   </td>
                   <td className="p-3.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-slate-100">{txn.counterpart_name ?? '—'}</span>
-                      {txn.type === 'CREDIT' && txn.counterpart_name && !isClientKnown && (
+                      <span className="text-sm font-medium text-slate-100">{counterpartName || '—'}</span>
+                      {!isDebit && counterpartName && !isClientKnown && (
                         <button
                           onClick={() => setClientModalTxn(txn)}
                           className="px-1.5 py-0.5 rounded text-[10px] bg-brand-600/20 text-brand-300 hover:bg-brand-600/30 border border-brand-500/30 flex items-center gap-1"
@@ -620,7 +940,7 @@ export default function BankReconciliation() {
                           <UserPlus size={10} /> + Klant
                         </button>
                       )}
-                      {txn.type === 'DEBIT' && txn.counterpart_name && (
+                      {isDebit && counterpartName && (
                         <button
                           onClick={() => setExpenseModalTxn(txn)}
                           className="px-1.5 py-0.5 rounded text-[10px] bg-purple-600/20 text-purple-300 hover:bg-purple-600/30 border border-purple-500/30 flex items-center gap-1"
@@ -630,13 +950,13 @@ export default function BankReconciliation() {
                         </button>
                       )}
                     </div>
-                    {txn.counterpart_iban && (
-                      <div className="text-xs text-slate-500 font-mono mt-0.5">{txn.counterpart_iban}</div>
+                    {counterpartIban && (
+                      <div className="text-xs text-slate-500 font-mono mt-0.5">{counterpartIban}</div>
                     )}
                   </td>
                   <td className="p-3.5 max-w-[220px]">
-                    <div className="text-xs text-slate-400 truncate font-mono" title={txn.remittance_reference ?? ''}>
-                      {txn.remittance_reference ?? '—'}
+                    <div className="text-xs text-slate-400 truncate font-mono" title={remittance}>
+                      {remittance || '—'}
                     </div>
                     {matched_inv && (
                       <div className="text-xs text-brand-400 font-mono font-medium mt-0.5 flex items-center gap-1">
@@ -647,28 +967,32 @@ export default function BankReconciliation() {
                   <td className="p-3.5"><span className={si.cls}>{si.label}</span></td>
                   <td className={clsx(
                     'p-3.5 text-right font-mono font-semibold',
-                    txn.type === 'CREDIT' ? 'text-emerald-400' : 'text-red-400',
+                    isDebit ? 'text-red-400' : 'text-emerald-400',
                   )}>
-                    {txn.type === 'DEBIT' ? '−' : '+'}{fmt.currency(txn.amount)}
+                    {isDebit ? '−' : '+'}{fmt.currency(txn.amount)}
                   </td>
                   <td className="p-3.5 text-right">
-                    <div className="flex gap-1 justify-end">
-                      {txn.reconciliation_status !== 'MATCHED' && txn.reconciliation_status !== 'MANUAL' && (
-                        <button
-                          onClick={() => setMatchModal(txn)}
-                          className="btn-ghost p-1.5 rounded-lg text-slate-400 hover:text-white"
-                          title="Aan factuur koppelen"
-                        >
-                          <Link2 size={14} />
-                        </button>
-                      )}
-                      {(txn.reconciliation_status === 'MATCHED' || txn.reconciliation_status === 'MANUAL' || txn.reconciliation_status === 'PENDING_CONFIRMATION') && (
+                    <div className="flex gap-1 justify-end items-center">
+                      <button
+                        onClick={() => setMatchModal(txn)}
+                        className={clsx(
+                          'p-1.5 rounded-lg flex items-center gap-1 text-xs transition-colors',
+                          matched_inv
+                            ? 'text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700'
+                            : 'text-brand-400 hover:text-brand-300 bg-brand-600/15 hover:bg-brand-600/25 border border-brand-500/30'
+                        )}
+                        title={matched_inv ? 'Koppeling wijzigen' : 'Aan factuur koppelen'}
+                      >
+                        <Link2 size={13} />
+                        <span>{matched_inv ? 'Wijzigen' : 'Koppelen'}</span>
+                      </button>
+                      {matched_inv && (
                         <button
                           onClick={() => unmatchMutation.mutate(txn.id)}
                           className="btn-ghost p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10"
                           title="Koppeling ongedaan maken"
                         >
-                          <Unlink size={14} />
+                          <Unlink size={13} />
                         </button>
                       )}
                     </div>
@@ -685,7 +1009,9 @@ export default function BankReconciliation() {
         <MatchModal
           transaction={matchModal}
           invoices={invoices}
+          clients={clients}
           onMatch={(invoiceId) => matchMutation.mutate({ txId: matchModal.id, invoiceId })}
+          onUnmatch={() => unmatchMutation.mutate(matchModal.id)}
           onClose={() => setMatchModal(null)}
         />
       )}

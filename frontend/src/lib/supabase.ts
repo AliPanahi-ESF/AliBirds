@@ -290,33 +290,66 @@ export const supabaseDb = {
       .select('*')
       .order('value_date', { ascending: false })
     if (error) throw error
-    return data
+    if (!data) return []
+
+    return data.map(row => {
+      const isDebit = row.transaction_type === 'DEBIT'
+      const date = row.value_date || row.entry_date || ''
+      const name = row.contra_account_name || ''
+      const iban = row.contra_account_iban || ''
+      const ref = row.raw_reference || row.description || ''
+
+      return {
+        id: row.id,
+        transaction_date: date,
+        value_date: date,
+        type: (isDebit ? 'DEBIT' : 'CREDIT') as 'CREDIT' | 'DEBIT',
+        transaction_type: (isDebit ? 'DEBIT' : 'CREDIT') as 'CREDIT' | 'DEBIT',
+        amount: Number(row.amount),
+        currency: row.currency || 'EUR',
+        counterpart_name: name,
+        contra_account_name: name,
+        counterpart_iban: iban,
+        contra_account_iban: iban,
+        remittance_reference: ref,
+        raw_reference: ref,
+        description: row.description || ref,
+        reconciliation_status: row.reconciliation_status || 'UNMATCHED',
+        matched_invoice_id: row.matched_invoice_id,
+        match_score: row.match_score,
+        imported_at: row.created_at,
+      }
+    })
   },
 
   saveBankTransactions: async (transactions: any[]) => {
     if (!isSupabaseConfigured()) return null
     if (!transactions.length) return []
 
-    // Upsert transactions based on (user_id, raw_hash)
+    const dbRows = transactions.map(t => {
+      const isDebit = t.type === 'DEBIT' || t.transaction_type === 'DEBIT'
+      return {
+        value_date: t.transaction_date || t.value_date || new Date().toISOString().slice(0, 10),
+        transaction_type: isDebit ? 'DEBIT' : 'CREDIT',
+        amount: Number(t.amount),
+        currency: t.currency || 'EUR',
+        contra_account_iban: t.counterpart_iban || t.contra_account_iban || null,
+        contra_account_name: t.counterpart_name || t.contra_account_name || null,
+        description: t.description || t.remittance_reference || null,
+        raw_reference: t.remittance_reference || t.raw_reference || null,
+        reconciliation_status: t.reconciliation_status || 'UNMATCHED',
+        matched_invoice_id: t.matched_invoice_id || null,
+        raw_hash: t.raw_hash || null,
+      }
+    })
+
     const { data, error } = await supabase
       .from('bank_transactions')
-      .upsert(
-        transactions.map(t => {
-          const { id: _id, ...clean } = t
-          return clean
-        }),
-        { onConflict: 'user_id,raw_hash' }
-      )
+      .upsert(dbRows, { onConflict: 'user_id,raw_hash' })
       .select()
     if (error) {
       console.warn('Supabase upsert bank_transactions error:', error)
-      // If upsert fails due to unique constraint, try simple insert
-      const { data: insData } = await supabase.from('bank_transactions').insert(
-        transactions.map(t => {
-          const { id: _id, ...clean } = t
-          return clean
-        })
-      ).select()
+      const { data: insData } = await supabase.from('bank_transactions').insert(dbRows).select()
       return insData || transactions
     }
     return data

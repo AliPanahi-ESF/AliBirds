@@ -79,13 +79,18 @@ export function parseMT940(content: string): ParsedBankStatement {
 
         currentTx = {
           id: `tx-${Date.now()}-${transactions.length + 1}`,
+          transaction_date: dateStr,
           value_date: dateStr,
+          type: txType,
           transaction_type: txType,
           amount: amountNum,
           currency: currency || 'EUR',
           description: '',
+          counterpart_iban: '',
           contra_account_iban: '',
+          counterpart_name: '',
           contra_account_name: '',
+          remittance_reference: rawRef,
           raw_reference: rawRef,
           raw_hash: simpleHash(`${dateStr}-${txType}-${amountNum}-${line}`),
           reconciliation_status: 'UNMATCHED',
@@ -112,44 +117,64 @@ export function parseMT940(content: string): ParsedBankStatement {
         // 1. Check bunq/Dutch structured tags: /IBAN/ /NAME/ /REMI/ /CSID/ /EREF/ /TRTP/
         const ibanMatch = desc.match(/\/IBAN\/([A-Z0-9]+)/i)
         if (ibanMatch) {
-          currentTx.contra_account_iban = ibanMatch[1].trim()
+          const iban = ibanMatch[1].trim()
+          currentTx.contra_account_iban = iban
+          currentTx.counterpart_iban = iban
         }
 
         const nameMatch = desc.match(/\/NAME\/([^\/]+)/i)
         if (nameMatch) {
-          currentTx.contra_account_name = nameMatch[1].trim()
+          const name = nameMatch[1].trim()
+          currentTx.contra_account_name = name
+          currentTx.counterpart_name = name
         }
 
         const remiMatch = desc.match(/\/REMI\/([^\/]+)/i)
         if (remiMatch) {
           const rem = remiMatch[1].trim()
-          // If clean remittance is available, use it for clearer description
           if (rem) {
             currentTx.raw_reference = rem
+            currentTx.remittance_reference = rem
           }
         }
 
         // 2. ING structured format: >20... >32... /TRTP/
-        if (!currentTx.contra_account_name) {
+        if (!currentTx.counterpart_name) {
           const ingNameMatch = desc.match(/>32([^\/>]+)/)
-          if (ingNameMatch) currentTx.contra_account_name = ingNameMatch[1].trim()
+          if (ingNameMatch) {
+            const name = ingNameMatch[1].trim()
+            currentTx.contra_account_name = name
+            currentTx.counterpart_name = name
+          }
         }
-        if (!currentTx.contra_account_iban) {
+        if (!currentTx.counterpart_iban) {
           const ingIbanMatch = desc.match(/>30([A-Z0-9]+)/)
-          if (ingIbanMatch) currentTx.contra_account_iban = ingIbanMatch[1].trim()
+          if (ingIbanMatch) {
+            const iban = ingIbanMatch[1].trim()
+            currentTx.contra_account_iban = iban
+            currentTx.counterpart_iban = iban
+          }
         }
 
         // 3. Fallback: Detect IBAN anywhere in text
-        if (!currentTx.contra_account_iban) {
+        if (!currentTx.counterpart_iban) {
           const generalIbanMatch = desc.match(/([A-Z]{2}\d{2}[A-Z0-9]{4}\d{7,10})/i)
           if (generalIbanMatch) {
-            currentTx.contra_account_iban = generalIbanMatch[1].toUpperCase()
+            const iban = generalIbanMatch[1].toUpperCase()
+            currentTx.contra_account_iban = iban
+            currentTx.counterpart_iban = iban
           }
+        }
+
+        // 4. Fallback: If no counterpart name but remittance reference is empty, use desc
+        if (!currentTx.remittance_reference) {
+          currentTx.remittance_reference = desc
+          currentTx.raw_reference = desc
         }
 
         // Recompute unique hash with description
         currentTx.raw_hash = simpleHash(
-          `${currentTx.value_date}-${currentTx.transaction_type}-${currentTx.amount}-${currentTx.contra_account_iban}-${currentTx.contra_account_name}-${currentTx.raw_reference}`
+          `${currentTx.value_date}-${currentTx.transaction_type}-${currentTx.amount}-${currentTx.counterpart_iban}-${currentTx.counterpart_name}-${currentTx.remittance_reference}`
         )
       }
     }

@@ -529,9 +529,37 @@ export const demoStore = {
   getBankTransactions: (): BankTransaction[] => getStored(STORAGE_KEYS.BANK, INITIAL_BANK),
   saveBankTransactions: (txs: any[]): void => {
     const list = demoStore.getBankTransactions()
+    const normalized: BankTransaction[] = txs.map(t => {
+      const isDebit = t.type === 'DEBIT' || t.transaction_type === 'DEBIT'
+      const date = t.transaction_date || t.value_date || new Date().toISOString().slice(0, 10)
+      const name = t.counterpart_name || t.contra_account_name || ''
+      const iban = t.counterpart_iban || t.contra_account_iban || ''
+      const ref = t.remittance_reference || t.raw_reference || t.description || ''
+
+      return {
+        id: t.id || `tx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        transaction_date: date,
+        value_date: date,
+        type: isDebit ? 'DEBIT' : 'CREDIT',
+        transaction_type: isDebit ? 'DEBIT' : 'CREDIT',
+        amount: Number(t.amount),
+        currency: t.currency || 'EUR',
+        counterpart_name: name,
+        contra_account_name: name,
+        counterpart_iban: iban,
+        contra_account_iban: iban,
+        remittance_reference: ref,
+        raw_reference: ref,
+        description: t.description || ref,
+        reconciliation_status: t.reconciliation_status || 'UNMATCHED',
+        matched_invoice_id: t.matched_invoice_id,
+        raw_hash: t.raw_hash,
+        imported_at: t.imported_at || new Date().toISOString(),
+      }
+    })
     // Append or update by raw_hash or id
     const hashSet = new Set(list.map(t => t.raw_hash || t.id))
-    const newItems = txs.filter(t => !hashSet.has(t.raw_hash || t.id))
+    const newItems = normalized.filter(t => !hashSet.has(t.raw_hash || t.id))
     const combined = [...newItems, ...list]
     setStored(STORAGE_KEYS.BANK, combined)
   },
