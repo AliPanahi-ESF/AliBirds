@@ -6,6 +6,15 @@ export type VATRate = '21' | '9' | '0' | 'REVERSE_CHARGE'
 export type ReconciliationStatus = 'MATCHED' | 'UNMATCHED' | 'PENDING_CONFIRMATION' | 'MANUAL'
 export type TransactionType = 'CREDIT' | 'DEBIT'
 
+export interface User {
+  id: string
+  name: string
+  email: string
+  company_name?: string
+  is_onboarded: boolean
+  avatar_url?: string
+}
+
 export interface Client {
   id: string
   name: string

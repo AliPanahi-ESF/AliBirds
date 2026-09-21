@@ -2,9 +2,10 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, FileText, Users, Building2,
   RefreshCw, Receipt, Settings, TrendingUp,
-  Bird, ChevronRight, X
+  Bird, ChevronRight, X, LogOut
 } from 'lucide-react'
 import { clsx } from 'clsx'
+import { useAuth } from '@/lib/auth'
 
 export const NAV = [
   { to: '/',            icon: LayoutDashboard, label: 'Dashboard' },
@@ -24,6 +25,7 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { pathname } = useLocation()
+  const { user, logout } = useAuth()
 
   return (
     <>
@@ -90,12 +92,37 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="p-3 border-t border-slate-800 bg-slate-900/50">
-          <div className="text-[11px] text-slate-500 text-center">
-            AliBirds v1.0 · NL ZZP
+        {/* User profile & logout footer */}
+        {user ? (
+          <div className="p-3 border-t border-slate-800 bg-slate-900/80 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-brand-600/25 border border-brand-500/40 flex items-center justify-center text-xs font-bold text-brand-300 shrink-0">
+                {user.name ? user.name[0].toUpperCase() : 'A'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-slate-200 truncate">{user.name}</div>
+                <div className="text-[10px] text-slate-500 truncate">{user.company_name || 'ZZP Studio'}</div>
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-800 transition-colors"
+              title="Uitloggen"
+            >
+              <LogOut size={15} />
+            </button>
           </div>
-        </div>
+        ) : (
+          <div className="p-3 border-t border-slate-800 bg-slate-900/50">
+            <Link
+              to="/auth"
+              onClick={onClose}
+              className="w-full btn-primary justify-center text-xs py-1.5"
+            >
+              Inloggen
+            </Link>
+          </div>
+        )}
       </aside>
     </>
   )
