@@ -11,7 +11,7 @@ const STORAGE_KEY_SENDER = 'alibirds_resend_sender'
 
 export function getResendKey(): string | null {
   try {
-    return localStorage.getItem(STORAGE_KEY_RESEND) || import.meta.env.VITE_RESEND_API_KEY || null
+    return import.meta.env.VITE_RESEND_API_KEY || localStorage.getItem(STORAGE_KEY_RESEND) || null
   } catch {
     return null
   }

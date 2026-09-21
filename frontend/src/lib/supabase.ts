@@ -13,17 +13,17 @@ export interface SupabaseConfig {
 
 export function getSupabaseConfig(): SupabaseConfig | null {
   try {
+    const envUrl = import.meta.env.VITE_SUPABASE_URL
+    const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+    if (envUrl && envKey) {
+      return { url: envUrl, anonKey: envKey }
+    }
     const raw = localStorage.getItem(STORAGE_KEY_CONFIG)
     if (raw) {
       const parsed = JSON.parse(raw)
       if (parsed.url && parsed.anonKey) {
         return parsed
       }
-    }
-    const envUrl = import.meta.env.VITE_SUPABASE_URL
-    const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-    if (envUrl && envKey) {
-      return { url: envUrl, anonKey: envKey }
     }
   } catch {
     // fallback
