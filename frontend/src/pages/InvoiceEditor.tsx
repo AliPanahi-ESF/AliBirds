@@ -173,6 +173,8 @@ export default function InvoiceEditor() {
       toast.success('PDF gegenereerd!')
       setShowPreview(true)
     },
+  })
+
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: () => invoicesApi.delete(id!),

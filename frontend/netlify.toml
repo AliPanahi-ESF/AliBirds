@@ -7,6 +7,7 @@
 
 [[redirects]]
   from = "/api/*"
+  to = "/404"
   status = 404
 
 [[redirects]]
