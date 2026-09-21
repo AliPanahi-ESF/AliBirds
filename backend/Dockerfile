@@ -24,4 +24,4 @@ COPY . .
 # Create storage directories
 RUN mkdir -p storage/invoices storage/receipts storage/mt940
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
