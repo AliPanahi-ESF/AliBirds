@@ -1,20 +1,37 @@
 import React from 'react'
 import { Printer, Download, X, Building2, CheckCircle2, Calendar, CreditCard } from 'lucide-react'
-import { Invoice, BusinessSettings } from '@/lib/types'
-import { fmt } from '@/lib/api'
+import { Invoice, BusinessSettings, Client } from '@/lib/types'
+import { fmt, clientsApi } from '@/lib/api'
+import { useQuery } from '@tanstack/react-query'
 
 interface InvoicePrintModalProps {
   invoice: Invoice
+  client?: Client
   settings?: BusinessSettings
   onClose: () => void
 }
 
-export default function InvoicePrintModal({ invoice, settings, onClose }: InvoicePrintModalProps) {
+export default function InvoicePrintModal({ invoice, client: propClient, settings, onClose }: InvoicePrintModalProps) {
   const handlePrint = () => {
     window.print()
   }
 
-  const client = invoice.client
+  const { data: allClients = [] } = useQuery<Client[]>({
+    queryKey: ['clients'],
+    queryFn: () => clientsApi.list(),
+  })
+
+  // 1. Resolve client with maximum fallback coverage:
+  // - Explicitly provided propClient (e.g. live editor selection)
+  // - Embedded invoice.client (unwrapping array if returned as [client])
+  // - Lookup by invoice.client_id in loaded clients
+  const embeddedClient = Array.isArray(invoice.client) ? invoice.client[0] : invoice.client
+  const client: Client | undefined =
+    propClient ||
+    (embeddedClient && embeddedClient.name ? embeddedClient : undefined) ||
+    allClients.find(c => c.id === invoice.client_id) ||
+    embeddedClient
+
   const accentColor = settings?.accent_color || '#4f46e5'
 
   // Calculate VAT breakdown per tariff
@@ -105,13 +122,28 @@ export default function InvoicePrintModal({ invoice, settings, onClose }: Invoic
             {/* Client address */}
             <div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Factuur voor:</div>
-              <div className="font-bold text-slate-900 text-sm">{client?.name || 'Klantnaam'}</div>
-              {client?.contact_person && <div className="text-xs text-slate-600">t.a.v. {client.contact_person}</div>}
+              <div className="font-bold text-slate-900 text-sm sm:text-base">
+                {client?.name || 'Geen klant geselecteerd'}
+              </div>
+              {client?.contact_person && (
+                <div className="text-xs text-slate-600 font-medium">t.a.v. {client.contact_person}</div>
+              )}
               <div className="text-xs text-slate-500 mt-1 space-y-0.5">
-                <div>{client?.billing_address_street}</div>
-                <div>{client?.billing_address_postcode} {client?.billing_address_city}</div>
-                <div>{client?.country_code}</div>
-                {client?.vat_number && <div className="pt-1">Btw-id: <span className="font-mono">{client.vat_number}</span></div>}
+                {client?.billing_address_street && <div>{client.billing_address_street}</div>}
+                {(client?.billing_address_postcode || client?.billing_address_city) && (
+                  <div>{client.billing_address_postcode} {client.billing_address_city}</div>
+                )}
+                {client?.country_code && <div>{client.country_code}</div>}
+                {client?.vat_number && (
+                  <div className="pt-0.5 text-slate-700">
+                    Btw-id: <span className="font-mono font-medium">{client.vat_number}</span>
+                  </div>
+                )}
+                {client?.kvk_number && (
+                  <div className="text-slate-700">
+                    KvK: <span className="font-mono font-medium">{client.kvk_number}</span>
+                  </div>
+                )}
               </div>
             </div>
 

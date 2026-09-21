@@ -24,11 +24,19 @@ function dbToInvoice(row: any): Invoice {
   const totalVat = Number(row.total_vat ?? row.total_vat_amount ?? 0)
   const totalIncl = Number(row.total_incl ?? row.total_incl_vat ?? (subtotalExcl + totalVat))
 
+  // PostgREST embeds foreign tables as arrays [ { ... } ] or objects { ... }
+  let clientObj: any = undefined
+  if (row.client && typeof row.client === 'object') {
+    clientObj = Array.isArray(row.client) ? (row.client[0] || undefined) : row.client
+  } else if (row.clients && typeof row.clients === 'object') {
+    clientObj = Array.isArray(row.clients) ? (row.clients[0] || undefined) : row.clients
+  }
+
   return {
     id: row.id,
     invoice_number: row.invoice_number,
     client_id: row.client_id || undefined,
-    client: row.client || undefined,
+    client: clientObj,
     issue_date: row.issue_date,
     due_date: row.due_date,
     delivery_date: row.delivery_date || undefined,
@@ -54,11 +62,17 @@ function invoiceToDb(inv: any) {
   const totalVat = Number(inv.total_vat ?? inv.total_vat_amount ?? 0)
   const totalIncl = Number(inv.total_incl ?? inv.total_incl_vat ?? (subtotalExcl + totalVat))
 
+  // Validate if client_id is a valid UUID before sending to PostgreSQL UUID column
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const validClientId = (inv.client_id && typeof inv.client_id === 'string' && isUuid.test(inv.client_id))
+    ? inv.client_id
+    : null
+
   return {
-    invoice_number: inv.invoice_number,
-    client_id: (inv.client_id && inv.client_id !== 'NEW') ? inv.client_id : null,
-    issue_date: inv.issue_date,
-    due_date: inv.due_date,
+    invoice_number: inv.invoice_number || `FACT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+    client_id: validClientId,
+    issue_date: inv.issue_date || new Date().toISOString().slice(0, 10),
+    due_date: inv.due_date || new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10),
     delivery_date: inv.delivery_date || null,
     calc_mode: inv.calc_mode || inv.calculation_mode || 'EXCLUSIVE',
     status: inv.status || 'DRAFT',

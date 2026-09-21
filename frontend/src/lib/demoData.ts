@@ -418,7 +418,7 @@ export const demoStore = {
   saveInvoice: (invoiceData: any): Invoice => {
     const list = demoStore.getInvoices()
     const clients = demoStore.getClients()
-    const client = clients.find(c => c.id === invoiceData.client_id)
+    const client = clients.find(c => c.id === invoiceData.client_id) || invoiceData.client
 
     // Recalculate totals
     const calc = demoStore.calculateVat({

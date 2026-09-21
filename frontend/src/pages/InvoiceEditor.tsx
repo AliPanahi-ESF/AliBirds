@@ -218,9 +218,52 @@ export default function InvoiceEditor() {
     }
   }
 
-  const onSubmit = (data: FormData) => saveMutation.mutate(data)
-
   const selectedClient = clients.find(c => c.id === selectedClientId)
+
+  // Construct a live invoice that always reflects the currently chosen customer and line items
+  const currentInvoice: Invoice = {
+    id: existing?.id || 'new-invoice-preview',
+    invoice_number: existing?.invoice_number || `${settings?.invoice_prefix || '2026-'}${String(settings?.next_invoice_sequence || 1).padStart(4, '0')}`,
+    client_id: selectedClientId,
+    client: selectedClient,
+    issue_date: watch('issue_date') || today,
+    delivery_date: watch('delivery_date') || undefined,
+    due_date: watch('due_date') || due14,
+    status: existing?.status || 'DRAFT',
+    calculation_mode: mode,
+    subtotal_excl_vat: liveCalc.excl,
+    total_vat_amount: liveCalc.vat,
+    total_incl_vat: liveCalc.incl,
+    payment_reference: watch('payment_reference') || existing?.payment_reference || '',
+    notes: watch('notes') || existing?.notes || settings?.invoice_notes_default || '',
+    line_items: (watchedItems || []).map((it, idx) => {
+      const { excl, vat, incl } = calcLine(it, mode)
+      return {
+        id: `preview-item-${idx}`,
+        description: it.description || `Item ${idx + 1}`,
+        quantity: Number(it.quantity) || 1,
+        unit_price: Number(it.unit_price) || 0,
+        vat_rate: String(it.vat_rate || '21'),
+        vat_amount: vat,
+        line_total_excl: excl,
+        line_total_incl: incl,
+        sort_order: idx + 1,
+      }
+    }),
+  }
+
+  const onSubmit = (data: FormData) => {
+    const invoiceNum = existing?.invoice_number || `${settings?.invoice_prefix || '2026-'}${String(settings?.next_invoice_sequence || 1).padStart(4, '0')}`
+    const payload = {
+      ...data,
+      invoice_number: invoiceNum,
+      client: selectedClient,
+      subtotal_excl: liveCalc.excl,
+      total_vat: liveCalc.vat,
+      total_incl: liveCalc.incl,
+    }
+    saveMutation.mutate(payload as any)
+  }
 
   return (
     <div className="space-y-4 sm:space-y-6 max-w-6xl">
@@ -246,42 +289,43 @@ export default function InvoiceEditor() {
 
         {/* Action buttons */}
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setShowPrintModal(true)}
+            className="btn-secondary text-xs sm:text-sm py-1.5 px-2.5 sm:px-3 text-brand-400 border-brand-500/30 flex items-center gap-1.5"
+            title="Afdrukken of opslaan als PDF"
+          >
+            <Download size={14} /> <span>PDF / Afdrukken</span>
+          </button>
+
           {isEdit && existing && (
             <>
               <button
                 type="button"
-                onClick={() => setShowPrintModal(true)}
-                className="btn-secondary text-xs sm:text-sm py-1.5 px-2.5 sm:px-3 text-brand-400 border-brand-500/30"
-                title="Afdrukken of opslaan als PDF"
-              >
-                <Download size={14} /> <span className="hidden xs:inline">PDF / Afdrukken</span>
-              </button>
-              <button
-                type="button"
                 onClick={handleSendInvoice}
-                className="btn-secondary text-xs sm:text-sm py-1.5 px-2.5 sm:px-3 text-emerald-400 border-emerald-500/30"
+                className="btn-secondary text-xs sm:text-sm py-1.5 px-2.5 sm:px-3 text-emerald-400 border-emerald-500/30 flex items-center gap-1.5"
                 disabled={isSendingEmail}
               >
-                <Send size={14} /> {isSendingEmail ? 'Verzenden...' : 'Verzenden'}
+                <Send size={14} /> <span>{isSendingEmail ? 'Verzenden...' : 'Verzenden'}</span>
               </button>
               <button
                 type="button"
                 onClick={handleDelete}
-                className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1.5 px-2.5 border border-red-500/20"
+                className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1.5 px-2.5 border border-red-500/20 flex items-center gap-1.5"
                 title="Factuur verwijderen"
                 disabled={deleteMutation.isPending}
               >
-                <Trash2 size={14} /> <span className="hidden xs:inline">{deleteMutation.isPending ? 'Wissen...' : 'Verwijderen'}</span>
+                <Trash2 size={14} /> <span>{deleteMutation.isPending ? 'Wissen...' : 'Verwijderen'}</span>
               </button>
             </>
           )}
           <button
             type="button"
             onClick={handleSubmit(onSubmit)}
-            className="btn-primary text-xs sm:text-sm py-1.5 px-3.5 ml-auto sm:ml-0"
+            className="btn-primary text-xs sm:text-sm py-1.5 px-3.5 ml-auto sm:ml-0 flex items-center gap-1.5"
             disabled={saveMutation.isPending}
           >
-            <Save size={14} /> {saveMutation.isPending ? 'Opslaan...' : 'Opslaan'}
+            <Save size={14} /> <span>{saveMutation.isPending ? 'Opslaan...' : 'Opslaan'}</span>
           </button>
         </div>
       </div>
@@ -498,9 +542,10 @@ export default function InvoiceEditor() {
       </div>
 
       {/* In-browser vector PDF / Print Modal */}
-      {showPrintModal && existing && (
+      {showPrintModal && (
         <InvoicePrintModal
-          invoice={existing}
+          invoice={currentInvoice}
+          client={selectedClient}
           settings={settings}
           onClose={() => setShowPrintModal(false)}
         />
