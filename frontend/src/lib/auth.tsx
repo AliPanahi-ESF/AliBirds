@@ -1,185 +1,152 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { User, BusinessSettings } from './types'
 import { settingsApi } from './api'
 import { demoStore } from './demoData'
+import { supabase, isSupabaseConfigured } from './supabase'
 
 interface AuthContextType {
   user: User | null
-  token: string | null
   isLoading: boolean
   login: (email: string, password: string) => Promise<User>
-  loginAsDemo: () => Promise<User>
   registerUser: (name: string, email: string, password: string) => Promise<User>
   completeOnboarding: (companyData: Partial<BusinessSettings>) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-const AUTH_STORAGE_KEY = 'alibirds_session_user'
-const USERS_STORAGE_KEY = 'alibirds_registered_users'
+const ONBOARDING_KEY = 'alibirds_onboarding_status' // tracks per-uid whether onboarding is done
 
-const DEFAULT_DEMO_USER: User = {
-  id: 'usr_demo',
-  name: 'Ali Panahi',
-  email: 'ali@alibirds-studio.nl',
-  company_name: 'Ali Creative Studio',
-  is_onboarded: true,
+function getOnboardingStatus(uid: string): boolean {
+  try {
+    const raw = localStorage.getItem(ONBOARDING_KEY)
+    if (!raw) return false
+    const map = JSON.parse(raw)
+    return !!map[uid]
+  } catch {
+    return false
+  }
+}
+
+function setOnboardingStatus(uid: string, status: boolean) {
+  try {
+    const raw = localStorage.getItem(ONBOARDING_KEY)
+    const map = raw ? JSON.parse(raw) : {}
+    map[uid] = status
+    localStorage.setItem(ONBOARDING_KEY, JSON.stringify(map))
+  } catch {
+    // ignore
+  }
+}
+
+function supabaseUserToAppUser(sbUser: any, companyName?: string): User {
+  const uid = sbUser.id
+  const isOnboarded = getOnboardingStatus(uid)
+  return {
+    id: uid,
+    name: sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'Gebruiker',
+    email: sbUser.email || '',
+    company_name: companyName || sbUser.user_metadata?.company_name || '',
+    is_onboarded: isOnboarded,
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  // Listen to Supabase auth state changes — fires on login, logout, token refresh, and page load
   useEffect(() => {
-    try {
-      const storedSession = localStorage.getItem(AUTH_STORAGE_KEY)
-      if (storedSession) {
-        const parsed = JSON.parse(storedSession) as User
-        setUser(parsed)
-        setToken('token_' + parsed.id)
+    if (!isSupabaseConfigured()) {
+      // No Supabase configured — app will work in local demo mode only
+      setIsLoading(false)
+      return
+    }
+
+    // Get session on first render
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser(supabaseUserToAppUser(session.user))
+      }
+      setIsLoading(false)
+    })
+
+    // Subscribe to future auth events (login, logout, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser(supabaseUserToAppUser(session.user))
       } else {
         setUser(null)
-        setToken(null)
       }
-    } catch {
-      setUser(null)
-      setToken(null)
-    } finally {
-      setIsLoading(false)
-    }
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
-  const getRegisteredUsers = (): Array<User & { password?: string }> => {
-    try {
-      const raw = localStorage.getItem(USERS_STORAGE_KEY)
-      if (!raw) {
-        const initial = [{ ...DEFAULT_DEMO_USER, password: 'password123' }]
-        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(initial))
-        return initial
-      }
-      return JSON.parse(raw)
-    } catch {
-      return [{ ...DEFAULT_DEMO_USER, password: 'password123' }]
+  const login = useCallback(async (email: string, password: string): Promise<User> => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is niet geconfigureerd. Neem contact op met de beheerder.')
     }
-  }
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) throw new Error(error.message)
+    const appUser = supabaseUserToAppUser(data.user)
+    setUser(appUser)
+    return appUser
+  }, [])
 
-  const login = async (email: string, password: string): Promise<User> => {
-    setIsLoading(true)
-    try {
-      const users = getRegisteredUsers()
-      const found = users.find(u => u.email.toLowerCase() === email.toLowerCase())
-
-      if (!found || (found.password && found.password !== password && password !== 'demo')) {
-        throw new Error('Onjuist e-mailadres of wachtwoord.')
-      }
-
-      const activeUser: User = {
-        id: found.id,
-        name: found.name,
-        email: found.email,
-        company_name: found.company_name,
-        is_onboarded: found.is_onboarded ?? false,
-      }
-
-      setUser(activeUser)
-      setToken('token_' + activeUser.id)
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(activeUser))
-      return activeUser
-    } finally {
-      setIsLoading(false)
+  const registerUser = useCallback(async (name: string, email: string, password: string): Promise<User> => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is niet geconfigureerd. Neem contact op met de beheerder.')
     }
-  }
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: name },
+      },
+    })
+    if (error) throw new Error(error.message)
+    if (!data.user) throw new Error('Registratie mislukt. Probeer het opnieuw.')
 
-  const loginAsDemo = async (): Promise<User> => {
-    setUser(DEFAULT_DEMO_USER)
-    setToken('token_demo')
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(DEFAULT_DEMO_USER))
-    return DEFAULT_DEMO_USER
-  }
+    const appUser = supabaseUserToAppUser(data.user)
+    setUser(appUser)
+    return appUser
+  }, [])
 
-  const registerUser = async (name: string, email: string, password: string): Promise<User> => {
-    setIsLoading(true)
-    try {
-      const users = getRegisteredUsers()
-      if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-        throw new Error('Er bestaat al een account met dit e-mailadres.')
-      }
-
-      const newUser = {
-        id: `usr_${Date.now()}`,
-        name,
-        email,
-        password,
-        company_name: '',
-        is_onboarded: false,
-      }
-
-      users.push(newUser)
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users))
-
-      const activeUser: User = {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        company_name: '',
-        is_onboarded: false,
-      }
-
-      setUser(activeUser)
-      setToken('token_' + activeUser.id)
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(activeUser))
-      return activeUser
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const completeOnboarding = async (companyData: Partial<BusinessSettings>): Promise<void> => {
+  const completeOnboarding = useCallback(async (companyData: Partial<BusinessSettings>): Promise<void> => {
     if (!user) return
 
-    // Save business profile
+    // Save business profile to Supabase (or local fallback)
     await settingsApi.update(companyData)
     demoStore.saveSettings(companyData)
 
-    // Update user onboarding status
+    // Update Supabase user metadata with company name
+    if (isSupabaseConfigured()) {
+      await supabase.auth.updateUser({
+        data: { company_name: companyData.company_name },
+      })
+    }
+
+    // Persist onboarding completion for this user
+    setOnboardingStatus(user.id, true)
+
     const updatedUser: User = {
       ...user,
       company_name: companyData.company_name || user.company_name,
       is_onboarded: true,
     }
-
-    const users = getRegisteredUsers()
-    const idx = users.findIndex(u => u.id === user.id)
-    if (idx >= 0) {
-      users[idx] = { ...users[idx], ...updatedUser }
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users))
-    }
-
     setUser(updatedUser)
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser))
-  }
+  }, [user])
 
-  const logout = () => {
+  const logout = useCallback(async (): Promise<void> => {
+    if (isSupabaseConfigured()) {
+      await supabase.auth.signOut()
+    }
     setUser(null)
-    setToken(null)
-    localStorage.removeItem(AUTH_STORAGE_KEY)
-  }
+  }, [])
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        isLoading,
-        login,
-        loginAsDemo,
-        registerUser,
-        completeOnboarding,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={{ user, isLoading, login, registerUser, completeOnboarding, logout }}>
       {children}
     </AuthContext.Provider>
   )

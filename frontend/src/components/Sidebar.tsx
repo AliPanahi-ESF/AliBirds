@@ -105,7 +105,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               </div>
             </div>
             <button
-              onClick={logout}
+              onClick={() => logout()}
               className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-800 transition-colors"
               title="Uitloggen"
             >

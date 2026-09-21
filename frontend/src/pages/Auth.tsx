@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bird, Lock, Mail, User as UserIcon, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react'
+import { Bird, Lock, Mail, User as UserIcon, ArrowRight, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/lib/auth'
+import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { clsx } from 'clsx'
 
 export default function AuthPage() {
   const navigate = useNavigate()
-  const { login, registerUser, loginAsDemo } = useAuth()
+  const { login, registerUser } = useAuth()
 
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [name, setName] = useState('')
@@ -44,14 +45,21 @@ export default function AuthPage() {
     }
   }
 
-  const handleDemoLogin = async () => {
-    setLoading(true)
+  const handleForgotPassword = async () => {
+    if (!email) {
+      toast.error('Voer eerst uw e-mailadres in.')
+      return
+    }
+    if (!isSupabaseConfigured()) {
+      toast.error('Wachtwoord resetten is niet beschikbaar.')
+      return
+    }
     try {
-      await loginAsDemo()
-      toast.success('Ingelogd met demo studio account!')
-      navigate('/')
-    } finally {
-      setLoading(false)
+      const { error } = await supabase.auth.resetPasswordForEmail(email)
+      if (error) throw error
+      toast.success('Wachtwoord reset link verstuurd naar uw e-mail!')
+    } catch (err: any) {
+      toast.error(err.message || 'Kan reset e-mail niet versturen.')
     }
   }
 
@@ -140,7 +148,7 @@ export default function AuthPage() {
               <div className="flex items-center justify-between">
                 <label className="label">Wachtwoord *</label>
                 {mode === 'login' && (
-                  <span className="text-[11px] text-brand-400 hover:underline cursor-pointer" onClick={() => toast('Wachtwoord vergeten? Neem contact op met uw systeembeheerder.')}>
+                  <span className="text-[11px] text-brand-400 hover:underline cursor-pointer" onClick={handleForgotPassword}>
                     Vergeten?
                   </span>
                 )}
@@ -168,25 +176,10 @@ export default function AuthPage() {
             </button>
           </form>
 
-          {/* Quick Demo Login Option */}
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-800" />
-            </div>
-            <div className="relative flex justify-center text-[11px] uppercase tracking-wider">
-              <span className="bg-slate-900 px-2 text-slate-500">Of direct testen</span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleDemoLogin}
-            disabled={loading}
-            className="w-full btn-secondary justify-center py-2 text-xs sm:text-sm font-medium border-slate-700/80 hover:border-brand-500/50"
-          >
-            <Sparkles size={15} className="text-amber-400" />
-            <span>1-Klik Demo Studio (Direct inloggen)</span>
-          </button>
+          {/* Security note */}
+          <p className="text-[11px] text-slate-500 text-center pt-1">
+            Uw gegevens zijn beveiligd en privé. Elke gebruiker heeft een eigen afgeschermd account.
+          </p>
         </div>
 
         {/* Feature bullets */}

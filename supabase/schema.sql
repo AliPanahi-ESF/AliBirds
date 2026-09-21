@@ -1,17 +1,34 @@
 -- ==============================================================================
--- AliBirds — Supabase PostgreSQL Schema
+-- AliBirds — Supabase PostgreSQL Schema (v2 — Multi-tenant Auth Edition)
 -- Dutch ZZP & Studio Invoicing, Expenses, MT940 & Btw-Aangifte
 -- ==============================================================================
--- Paste this entire script into your Supabase Dashboard:
--- https://supabase.com/dashboard/project/_/sql
+-- INSTRUCTIONS:
+-- 1. Open your Supabase Dashboard: https://supabase.com/dashboard
+-- 2. Go to the "SQL Editor" tab on the left menu.
+-- 3. Click "New Query", paste this entire script, and click "Run".
+--
+-- What this script does:
+-- - Cleans up old v1 tables and leftover test data (wipes old invoices/clients)
+-- - Recreates all tables with a dedicated "user_id" linked to Supabase Auth
+-- - Configures Row Level Security (RLS) so each user only sees their own data
 -- ==============================================================================
 
 -- 1. Enable UUID Extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. Business Settings Table
-CREATE TABLE IF NOT EXISTS business_settings (
+-- 2. Clean Reset: Drop old tables if they exist without user_id
+-- (This removes previous sample data and ensures clean schema definitions)
+DROP TABLE IF EXISTS bank_transactions CASCADE;
+DROP TABLE IF EXISTS expenses CASCADE;
+DROP TABLE IF EXISTS invoice_line_items CASCADE;
+DROP TABLE IF EXISTS invoices CASCADE;
+DROP TABLE IF EXISTS clients CASCADE;
+DROP TABLE IF EXISTS business_settings CASCADE;
+
+-- 3. Business Settings Table (One company profile per user)
+CREATE TABLE business_settings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
     company_name TEXT NOT NULL DEFAULT 'Mijn ZZP Studio',
     trading_name TEXT,
     kvk_number VARCHAR(8) NOT NULL DEFAULT '12345678',
@@ -32,12 +49,14 @@ CREATE TABLE IF NOT EXISTS business_settings (
     next_invoice_sequence INT DEFAULT 1,
     default_vat_rate VARCHAR(20) DEFAULT '21',
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT business_settings_user_id_unique UNIQUE (user_id)
 );
 
--- 3. Clients Table
-CREATE TABLE IF NOT EXISTS clients (
+-- 4. Clients Table
+CREATE TABLE clients (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     contact_person TEXT,
     email TEXT,
@@ -55,10 +74,11 @@ CREATE TABLE IF NOT EXISTS clients (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Invoices Table
-CREATE TABLE IF NOT EXISTS invoices (
+-- 5. Invoices Table
+CREATE TABLE invoices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    invoice_number TEXT NOT NULL UNIQUE,
+    user_id UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
+    invoice_number TEXT NOT NULL,
     client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
     issue_date DATE NOT NULL DEFAULT CURRENT_DATE,
     due_date DATE NOT NULL,
@@ -76,11 +96,12 @@ CREATE TABLE IF NOT EXISTS invoices (
     sent_at TIMESTAMPTZ,
     paid_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT invoices_user_id_invoice_number_unique UNIQUE (user_id, invoice_number)
 );
 
--- 5. Invoice Line Items Table
-CREATE TABLE IF NOT EXISTS invoice_line_items (
+-- 6. Invoice Line Items Table
+CREATE TABLE invoice_line_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
     position INT NOT NULL DEFAULT 0,
@@ -94,9 +115,10 @@ CREATE TABLE IF NOT EXISTS invoice_line_items (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. Expenses Table
-CREATE TABLE IF NOT EXISTS expenses (
+-- 7. Expenses Table
+CREATE TABLE expenses (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
     date DATE NOT NULL DEFAULT CURRENT_DATE,
     vendor TEXT NOT NULL,
     description TEXT NOT NULL,
@@ -112,9 +134,10 @@ CREATE TABLE IF NOT EXISTS expenses (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 7. Bank Transactions Table (MT940)
-CREATE TABLE IF NOT EXISTS bank_transactions (
+-- 8. Bank Transactions Table (MT940)
+CREATE TABLE bank_transactions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
     statement_number TEXT,
     sequence_number TEXT,
     value_date DATE NOT NULL,
@@ -131,12 +154,13 @@ CREATE TABLE IF NOT EXISTS bank_transactions (
     matched_invoice_id UUID REFERENCES invoices(id) ON DELETE SET NULL,
     matched_expense_id UUID REFERENCES expenses(id) ON DELETE SET NULL,
     match_score NUMERIC(5, 2),
-    raw_hash VARCHAR(64) UNIQUE,
+    raw_hash VARCHAR(64),
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT bank_transactions_user_id_raw_hash_unique UNIQUE (user_id, raw_hash)
 );
 
--- 8. Enable Row Level Security (RLS) & Allow Authenticated Access
+-- 9. Enable Row Level Security (RLS) on all tables
 ALTER TABLE business_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
@@ -144,22 +168,67 @@ ALTER TABLE invoice_line_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bank_transactions ENABLE ROW LEVEL SECURITY;
 
--- Allow anon and authenticated access for project
-CREATE POLICY "Public or anon access to business_settings" ON business_settings FOR ALL USING (true);
-CREATE POLICY "Public or anon access to clients" ON clients FOR ALL USING (true);
-CREATE POLICY "Public or anon access to invoices" ON invoices FOR ALL USING (true);
-CREATE POLICY "Public or anon access to invoice_line_items" ON invoice_line_items FOR ALL USING (true);
-CREATE POLICY "Public or anon access to expenses" ON expenses FOR ALL USING (true);
-CREATE POLICY "Public or anon access to bank_transactions" ON bank_transactions FOR ALL USING (true);
+-- 10. Drop any old policies to prevent collision errors
+DROP POLICY IF EXISTS "Public or anon access to business_settings" ON business_settings;
+DROP POLICY IF EXISTS "Users manage own business_settings" ON business_settings;
 
--- Insert default business settings row if none exists
-INSERT INTO business_settings (
-    company_name, kvk_number, vat_number, iban, bic,
-    address_street, address_city, address_postcode, country_code,
-    invoice_prefix, default_payment_term_days
-)
-SELECT
-    'Ali Creative Studio', '87654321', 'NL123456789B01', 'NL99INGB0001234567', 'INGBNL2A',
-    'Singel 250', 'Amsterdam', '1016 AB', 'NL',
-    '2026-', 14
-WHERE NOT EXISTS (SELECT 1 FROM business_settings LIMIT 1);
+DROP POLICY IF EXISTS "Public or anon access to clients" ON clients;
+DROP POLICY IF EXISTS "Users manage own clients" ON clients;
+
+DROP POLICY IF EXISTS "Public or anon access to invoices" ON invoices;
+DROP POLICY IF EXISTS "Users manage own invoices" ON invoices;
+
+DROP POLICY IF EXISTS "Public or anon access to invoice_line_items" ON invoice_line_items;
+DROP POLICY IF EXISTS "Users manage own invoice_line_items" ON invoice_line_items;
+
+DROP POLICY IF EXISTS "Public or anon access to expenses" ON expenses;
+DROP POLICY IF EXISTS "Users manage own expenses" ON expenses;
+
+DROP POLICY IF EXISTS "Public or anon access to bank_transactions" ON bank_transactions;
+DROP POLICY IF EXISTS "Users manage own bank_transactions" ON bank_transactions;
+
+-- 11. Per-User RLS Policies (Users can ONLY view/insert/update/delete their own data)
+CREATE POLICY "Users manage own business_settings"
+  ON business_settings FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own clients"
+  ON clients FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own invoices"
+  ON invoices FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- Invoice line items inherit ownership from their parent invoice
+CREATE POLICY "Users manage own invoice_line_items"
+  ON invoice_line_items FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM invoices
+      WHERE invoices.id = invoice_line_items.invoice_id
+        AND invoices.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM invoices
+      WHERE invoices.id = invoice_line_items.invoice_id
+        AND invoices.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users manage own expenses"
+  ON expenses FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own bank_transactions"
+  ON bank_transactions FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+
