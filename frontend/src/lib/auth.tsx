@@ -4,6 +4,8 @@ import { settingsApi } from './api'
 import { demoStore } from './demoData'
 import { supabase, isSupabaseConfigured } from './supabase'
 
+import toast from 'react-hot-toast'
+
 interface AuthContextType {
   user: User | null
   isLoading: boolean
@@ -139,10 +141,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user])
 
   const logout = useCallback(async (): Promise<void> => {
-    if (isSupabaseConfigured()) {
-      await supabase.auth.signOut()
+    try {
+      if (isSupabaseConfigured()) {
+        await supabase.auth.signOut()
+      }
+    } catch (err) {
+      console.warn('SignOut error:', err)
+    } finally {
+      setUser(null)
+      toast.success('U bent uitgelogd.')
     }
-    setUser(null)
   }, [])
 
   return (

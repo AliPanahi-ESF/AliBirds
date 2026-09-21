@@ -94,22 +94,25 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
         {/* User profile & logout footer */}
         {user ? (
-          <div className="p-3 border-t border-slate-800 bg-slate-900/80 flex items-center justify-between gap-2">
+          <div className="p-3 border-t border-slate-800 bg-slate-900/90 space-y-2.5">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-8 h-8 rounded-full bg-brand-600/25 border border-brand-500/40 flex items-center justify-center text-xs font-bold text-brand-300 shrink-0">
                 {user.name ? user.name[0].toUpperCase() : 'A'}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-semibold text-slate-200 truncate">{user.name}</div>
-                <div className="text-[10px] text-slate-500 truncate">{user.company_name || 'ZZP Studio'}</div>
+                <div className="text-[10px] text-slate-400 truncate">{user.company_name || 'ZZP Studio'}</div>
               </div>
             </div>
             <button
-              onClick={() => logout()}
-              className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-800 transition-colors"
-              title="Uitloggen"
+              onClick={() => {
+                onClose?.()
+                logout()
+              }}
+              className="w-full flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-all active:scale-98"
             >
-              <LogOut size={15} />
+              <LogOut size={13} />
+              <span>Uitloggen</span>
             </button>
           </div>
         ) : (
