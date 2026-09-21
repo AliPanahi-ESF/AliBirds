@@ -59,126 +59,153 @@ export const dashboardApi = {
 
 export const invoicesApi = {
   list: async (params?: any) => {
+    const localInvoices = demoStore.getInvoices()
+    let supaInvoices: Invoice[] = []
+
     if (isSupabaseConfigured()) {
       try {
-        const supaInvoices = await supabaseDb.getInvoices()
-        if (Array.isArray(supaInvoices)) {
-          let list = supaInvoices
-          if (params?.status) list = list.filter((i: any) => i.status === params.status)
-          return list
+        const res = await supabaseDb.getInvoices()
+        if (Array.isArray(res)) {
+          supaInvoices = res
         }
       } catch (err) {
         console.warn('Supabase getInvoices error, falling back to local store:', err)
       }
     }
 
-    try {
-      const res = await api.get('/invoices', { params })
-      if (Array.isArray(res.data)) {
-        return res.data
-      }
-      let list = demoStore.getInvoices()
-      if (params?.status) list = list.filter(i => i.status === params.status)
-      return list
-    } catch (err) {
-      console.info('Using local demo data for Invoices')
-      let list = demoStore.getInvoices()
-      if (params?.status) {
-        list = list.filter(i => i.status === params.status)
-      }
-      return list
+    // Merge deduplicating by id and invoice_number
+    const map = new Map<string, Invoice>()
+    for (const inv of localInvoices) {
+      if (inv.id) map.set(inv.id, inv)
+      if (inv.invoice_number) map.set(inv.invoice_number, inv)
     }
+    for (const inv of supaInvoices) {
+      if (inv.id) map.set(inv.id, inv)
+      if (inv.invoice_number) map.set(inv.invoice_number, inv)
+    }
+
+    let list = Array.from(new Set(map.values()))
+    list.sort((a, b) => new Date(b.issue_date || b.created_at || '').getTime() - new Date(a.issue_date || a.created_at || '').getTime())
+
+    if (params?.status) {
+      list = list.filter((i: any) => i.status === params.status)
+    }
+    return list
   },
   get: async (id: string) => {
     if (isSupabaseConfigured()) {
       try {
         const supaInv = await supabaseDb.getInvoice(id)
-        if (supaInv) return supaInv
+        if (supaInv) {
+          demoStore.saveInvoice(supaInv)
+          return supaInv
+        }
       } catch (err) {
         console.warn('Supabase getInvoice error:', err)
       }
     }
+
+    const found = demoStore.getInvoice(id)
+    if (found) return found
 
     try {
       const res = await api.get(`/invoices/${id}`)
       if (res.data && typeof res.data === 'object' && res.data.id) {
         return res.data
       }
-      const found = demoStore.getInvoice(id)
-      if (found) return found
-      throw new Error('Factuur niet gevonden')
-    } catch (err) {
-      const found = demoStore.getInvoice(id)
-      if (found) return found
-      throw err
+    } catch {
+      // ignore
     }
+
+    throw new Error('Factuur niet gevonden')
   },
   create: async (data: any) => {
+    // 1. Immediately persist to demoStore to guarantee zero data loss
+    const localCreated = demoStore.saveInvoice(data)
+
+    // 2. Attempt to save to Supabase
     if (isSupabaseConfigured()) {
       try {
-        const supaCreated = await supabaseDb.saveInvoice(data, data.line_items)
-        if (supaCreated) return supaCreated
+        const supaCreated = await supabaseDb.saveInvoice({ ...data, id: localCreated.id }, data.line_items)
+        if (supaCreated) {
+          demoStore.saveInvoice(supaCreated)
+          return supaCreated
+        }
       } catch (err) {
-        console.warn('Supabase saveInvoice error:', err)
+        console.warn('Supabase saveInvoice warning:', err)
       }
     }
 
     try {
       const res = await api.post('/invoices', data)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
-      return demoStore.saveInvoice(data)
-    } catch (err) {
-      return demoStore.saveInvoice(data)
+    } catch {
+      // fallback to local
     }
+
+    return localCreated
   },
   update: async (id: string, data: any) => {
+    const localUpdated = demoStore.saveInvoice({ ...data, id })
+
     if (isSupabaseConfigured()) {
       try {
         const supaUpdated = await supabaseDb.saveInvoice({ ...data, id }, data.line_items)
-        if (supaUpdated) return supaUpdated
+        if (supaUpdated) {
+          demoStore.saveInvoice(supaUpdated)
+          return supaUpdated
+        }
       } catch (err) {
-        console.warn('Supabase updateInvoice error:', err)
+        console.warn('Supabase updateInvoice warning:', err)
       }
     }
 
     try {
       const res = await api.put(`/invoices/${id}`, data)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
-      return demoStore.saveInvoice({ ...data, id })
-    } catch (err) {
-      return demoStore.saveInvoice({ ...data, id })
+    } catch {
+      // fallback to local
     }
+
+    return localUpdated
   },
   delete: async (id: string) => {
+    demoStore.deleteInvoice(id)
     if (isSupabaseConfigured()) {
       try {
         await supabaseDb.deleteInvoice(id)
-        return { success: true }
       } catch (err) {
         console.warn('Supabase deleteInvoice error:', err)
       }
     }
 
     try {
-      return await api.delete(`/invoices/${id}`)
-    } catch (err) {
-      demoStore.deleteInvoice(id)
-      return { success: true }
+      await api.delete(`/invoices/${id}`)
+    } catch {
+      // ignore
     }
+
+    return { success: true }
   },
   cancel: async (id: string) => {
     return invoicesApi.delete(id)
   },
   clearAll: async () => {
+    demoStore.clearAllInvoices()
     if (isSupabaseConfigured()) {
       try {
         await supabaseDb.clearAllInvoices()
-        return { success: true }
       } catch (err) {
         console.warn('Supabase clearAllInvoices error:', err)
       }
     }
-    demoStore.clearAllInvoices()
+
+    try {
+      await api.post('/invoices/clear-all')
+    } catch {
+      // ignore
+    }
+
     return { success: true }
   },
   send: async (id: string) => {
@@ -574,72 +601,58 @@ export const settingsApi = {
 
 export const recurringApi = {
   list: async () => {
-    try {
-      const res = await api.get('/recurring')
-      if (Array.isArray(res.data)) return res.data
-      return [
-        {
-          id: 'rec-1',
-          client_id: 'client-1',
-          client: demoStore.getClients()[0],
-          frequency: 'MONTHLY',
-          start_date: '2026-01-01',
-          next_run_date: '2026-10-01',
-          auto_send: true,
-          is_active: true,
-          line_items: [
-            { description: 'Maandelijks onderhoud & hosting', quantity: 1, unit_price: 250, vat_rate: '21' }
-          ]
-        }
-      ]
-    } catch (err) {
-      return [
-        {
-          id: 'rec-1',
-          client_id: 'client-1',
-          client: demoStore.getClients()[0],
-          frequency: 'MONTHLY',
-          start_date: '2026-01-01',
-          next_run_date: '2026-10-01',
-          auto_send: true,
-          is_active: true,
-          line_items: [
-            { description: 'Maandelijks onderhoud & hosting', quantity: 1, unit_price: 250, vat_rate: '21' }
-          ]
-        }
-      ]
+    if (isSupabaseConfigured()) {
+      try {
+        const supa = await supabaseDb.getRecurringSchedules()
+        if (Array.isArray(supa) && supa.length > 0) return supa
+      } catch (err) {
+        console.warn('Supabase getRecurringSchedules error:', err)
+      }
     }
+    return demoStore.getRecurringSchedules()
   },
   create: async (data: any) => {
-    try {
-      const res = await api.post('/recurring', data)
-      return res.data
-    } catch (err) {
-      return { id: `rec-${Date.now()}`, ...data }
+    if (isSupabaseConfigured()) {
+      try {
+        const supa = await supabaseDb.saveRecurringSchedule(data)
+        if (supa) {
+          demoStore.saveRecurringSchedule(data)
+          return supa
+        }
+      } catch (err) {
+        console.warn('Supabase saveRecurringSchedule error:', err)
+      }
     }
+    return demoStore.saveRecurringSchedule(data)
   },
   update: async (id: string, data: any) => {
-    try {
-      const res = await api.put(`/recurring/${id}`, data)
-      return res.data
-    } catch (err) {
-      return { id, ...data }
+    if (isSupabaseConfigured()) {
+      try {
+        const supa = await supabaseDb.saveRecurringSchedule({ ...data, id })
+        if (supa) {
+          demoStore.saveRecurringSchedule({ ...data, id })
+          return supa
+        }
+      } catch (err) {
+        console.warn('Supabase updateRecurringSchedule error:', err)
+      }
     }
+    return demoStore.saveRecurringSchedule({ ...data, id })
   },
   delete: async (id: string) => {
-    try {
-      return await api.delete(`/recurring/${id}`)
-    } catch (err) {
-      return { success: true }
+    if (isSupabaseConfigured()) {
+      try {
+        await supabaseDb.deleteRecurringSchedule(id)
+      } catch (err) {
+        console.warn('Supabase deleteRecurringSchedule error:', err)
+      }
     }
+    demoStore.deleteRecurringSchedule(id)
+    return { success: true }
   },
   trigger: async (id: string) => {
-    try {
-      const res = await api.post(`/recurring/${id}/trigger`)
-      return res.data
-    } catch (err) {
-      return { success: true, message: 'Factuur gegenereerd' }
-    }
+    // Generates a real invoice, calculates totals, and advances next run date
+    return demoStore.triggerRecurringSchedule(id)
   },
 }
 

@@ -51,13 +51,19 @@ export function isResendConfigured(): boolean {
 /**
  * Generate Mailto link as a 100% reliable zero-configuration fallback
  */
-export function generateMailtoUrl(invoice: Invoice, settings?: BusinessSettings): string {
-  const recipient = invoice.client?.email || ''
+export function generateMailtoUrl(invoice: Invoice, settings?: BusinessSettings, recipientOverride?: string): string {
+  const recipient = recipientOverride || invoice.client?.email || ''
   const companyName = settings?.company_name || 'AliBirds Studio'
+  const totalAmount = Number(
+    invoice.total_incl ??
+    invoice.total_incl_vat ??
+    invoice.line_items?.reduce((s, it) => s + (Number(it.line_total_incl || it.line_total_excl) || 0), 0) ??
+    0
+  )
   const subject = encodeURIComponent(`Factuur ${invoice.invoice_number} — ${companyName}`)
   const body = encodeURIComponent(
     `Beste ${invoice.client?.contact_person || invoice.client?.name || 'relatie'},\n\n` +
-    `Hierbij ontvangt u factuur ${invoice.invoice_number} ter hoogte van ${fmt.currency(invoice.total_incl)}.\n\n` +
+    `Hierbij ontvangt u factuur ${invoice.invoice_number} ter hoogte van ${fmt.currency(totalAmount)}.\n\n` +
     `Wij verzoeken u vriendelijk dit bedrag vóór ${fmt.date(invoice.due_date)} over te maken naar:\n` +
     `IBAN: ${settings?.iban || 'NL00BANK0123456789'}\n` +
     `BIC: ${settings?.bic || ''}\n` +
@@ -74,20 +80,27 @@ export function generateMailtoUrl(invoice: Invoice, settings?: BusinessSettings)
  */
 export async function sendInvoiceViaResend(
   invoice: Invoice,
-  settings?: BusinessSettings
+  settings?: BusinessSettings,
+  recipientOverride?: string
 ): Promise<{ ok: boolean; message: string }> {
   const apiKey = getResendKey()
   if (!apiKey) {
     return { ok: false, message: 'Geen Resend API sleutel geconfigureerd.' }
   }
 
-  const recipient = invoice.client?.email
+  const recipient = recipientOverride || invoice.client?.email
   if (!recipient) {
-    return { ok: false, message: 'Deze klant heeft geen e-mailadres geregistreerd.' }
+    return { ok: false, message: 'Geen e-mailadres opgegeven voor deze ontvanger.' }
   }
 
   const sender = getResendSender()
   const companyName = settings?.company_name || 'AliBirds Studio'
+  const totalAmount = Number(
+    invoice.total_incl ??
+    invoice.total_incl_vat ??
+    invoice.line_items?.reduce((s, it) => s + (Number(it.line_total_incl || it.line_total_excl) || 0), 0) ??
+    0
+  )
 
   const htmlBody = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; line-height: 1.6;">
@@ -116,7 +129,7 @@ export async function sendInvoiceViaResend(
             <tr style="border-top: 1px solid #cbd5e1;">
               <td style="padding-top: 8px; font-weight: bold;">Totaalbedrag incl. btw:</td>
               <td style="padding-top: 8px; text-align: right; font-weight: bold; font-size: 16px; color: ${settings?.accent_color || '#4f46e5'};">
-                ${fmt.currency(invoice.total_incl)}
+                ${fmt.currency(totalAmount)}
               </td>
             </tr>
           </table>

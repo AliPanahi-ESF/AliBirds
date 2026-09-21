@@ -160,13 +160,33 @@ CREATE TABLE bank_transactions (
     CONSTRAINT bank_transactions_user_id_raw_hash_unique UNIQUE (user_id, raw_hash)
 );
 
--- 9. Enable Row Level Security (RLS) on all tables
+-- 9. Recurring Schedules Table
+CREATE TABLE IF NOT EXISTS recurring_schedules (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
+    client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+    name TEXT NOT NULL,
+    frequency VARCHAR(20) NOT NULL DEFAULT 'MONTHLY', -- WEEKLY, MONTHLY, QUARTERLY, YEARLY
+    start_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    next_run_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    payment_term_days INT DEFAULT 14,
+    auto_send_email BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
+    notes_template TEXT,
+    calculation_mode VARCHAR(20) DEFAULT 'EXCLUSIVE',
+    line_items_template JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 10. Enable Row Level Security (RLS) on all tables
 ALTER TABLE business_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invoice_line_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bank_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recurring_schedules ENABLE ROW LEVEL SECURITY;
 
 -- 10. Drop any old policies to prevent collision errors
 DROP POLICY IF EXISTS "Public or anon access to business_settings" ON business_settings;
@@ -230,5 +250,11 @@ CREATE POLICY "Users manage own bank_transactions"
   ON bank_transactions FOR ALL
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own recurring_schedules"
+  ON recurring_schedules FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
 
 

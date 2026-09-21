@@ -20,9 +20,21 @@ function dbToInvoice(row: any): Invoice {
     sort_order: li.position || 0,
   }))
 
-  const subtotalExcl = Number(row.subtotal_excl ?? row.subtotal_excl_vat ?? 0)
-  const totalVat = Number(row.total_vat ?? row.total_vat_amount ?? 0)
-  const totalIncl = Number(row.total_incl ?? row.total_incl_vat ?? (subtotalExcl + totalVat))
+  const subtotalExcl = Number(
+    row.subtotal_excl ??
+    row.subtotal_excl_vat ??
+    lineItems.reduce((s, it) => s + (Number(it.line_total_excl) || 0), 0)
+  )
+  const totalVat = Number(
+    row.total_vat ??
+    row.total_vat_amount ??
+    lineItems.reduce((s, it) => s + (Number(it.vat_amount) || 0), 0)
+  )
+  const totalIncl = Number(
+    row.total_incl ??
+    row.total_incl_vat ??
+    (subtotalExcl + totalVat)
+  )
 
   // PostgREST embeds foreign tables as arrays [ { ... } ] or objects { ... }
   let clientObj: any = undefined
@@ -30,6 +42,9 @@ function dbToInvoice(row: any): Invoice {
     clientObj = Array.isArray(row.client) ? (row.client[0] || undefined) : row.client
   } else if (row.clients && typeof row.clients === 'object') {
     clientObj = Array.isArray(row.clients) ? (row.clients[0] || undefined) : row.clients
+  }
+  if (!clientObj && row.client_id) {
+    clientObj = demoStore.getClients().find(c => c.id === row.client_id)
   }
 
   return {
@@ -43,8 +58,11 @@ function dbToInvoice(row: any): Invoice {
     status: row.status || 'DRAFT',
     calculation_mode: (row.calc_mode || row.calculation_mode || 'EXCLUSIVE') as CalcMode,
     subtotal_excl_vat: subtotalExcl,
+    subtotal_excl: subtotalExcl,
     total_vat_amount: totalVat,
+    total_vat: totalVat,
     total_incl_vat: totalIncl,
+    total_incl: totalIncl,
     amount_paid: Number(row.amount_paid ?? (row.status === 'PAID' ? totalIncl : 0)),
     payment_reference: row.reference || row.payment_reference || '',
     notes: row.notes || '',
@@ -216,10 +234,11 @@ export const supabaseDb = {
     const dbPayload = invoiceToDb(invoiceData)
     const lineItems = (items && items.length > 0) ? items : (invoiceData.line_items || [])
     const id = invoiceData.id
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
     let invoiceId: string
 
-    if (id && id.length > 20 && !id.startsWith('inv-demo')) {
+    if (id && typeof id === 'string' && isUuid.test(id)) {
       const { data, error } = await supabase
         .from('invoices')
         .update(dbPayload)
@@ -244,8 +263,12 @@ export const supabaseDb = {
       const lineRows = lineItems.map((it: any, idx: number) => {
         const qty = Number(it.quantity) || 1
         const price = Number(it.unit_price) || 0
+        const rateNum = it.vat_rate === 'REVERSE_CHARGE' ? 0 : (Number(it.vat_rate) || 0)
         const excl = Number(it.line_total_excl ?? it.total_excl_vat ?? (qty * price)) || 0
-        const vat = Number(it.vat_amount ?? it.total_vat ?? 0)
+        let vat = Number(it.vat_amount ?? it.total_vat ?? 0)
+        if (!vat && rateNum > 0 && excl > 0) {
+          vat = Math.round(excl * (rateNum / 100) * 100) / 100
+        }
         const incl = Number(it.line_total_incl ?? it.total_incl_vat ?? (excl + vat)) || excl
 
         return {
@@ -266,7 +289,11 @@ export const supabaseDb = {
       }
     }
 
-    return await supabaseDb.getInvoice(invoiceId)
+    const saved = await supabaseDb.getInvoice(invoiceId)
+    if (saved) {
+      demoStore.saveInvoice(saved)
+    }
+    return saved
   },
 
   deleteInvoice: async (id: string) => {
@@ -530,5 +557,79 @@ export const supabaseDb = {
       .single()
     if (error) throw error
     return data
+  },
+
+  // ── Recurring Schedules ──────────────────────────────────────────────────
+  getRecurringSchedules: async () => {
+    if (!isSupabaseConfigured()) return null
+    try {
+      const { data, error } = await supabase
+        .from('recurring_schedules')
+        .select('*, client:clients(*)')
+        .order('next_run_date', { ascending: true })
+      if (error) throw error
+      if (!data) return []
+      return data.map(row => {
+        let client = undefined
+        if (row.client && typeof row.client === 'object') {
+          client = Array.isArray(row.client) ? (row.client[0] || undefined) : row.client
+        }
+        return {
+          ...row,
+          client,
+        }
+      })
+    } catch (err) {
+      console.warn('Supabase getRecurringSchedules notice:', err)
+      return null
+    }
+  },
+
+  saveRecurringSchedule: async (schedData: any) => {
+    if (!isSupabaseConfigured()) return null
+    const { id, client, created_at, updated_at, ...fields } = schedData
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+    const dbRow = {
+      ...fields,
+      client_id: (fields.client_id && isUuid.test(fields.client_id)) ? fields.client_id : null,
+      line_items_template: fields.line_items_template || [],
+    }
+
+    try {
+      if (id && typeof id === 'string' && isUuid.test(id)) {
+        const { data, error } = await supabase
+          .from('recurring_schedules')
+          .update(dbRow)
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        return data
+      } else {
+        const { data, error } = await supabase
+          .from('recurring_schedules')
+          .insert(dbRow)
+          .select()
+          .single()
+        if (error) throw error
+        return data
+      }
+    } catch (err) {
+      console.warn('Supabase saveRecurringSchedule notice:', err)
+      return null
+    }
+  },
+
+  deleteRecurringSchedule: async (id: string) => {
+    if (!isSupabaseConfigured()) return null
+    try {
+      const { error } = await supabase.from('recurring_schedules').delete().eq('id', id)
+      if (error) throw error
+      return true
+    } catch (err) {
+      console.warn('Supabase deleteRecurringSchedule notice:', err)
+      return null
+    }
   },
 }

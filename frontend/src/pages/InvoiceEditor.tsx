@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { invoicesApi, clientsApi, settingsApi, fmt } from '@/lib/api'
 import { Client, Invoice, LineItem, BusinessSettings } from '@/lib/types'
 import InvoicePrintModal from '@/components/InvoicePrintModal'
+import SendInvoiceModal from '@/components/SendInvoiceModal'
 import { sendInvoiceViaResend, generateMailtoUrl, isResendConfigured } from '@/lib/email'
 
 interface LineItemRow {
@@ -58,6 +59,7 @@ export default function InvoiceEditor() {
   const isEdit = Boolean(id)
   const [showPreview, setShowPreview] = useState(false)
   const [showPrintModal, setShowPrintModal] = useState(false)
+  const [showSendModal, setShowSendModal] = useState(false)
   const [isSendingEmail, setIsSendingEmail] = useState(false)
   const [liveCalc, setLiveCalc] = useState({ excl: 0, vat: 0, incl: 0 })
 
@@ -79,7 +81,7 @@ export default function InvoiceEditor() {
   const today = new Date().toISOString().slice(0, 10)
   const due14 = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10)
 
-  const { register, control, watch, setValue, handleSubmit, reset } = useForm<FormData>({
+  const { register, control, watch, setValue, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     defaultValues: {
       client_id: '',
       issue_date: today,
@@ -232,14 +234,18 @@ export default function InvoiceEditor() {
     status: existing?.status || 'DRAFT',
     calculation_mode: mode,
     subtotal_excl_vat: liveCalc.excl,
+    subtotal_excl: liveCalc.excl,
     total_vat_amount: liveCalc.vat,
+    total_vat: liveCalc.vat,
     total_incl_vat: liveCalc.incl,
+    total_incl: liveCalc.incl,
+    amount_paid: Number(existing?.amount_paid || 0),
     payment_reference: watch('payment_reference') || existing?.payment_reference || '',
     notes: watch('notes') || existing?.notes || settings?.invoice_notes_default || '',
     line_items: (watchedItems || []).map((it, idx) => {
       const { excl, vat, incl } = calcLine(it, mode)
       return {
-        id: `preview-item-${idx}`,
+        id: (it as any).id || `preview-item-${idx}`,
         description: it.description || `Item ${idx + 1}`,
         quantity: Number(it.quantity) || 1,
         unit_price: Number(it.unit_price) || 0,
@@ -253,14 +259,35 @@ export default function InvoiceEditor() {
   }
 
   const onSubmit = (data: FormData) => {
+    const processedLineItems = (data.line_items || []).map((it, idx) => {
+      const { excl, vat, incl } = calcLine(it, data.calculation_mode)
+      return {
+        id: (it as any).id || `item-${Date.now()}-${idx}`,
+        description: it.description || `Item ${idx + 1}`,
+        quantity: Number(it.quantity) || 1,
+        unit_price: Number(it.unit_price) || 0,
+        vat_rate: String(it.vat_rate || '21'),
+        vat_amount: vat,
+        line_total_excl: excl,
+        line_total_incl: incl,
+        sort_order: idx + 1,
+      }
+    })
+
     const invoiceNum = existing?.invoice_number || `${settings?.invoice_prefix || '2026-'}${String(settings?.next_invoice_sequence || 1).padStart(4, '0')}`
     const payload = {
       ...data,
+      id: existing?.id,
       invoice_number: invoiceNum,
       client: selectedClient,
+      client_id: data.client_id || selectedClient?.id,
       subtotal_excl: liveCalc.excl,
+      subtotal_excl_vat: liveCalc.excl,
       total_vat: liveCalc.vat,
+      total_vat_amount: liveCalc.vat,
       total_incl: liveCalc.incl,
+      total_incl_vat: liveCalc.incl,
+      line_items: processedLineItems,
     }
     saveMutation.mutate(payload as any)
   }
@@ -298,30 +325,34 @@ export default function InvoiceEditor() {
             <Download size={14} /> <span>PDF / Afdrukken</span>
           </button>
 
-          {isEdit && existing && (
-            <>
-              <button
-                type="button"
-                onClick={handleSendInvoice}
-                className="btn-secondary text-xs sm:text-sm py-1.5 px-2.5 sm:px-3 text-emerald-400 border-emerald-500/30 flex items-center gap-1.5"
-                disabled={isSendingEmail}
-              >
-                <Send size={14} /> <span>{isSendingEmail ? 'Verzenden...' : 'Verzenden'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1.5 px-2.5 border border-red-500/20 flex items-center gap-1.5"
-                title="Factuur verwijderen"
-                disabled={deleteMutation.isPending}
-              >
-                <Trash2 size={14} /> <span>{deleteMutation.isPending ? 'Wissen...' : 'Verwijderen'}</span>
-              </button>
-            </>
-          )}
           <button
             type="button"
-            onClick={handleSubmit(onSubmit)}
+            onClick={() => setShowSendModal(true)}
+            className="btn-secondary text-xs sm:text-sm py-1.5 px-2.5 sm:px-3 text-emerald-400 border-emerald-500/30 flex items-center gap-1.5"
+            title="Factuur verzenden per e-mail"
+          >
+            <Send size={14} /> <span>Verzenden</span>
+          </button>
+
+          {isEdit && existing && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1.5 px-2.5 border border-red-500/20 flex items-center gap-1.5"
+              title="Factuur verwijderen"
+              disabled={deleteMutation.isPending}
+            >
+              <Trash2 size={14} /> <span>{deleteMutation.isPending ? 'Wissen...' : 'Verwijderen'}</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleSubmit(onSubmit, (formErrors) => {
+              if (formErrors.client_id) {
+                toast.error('Selecteer eerst een klant voordat u de factuur opslaat.')
+              }
+            })}
             className="btn-primary text-xs sm:text-sm py-1.5 px-3.5 ml-auto sm:ml-0 flex items-center gap-1.5"
             disabled={saveMutation.isPending}
           >
@@ -338,12 +369,15 @@ export default function InvoiceEditor() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="label">Klant *</label>
-                <select className="select text-xs sm:text-sm" {...register('client_id', { required: true })}>
+                <select className="select text-xs sm:text-sm" {...register('client_id', { required: 'Selecteer een klant' })}>
                   <option value="">— Selecteer klant —</option>
                   {clients.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
+                {errors.client_id && (
+                  <p className="text-red-400 text-[11px] mt-1">Selecteer een klant om de factuur op te slaan.</p>
+                )}
                 {selectedClient && (
                   <div className="mt-2 text-xs text-slate-400 p-2 rounded bg-slate-800/40 border border-slate-800 space-y-0.5">
                     <div className="font-medium text-slate-300">{selectedClient.name}</div>
@@ -550,6 +584,19 @@ export default function InvoiceEditor() {
           onClose={() => setShowPrintModal(false)}
         />
       )}
+
+      {/* Send Invoice by Email Modal */}
+      <SendInvoiceModal
+        invoice={currentInvoice}
+        client={selectedClient}
+        settings={settings}
+        isOpen={showSendModal}
+        onClose={() => setShowSendModal(false)}
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ['invoices'] })
+          if (id) qc.invalidateQueries({ queryKey: ['invoice', id] })
+        }}
+      />
     </div>
   )
 }

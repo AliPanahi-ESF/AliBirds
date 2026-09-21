@@ -57,8 +57,11 @@ export interface Invoice {
   status: InvoiceStatus
   calculation_mode: CalcMode
   subtotal_excl_vat: number
+  subtotal_excl?: number
   total_vat_amount: number
+  total_vat?: number
   total_incl_vat: number
+  total_incl?: number
   amount_paid: number
   payment_reference?: string
   notes?: string
@@ -151,3 +154,29 @@ export interface BusinessSettings {
   created_at: string
   updated_at: string
 }
+
+export interface RecurringLineItemTemplate {
+  description: string
+  quantity: number
+  unit_price: number
+  vat_rate: string
+}
+
+export interface RecurringSchedule {
+  id: string
+  name: string
+  client_id: string
+  client?: Client
+  frequency: 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
+  start_date: string
+  next_run_date: string
+  payment_term_days: number
+  auto_send_email: boolean
+  is_active: boolean
+  notes_template?: string
+  calculation_mode?: 'EXCLUSIVE' | 'INCLUSIVE'
+  line_items_template: RecurringLineItemTemplate[]
+  created_at: string
+  updated_at: string
+}
+

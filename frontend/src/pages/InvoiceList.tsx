@@ -1,12 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Download, Eye, Calendar, Trash2, Upload } from 'lucide-react'
+import { Plus, Search, Download, Eye, Calendar, Trash2, Upload, Mail } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { invoicesApi, settingsApi, clientsApi, fmt } from '@/lib/api'
 import { Invoice, InvoiceStatus, BusinessSettings, Client } from '@/lib/types'
 import InvoicePrintModal from '@/components/InvoicePrintModal'
 import ImportInvoicePdfModal from '@/components/ImportInvoicePdfModal'
+import SendInvoiceModal from '@/components/SendInvoiceModal'
 import { clsx } from 'clsx'
 
 const STATUS_MAP: Record<InvoiceStatus, { label: string; cls: string }> = {
@@ -23,6 +24,7 @@ export default function InvoiceList() {
   const [filter, setFilter] = useState<string>('')
   const [search, setSearch] = useState('')
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null)
+  const [sendInvoice, setSendInvoice] = useState<Invoice | null>(null)
   const [showImportPdf, setShowImportPdf] = useState(false)
 
   const { data: settings } = useQuery<BusinessSettings>({
@@ -218,10 +220,17 @@ export default function InvoiceList() {
                   </td>
                   <td className="p-3.5"><span className={s.cls}>{s.label}</span></td>
                   <td className="p-3.5 text-right font-mono font-semibold text-slate-100">
-                    {fmt.currency(inv.total_incl_vat)}
+                    {fmt.currency(inv.total_incl ?? inv.total_incl_vat ?? 0)}
                   </td>
                   <td className="p-3.5 text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-1 justify-end">
+                      <button
+                        onClick={() => setSendInvoice(inv)}
+                        className="btn-ghost p-1.5 rounded-lg text-emerald-400 hover:text-emerald-300"
+                        title="Factuur verzenden per e-mail"
+                      >
+                        <Mail size={14} />
+                      </button>
                       <button
                         onClick={() => nav(`/invoices/${inv.id}/edit`)}
                         className="btn-ghost p-1.5 rounded-lg text-slate-400 hover:text-slate-200"
@@ -258,6 +267,20 @@ export default function InvoiceList() {
           invoice={printInvoice}
           settings={settings}
           onClose={() => setPrintInvoice(null)}
+        />
+      )}
+
+      {/* Send Invoice by Email Modal */}
+      {sendInvoice && (
+        <SendInvoiceModal
+          invoice={sendInvoice}
+          client={sendInvoice.client}
+          settings={settings}
+          isOpen={Boolean(sendInvoice)}
+          onClose={() => setSendInvoice(null)}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ['invoices'] })
+          }}
         />
       )}
 
