@@ -5,6 +5,75 @@
  * Users never see or touch any API keys — they just log in with email + password.
  */
 import { createClient } from '@supabase/supabase-js'
+import { Invoice, CalcMode } from './types'
+
+function dbToInvoice(row: any): Invoice {
+  const lineItems = (row.line_items || []).map((li: any) => ({
+    id: li.id,
+    description: li.description || '',
+    quantity: Number(li.quantity) || 1,
+    unit_price: Number(li.unit_price) || 0,
+    vat_rate: String(li.vat_rate || '21'),
+    vat_amount: Number(li.vat_amount) || 0,
+    line_total_excl: Number(li.line_total_excl ?? li.total_excl_vat ?? 0),
+    line_total_incl: Number(li.line_total_incl ?? li.total_incl_vat ?? 0),
+    sort_order: li.position || 0,
+  }))
+
+  const subtotalExcl = Number(row.subtotal_excl ?? row.subtotal_excl_vat ?? 0)
+  const totalVat = Number(row.total_vat ?? row.total_vat_amount ?? 0)
+  const totalIncl = Number(row.total_incl ?? row.total_incl_vat ?? (subtotalExcl + totalVat))
+
+  return {
+    id: row.id,
+    invoice_number: row.invoice_number,
+    client_id: row.client_id || undefined,
+    client: row.client || undefined,
+    issue_date: row.issue_date,
+    due_date: row.due_date,
+    delivery_date: row.delivery_date || undefined,
+    status: row.status || 'DRAFT',
+    calculation_mode: (row.calc_mode || row.calculation_mode || 'EXCLUSIVE') as CalcMode,
+    subtotal_excl_vat: subtotalExcl,
+    total_vat_amount: totalVat,
+    total_incl_vat: totalIncl,
+    amount_paid: Number(row.amount_paid ?? (row.status === 'PAID' ? totalIncl : 0)),
+    payment_reference: row.reference || row.payment_reference || '',
+    notes: row.notes || '',
+    pdf_path: row.pdf_path || undefined,
+    sent_at: row.sent_at || undefined,
+    paid_at: row.paid_at || undefined,
+    line_items: lineItems,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }
+}
+
+function invoiceToDb(inv: any) {
+  const subtotalExcl = Number(inv.subtotal_excl ?? inv.subtotal_excl_vat ?? 0)
+  const totalVat = Number(inv.total_vat ?? inv.total_vat_amount ?? 0)
+  const totalIncl = Number(inv.total_incl ?? inv.total_incl_vat ?? (subtotalExcl + totalVat))
+
+  return {
+    invoice_number: inv.invoice_number,
+    client_id: (inv.client_id && inv.client_id !== 'NEW') ? inv.client_id : null,
+    issue_date: inv.issue_date,
+    due_date: inv.due_date,
+    delivery_date: inv.delivery_date || null,
+    calc_mode: inv.calc_mode || inv.calculation_mode || 'EXCLUSIVE',
+    status: inv.status || 'DRAFT',
+    reference: inv.reference || inv.payment_reference || null,
+    notes: inv.notes || null,
+    payment_terms: inv.payment_terms || null,
+    pdf_path: inv.pdf_path || null,
+    subtotal_excl: subtotalExcl,
+    total_vat: totalVat,
+    total_incl: totalIncl,
+    is_reverse_charge: inv.is_reverse_charge || inv.line_items?.some((i: any) => i.vat_rate === 'REVERSE_CHARGE') || false,
+    sent_at: inv.sent_at || (inv.status === 'SENT' ? new Date().toISOString() : null),
+    paid_at: inv.paid_at || (inv.status === 'PAID' ? (inv.issue_date ? new Date(inv.issue_date).toISOString() : new Date().toISOString()) : null),
+  }
+}
 
 const STORAGE_KEY_CONFIG = 'alibirds_supabase_config'
 
@@ -112,7 +181,8 @@ export const supabaseDb = {
       .select('*, client:clients(*), line_items:invoice_line_items(*)')
       .order('issue_date', { ascending: false })
     if (error) throw error
-    return data
+    if (!data) return []
+    return data.map(dbToInvoice)
   },
 
   getInvoice: async (id: string) => {
@@ -121,21 +191,24 @@ export const supabaseDb = {
       .from('invoices')
       .select('*, client:clients(*), line_items:invoice_line_items(*)')
       .eq('id', id)
-      .single()
+      .maybeSingle()
     if (error) throw error
-    return data
+    if (!data) return null
+    return dbToInvoice(data)
   },
 
   saveInvoice: async (invoiceData: any, items: any[] = []) => {
     if (!isSupabaseConfigured()) return null
-    const { client: _c, line_items: _l, id, ...cleanInvoice } = invoiceData
+    const dbPayload = invoiceToDb(invoiceData)
+    const lineItems = (items && items.length > 0) ? items : (invoiceData.line_items || [])
+    const id = invoiceData.id
 
     let invoiceId: string
 
-    if (id && id.length > 20) {
+    if (id && id.length > 20 && !id.startsWith('inv-demo')) {
       const { data, error } = await supabase
         .from('invoices')
-        .update(cleanInvoice)
+        .update(dbPayload)
         .eq('id', id)
         .select()
         .single()
@@ -146,31 +219,40 @@ export const supabaseDb = {
     } else {
       const { data, error } = await supabase
         .from('invoices')
-        .insert(cleanInvoice)
+        .insert(dbPayload)
         .select()
         .single()
       if (error) throw error
       invoiceId = data.id
     }
 
-    if (items && items.length > 0) {
-      const lineRows = items.map((it, idx) => ({
-        invoice_id: invoiceId,
-        position: idx,
-        description: it.description,
-        quantity: it.quantity,
-        unit_price: it.unit_price,
-        vat_rate: it.vat_rate,
-        vat_amount: it.vat_amount,
-        line_total_excl: it.line_total_excl,
-        line_total_incl: it.line_total_incl,
-      }))
+    if (lineItems && lineItems.length > 0) {
+      const lineRows = lineItems.map((it: any, idx: number) => {
+        const qty = Number(it.quantity) || 1
+        const price = Number(it.unit_price) || 0
+        const excl = Number(it.line_total_excl ?? it.total_excl_vat ?? (qty * price)) || 0
+        const vat = Number(it.vat_amount ?? it.total_vat ?? 0)
+        const incl = Number(it.line_total_incl ?? it.total_incl_vat ?? (excl + vat)) || excl
+
+        return {
+          invoice_id: invoiceId,
+          position: idx,
+          description: it.description || `Item ${idx + 1}`,
+          quantity: qty,
+          unit_price: price || excl,
+          vat_rate: String(it.vat_rate || '21'),
+          vat_amount: vat,
+          line_total_excl: excl,
+          line_total_incl: incl,
+        }
+      })
       const { error: liError } = await supabase.from('invoice_line_items').insert(lineRows)
-      if (liError) throw liError
+      if (liError) {
+        console.warn('Supabase invoice_line_items insert error:', liError)
+      }
     }
 
-    // Return the full invoice with relations
-    return supabaseDb.getInvoice(invoiceId)
+    return await supabaseDb.getInvoice(invoiceId)
   },
 
   deleteInvoice: async (id: string) => {

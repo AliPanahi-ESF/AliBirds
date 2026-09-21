@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { X, Upload, FileText, Check, AlertCircle, Building2, Calendar } from 'lucide-react'
+import { X, Upload, FileText, Check, AlertCircle, Building2, Calendar, Eye } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { invoicesApi, clientsApi, bankApi } from '@/lib/api'
@@ -14,6 +14,7 @@ interface Props {
 export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
   const qc = useQueryClient()
   const [file, setFile] = useState<File | null>(null)
+  const [pdfDataUrl, setPdfDataUrl] = useState<string | null>(null)
   const [isParsing, setIsParsing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -46,44 +47,95 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
     setIsParsing(true)
     setFile(selectedFile)
 
+    // Convert to Data URL so it can be previewed or saved as attachment
     try {
-      // 1. Try to get hints from filename
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setPdfDataUrl(reader.result)
+        }
+      }
+      reader.readAsDataURL(selectedFile)
+    } catch {
+      // ignore
+    }
+
+    try {
+      // 1. Extract hints from filename (e.g. Factuur_2026-0001_Anivation.pdf)
       const fname = selectedFile.name
-      const numMatch = fname.match(/(?:factuur[_-]?|inv[_-]?|invoice[_-]?)?([0-9]{4}[-_][0-9]{3,5}|202\d{5})/i) || fname.match(/(202\d[-_]\d+)/)
+      const numMatch =
+        fname.match(/(?:factuur[_-]?|inv[_-]?|invoice[_-]?)?([0-9]{4}[-_][0-9]{3,5}|202\d{5})/i) ||
+        fname.match(/(202\d[-_]\d+)/) ||
+        fname.match(/\b([A-Z]{2,4}[-_]?\d{3,6})\b/i)
+
       if (numMatch && numMatch[1]) {
         setInvoiceNumber(numMatch[1].replace('_', '-'))
       } else {
-        // Fallback placeholder
-        setInvoiceNumber(`HIST-${Date.now().toString().slice(-4)}`)
+        setInvoiceNumber(`FACT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`)
       }
 
       // Check if client name is in filename
       for (const cl of clients) {
-        if (fname.toLowerCase().includes(cl.name.toLowerCase())) {
+        if (cl.name && fname.toLowerCase().includes(cl.name.toLowerCase())) {
           setClientId(cl.id)
           break
         }
       }
 
-      // 2. Read file as text / binary to scan strings for EUR amounts, dates, and invoice codes
+      // 2. Read file as binary to scan strings
       const buffer = await selectedFile.arrayBuffer()
       const decoder = new TextDecoder('iso-8859-1')
-      const content = decoder.decode(buffer)
+      let content = decoder.decode(buffer)
 
-      // Search for invoice number patterns
-      const textNum = content.match(/(?:factuur(?:nummer|nr)?|invoice\s*(?:no|number)?)\s*[:.\s#]*([A-Z0-9_-]{4,15})/i)
-      if (textNum && textNum[1] && textNum[1].length >= 4 && !textNum[1].includes('obj')) {
-        setInvoiceNumber(textNum[1])
+      // Try decompressing FlateDecode streams if available in browser
+      if (typeof DecompressionStream !== 'undefined') {
+        const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g
+        let streamMatch: RegExpExecArray | null
+        let decompCount = 0
+        while ((streamMatch = streamRegex.exec(content)) !== null && decompCount < 10) {
+          try {
+            const rawBytes = new Uint8Array(streamMatch[1].length)
+            for (let b = 0; b < streamMatch[1].length; b++) {
+              rawBytes[b] = streamMatch[1].charCodeAt(b)
+            }
+            const ds = new DecompressionStream('deflate')
+            const writer = ds.writable.getWriter()
+            writer.write(rawBytes)
+            writer.close()
+            const decompressed = await new Response(ds.readable).arrayBuffer()
+            const decompText = new TextDecoder('utf-8', { fatal: false }).decode(decompressed)
+            content += ' ' + decompText
+            decompCount++
+          } catch {
+            // stream is not raw deflate or corrupted, ignore
+          }
+        }
       }
 
-      // Search for euro amounts
-      const eurMatches = content.match(/(?:€|EUR)\s*([0-9]{1,4}[.,][0-9]{2})/gi)
+      // Search for invoice number in content
+      const textNum = content.match(/(?:factuur(?:nummer|nr)?|invoice\s*(?:no|number)?)\s*[:.\s#]*([A-Z0-9_-]{4,18})/i)
+      if (textNum && textNum[1] && textNum[1].length >= 4 && !textNum[1].includes('obj') && !textNum[1].includes('endobj')) {
+        setInvoiceNumber(textNum[1].trim())
+      }
+
+      // Search for euro amounts (handles 1.250,00 or 1250,00 or 665.50)
+      const eurMatches =
+        content.match(/(?:€|EUR|eur|euro)[\s:]*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/gi) ||
+        content.match(/([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})[\s]*(?:€|EUR)/gi) ||
+        content.match(/(?:totaal|total|subtotaal)[\s:]*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/gi)
+
       if (eurMatches && eurMatches.length > 0) {
-        // Take the highest detected value as likely total incl vat
         let maxVal = 0
         for (const m of eurMatches) {
-          const clean = m.replace(/(?:€|EUR|\s)/gi, '').replace(',', '.')
-          const val = parseFloat(clean)
+          const clean = m.replace(/(?:€|EUR|eur|euro|totaal|total|subtotaal|[\s:])/gi, '')
+          // Convert Dutch format 1.250,00 or 665,50 to standard 1250.00 / 665.50
+          let norm = clean
+          if (clean.includes(',') && clean.includes('.')) {
+            norm = clean.replace(/\./g, '').replace(',', '.')
+          } else if (clean.includes(',')) {
+            norm = clean.replace(',', '.')
+          }
+          const val = parseFloat(norm)
           if (!isNaN(val) && val > maxVal && val < 500000) {
             maxVal = val
           }
@@ -95,14 +147,23 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
       }
 
       // Search for dates
-      const dateMatch = content.match(/\b(202\d[-/.](?:0[1-9]|1[0-2])[-/.](?:0[1-9]|[12]\d|3[01]))\b/)
+      const dateMatch =
+        content.match(/\b(202\d[-/.](?:0[1-9]|1[0-2])[-/.](?:0[1-9]|[12]\d|3[01]))\b/) ||
+        content.match(/\b((?:0[1-9]|[12]\d|3[01])[-/.](?:0[1-9]|1[0-2])[-/.](?:202\d))\b/)
+
       if (dateMatch && dateMatch[1]) {
-        const norm = dateMatch[1].replace(/[/.]/g, '-')
-        setIssueDate(norm)
-        setDueDate(norm)
+        let rawD = dateMatch[1].replace(/[/.]/g, '-')
+        const parts = rawD.split('-')
+        let normalizedDate = rawD
+        if (parts[0].length === 2 && parts[2].length === 4) {
+          // DD-MM-YYYY -> YYYY-MM-DD
+          normalizedDate = `${parts[2]}-${parts[1]}-${parts[0]}`
+        }
+        setIssueDate(normalizedDate)
+        setDueDate(normalizedDate)
       }
 
-      toast.success('PDF geanalyseerd! Controleer de gegevens.')
+      toast.success('PDF geanalyseerd! Controleer de gegevens hieronder.')
     } catch (err) {
       console.warn('PDF parsing error:', err)
       toast('PDF geladen. Vul de details in.', { icon: '📄' })
@@ -117,9 +178,26 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
     }
   }, [clients])
 
+  const onDropRejected = useCallback((fileRejections: any[]) => {
+    if (fileRejections.length > 0) {
+      const rej = fileRejections[0]
+      if (rej.file?.name?.toLowerCase().endsWith('.pdf')) {
+        parsePdfFile(rej.file)
+      } else {
+        toast.error('Selecteer alstublieft een geldig PDF bestand (.pdf)')
+      }
+    }
+  }, [clients])
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'application/pdf': ['.pdf'] },
+    onDropRejected,
+    accept: {
+      'application/pdf': ['.pdf'],
+      'application/x-pdf': ['.pdf'],
+      'application/octet-stream': ['.pdf'],
+      '*/*': ['.pdf'],
+    },
     maxFiles: 1,
   })
 
@@ -143,27 +221,35 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
         qc.invalidateQueries({ queryKey: ['clients'] })
       }
 
-      const clientObj = clients.find(c => c.id === finalClientId)
+      const validClientId = (finalClientId && finalClientId !== 'NEW' && finalClientId.length > 5) ? finalClientId : undefined
+      const clientObj = clients.find(c => c.id === validClientId)
 
-      // Save historical invoice
+      // Prepare comprehensive invoice payload compatible with both Supabase and local cache
       const invoiceData = {
         invoice_number: invoiceNumber.trim(),
-        client_id: finalClientId || undefined,
+        client_id: validClientId,
         client: clientObj,
         status: status,
         issue_date: issueDate,
         due_date: dueDate,
-        paid_at: status === 'PAID' ? issueDate : null,
+        paid_at: status === 'PAID' ? (issueDate ? new Date(issueDate).toISOString() : new Date().toISOString()) : null,
+        subtotal_excl: Number(amountExcl),
         subtotal_excl_vat: Number(amountExcl),
         total_vat: Number(vatAmount),
+        total_vat_amount: Number(vatAmount),
+        total_incl: Number(amountIncl),
         total_incl_vat: Number(amountIncl),
         notes: description,
+        pdf_path: pdfDataUrl || undefined,
         line_items: [
           {
             description: description || `Historische factuur ${invoiceNumber}`,
             quantity: 1,
             unit_price: Number(amountExcl),
             vat_rate: vatRate,
+            vat_amount: Number(vatAmount),
+            line_total_excl: Number(amountExcl),
+            line_total_incl: Number(amountIncl),
             total_excl_vat: Number(amountExcl),
             total_vat: Number(vatAmount),
             total_incl_vat: Number(amountIncl),
@@ -178,7 +264,7 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
         const txs = await bankApi.transactions()
         const matchTx = txs.find(t =>
           (t.remittance_reference && t.remittance_reference.includes(invoiceNumber.trim())) ||
-          (Math.abs(Number(t.amount) - Number(amountIncl)) < 0.05 && t.type === 'CREDIT')
+          (Math.abs(Number(t.amount) - Number(amountIncl)) < 0.05 && (t.type === 'CREDIT' || (t as any).transaction_type === 'CREDIT'))
         )
         if (matchTx && created && created.id) {
           await bankApi.match(matchTx.id, created.id)
@@ -234,10 +320,13 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
           >
             <input {...getInputProps()} />
             {file ? (
-              <div className="flex items-center justify-center gap-2 text-emerald-400">
-                <Check size={18} />
-                <span className="text-xs sm:text-sm font-medium">{file.name}</span>
-                <span className="text-xs text-slate-500 font-mono">({(file.size / 1024).toFixed(0)} KB)</span>
+              <div className="space-y-1">
+                <div className="flex items-center justify-center gap-2 text-emerald-400">
+                  <Check size={18} />
+                  <span className="text-xs sm:text-sm font-medium">{file.name}</span>
+                  <span className="text-xs text-slate-500 font-mono">({(file.size / 1024).toFixed(0)} KB)</span>
+                </div>
+                <p className="text-[11px] text-slate-400">Klik of sleep een andere PDF om te vervangen</p>
               </div>
             ) : (
               <div>
@@ -285,7 +374,7 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
                 value={clientId}
                 onChange={e => setClientId(e.target.value)}
               >
-                <option value="">-- Kies bestaande klant of maak nieuw --</option>
+                <option value="">-- Geen / Kies bestaande klant --</option>
                 {clients.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
