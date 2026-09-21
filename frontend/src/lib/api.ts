@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { demoStore } from './demoData'
+import { isSupabaseConfigured, supabaseDb } from './supabase'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -57,6 +58,19 @@ export const dashboardApi = {
 
 export const invoicesApi = {
   list: async (params?: any) => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supaInvoices = await supabaseDb.getInvoices()
+        if (Array.isArray(supaInvoices)) {
+          let list = supaInvoices
+          if (params?.status) list = list.filter((i: any) => i.status === params.status)
+          return list
+        }
+      } catch (err) {
+        console.warn('Supabase getInvoices error, falling back to local store:', err)
+      }
+    }
+
     try {
       const res = await api.get('/invoices', { params })
       if (Array.isArray(res.data)) {
@@ -75,6 +89,15 @@ export const invoicesApi = {
     }
   },
   get: async (id: string) => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supaInv = await supabaseDb.getInvoice(id)
+        if (supaInv) return supaInv
+      } catch (err) {
+        console.warn('Supabase getInvoice error:', err)
+      }
+    }
+
     try {
       const res = await api.get(`/invoices/${id}`)
       if (res.data && typeof res.data === 'object' && res.data.id) {
@@ -90,6 +113,15 @@ export const invoicesApi = {
     }
   },
   create: async (data: any) => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supaCreated = await supabaseDb.saveInvoice(data, data.line_items)
+        if (supaCreated) return supaCreated
+      } catch (err) {
+        console.warn('Supabase saveInvoice error:', err)
+      }
+    }
+
     try {
       const res = await api.post('/invoices', data)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
@@ -99,6 +131,15 @@ export const invoicesApi = {
     }
   },
   update: async (id: string, data: any) => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supaUpdated = await supabaseDb.saveInvoice({ ...data, id }, data.line_items)
+        if (supaUpdated) return supaUpdated
+      } catch (err) {
+        console.warn('Supabase updateInvoice error:', err)
+      }
+    }
+
     try {
       const res = await api.put(`/invoices/${id}`, data)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
@@ -153,6 +194,22 @@ export const invoicesApi = {
 
 export const clientsApi = {
   list: async (search?: string) => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supaClients = await supabaseDb.getClients()
+        if (Array.isArray(supaClients)) {
+          let list = supaClients
+          if (search) {
+            const q = search.toLowerCase()
+            list = list.filter((c: any) => c.name?.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q))
+          }
+          return list
+        }
+      } catch (err) {
+        console.warn('Supabase getClients error:', err)
+      }
+    }
+
     try {
       const res = await api.get('/clients', { params: { search } })
       if (Array.isArray(res.data)) return res.data
@@ -172,6 +229,16 @@ export const clientsApi = {
     }
   },
   get: async (id: string) => {
+    if (isSupabaseConfigured()) {
+      try {
+        const clients = await supabaseDb.getClients()
+        const found = clients?.find((c: any) => c.id === id)
+        if (found) return found
+      } catch (err) {
+        console.warn('Supabase client find error:', err)
+      }
+    }
+
     try {
       const res = await api.get(`/clients/${id}`)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
@@ -181,6 +248,15 @@ export const clientsApi = {
     }
   },
   create: async (data: any) => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supaSaved = await supabaseDb.saveClient(data)
+        if (supaSaved) return supaSaved
+      } catch (err) {
+        console.warn('Supabase saveClient error:', err)
+      }
+    }
+
     try {
       const res = await api.post('/clients', data)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
@@ -190,6 +266,15 @@ export const clientsApi = {
     }
   },
   update: async (id: string, data: any) => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supaSaved = await supabaseDb.saveClient({ ...data, id })
+        if (supaSaved) return supaSaved
+      } catch (err) {
+        console.warn('Supabase updateClient error:', err)
+      }
+    }
+
     try {
       const res = await api.put(`/clients/${id}`, data)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
@@ -199,6 +284,15 @@ export const clientsApi = {
     }
   },
   remove: async (id: string) => {
+    if (isSupabaseConfigured()) {
+      try {
+        await supabaseDb.deleteClient(id)
+        return { success: true }
+      } catch (err) {
+        console.warn('Supabase deleteClient error:', err)
+      }
+    }
+
     try {
       return await api.delete(`/clients/${id}`)
     } catch (err) {
@@ -284,6 +378,15 @@ export const taxApi = {
 
 export const expensesApi = {
   list: async (params?: any) => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supaExpenses = await supabaseDb.getExpenses()
+        if (Array.isArray(supaExpenses)) return supaExpenses
+      } catch (err) {
+        console.warn('Supabase getExpenses error:', err)
+      }
+    }
+
     try {
       const res = await api.get('/expenses', { params })
       if (Array.isArray(res.data)) return res.data
@@ -293,6 +396,15 @@ export const expensesApi = {
     }
   },
   create: async (data: any) => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supaSaved = await supabaseDb.saveExpense(data)
+        if (supaSaved) return supaSaved
+      } catch (err) {
+        console.warn('Supabase saveExpense error:', err)
+      }
+    }
+
     try {
       const res = await api.post('/expenses', data)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
@@ -302,6 +414,15 @@ export const expensesApi = {
     }
   },
   delete: async (id: string) => {
+    if (isSupabaseConfigured()) {
+      try {
+        await supabaseDb.deleteExpense(id)
+        return { success: true }
+      } catch (err) {
+        console.warn('Supabase deleteExpense error:', err)
+      }
+    }
+
     try {
       return await api.delete(`/expenses/${id}`)
     } catch (err) {
@@ -325,6 +446,15 @@ export const expensesApi = {
 
 export const settingsApi = {
   get: async () => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supaSettings = await supabaseDb.getSettings()
+        if (supaSettings && supaSettings.company_name) return supaSettings
+      } catch (err) {
+        console.warn('Supabase getSettings error:', err)
+      }
+    }
+
     try {
       const res = await api.get('/settings')
       if (res.data && typeof res.data === 'object' && res.data.company_name) return res.data
@@ -334,6 +464,15 @@ export const settingsApi = {
     }
   },
   update: async (data: any) => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supaSaved = await supabaseDb.saveSettings(data)
+        if (supaSaved) return supaSaved
+      } catch (err) {
+        console.warn('Supabase saveSettings error:', err)
+      }
+    }
+
     try {
       const res = await api.put('/settings', data)
       if (res.data && typeof res.data === 'object' && res.data.company_name) return res.data

@@ -47,11 +47,23 @@ npm run dev
 # → http://localhost:3000
 ```
 
-### Docker Compose (Production)
+## Deployment Modes
+
+### Mode A: 100% Free Serverless (Netlify + Supabase + Resend) — Recommended ⭐
+Run AliBirds with **zero server costs** and **zero container maintenance**:
+1. **Frontend**: Hosted on **Netlify** (free CDN, auto-build on git push).
+2. **Database**: Hosted on **Supabase** (free PostgreSQL, 500MB storage).
+   - Create a free project at [supabase.com](https://supabase.com).
+   - In Supabase SQL Editor, paste and run [`supabase/schema.sql`](supabase/schema.sql).
+   - In AliBirds web app -> **Instellingen** -> **Cloud & Integraties**, paste your Supabase URL & Anon Key.
+3. **In-Browser PDF Generator**: Print or export crisp vector A4 Dutch invoices directly in the browser on iOS, Android, and Desktop.
+4. **Email Dispatch**: Send invoice emails directly to clients using **Resend** (3,000 free emails/month) or the built-in mailto link.
+
+### Mode B: Self-Hosted Docker / Localhost
+Run everything on your own machine or VPS with Python FastAPI, SQLite/Postgres, WeasyPrint, and APScheduler:
 
 ```bash
 cp .env.example .env
-# Edit .env with your SMTP credentials and settings
 docker-compose up -d
 # → Frontend: http://localhost:3000
 # → API docs: http://localhost:8000/docs

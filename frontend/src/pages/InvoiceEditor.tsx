@@ -2,10 +2,12 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
-import { Plus, Trash2, Save, Send, Download, Eye, EyeOff, ChevronDown, RefreshCw, ArrowLeft } from 'lucide-react'
+import { Plus, Trash2, Save, Send, Download, Eye, EyeOff, ChevronDown, RefreshCw, ArrowLeft, Mail } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { invoicesApi, clientsApi, fmt } from '@/lib/api'
-import { Client, Invoice, LineItem } from '@/lib/types'
+import { invoicesApi, clientsApi, settingsApi, fmt } from '@/lib/api'
+import { Client, Invoice, LineItem, BusinessSettings } from '@/lib/types'
+import InvoicePrintModal from '@/components/InvoicePrintModal'
+import { sendInvoiceViaResend, generateMailtoUrl, isResendConfigured } from '@/lib/email'
 
 interface LineItemRow {
   description: string
@@ -55,11 +57,18 @@ export default function InvoiceEditor() {
   const qc = useQueryClient()
   const isEdit = Boolean(id)
   const [showPreview, setShowPreview] = useState(false)
+  const [showPrintModal, setShowPrintModal] = useState(false)
+  const [isSendingEmail, setIsSendingEmail] = useState(false)
   const [liveCalc, setLiveCalc] = useState({ excl: 0, vat: 0, incl: 0 })
+
+  const { data: settings } = useQuery<BusinessSettings>({
+    queryKey: ['settings'],
+    queryFn: () => settingsApi.get(),
+  })
 
   const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ['clients'],
-    queryFn: () => clientsApi.list(),
+    queryFn: clientsApi.list,
   })
   const { data: existing } = useQuery<Invoice>({
     queryKey: ['invoice', id],
@@ -169,6 +178,28 @@ export default function InvoiceEditor() {
     },
   })
 
+  const handleSendInvoice = async () => {
+    if (!existing) return
+    setIsSendingEmail(true)
+    try {
+      if (isResendConfigured()) {
+        const res = await sendInvoiceViaResend(existing, settings)
+        if (res.ok) {
+          toast.success(res.message)
+          qc.invalidateQueries({ queryKey: ['invoice', id] })
+        } else {
+          toast.error(res.message)
+        }
+      } else {
+        const mailto = generateMailtoUrl(existing, settings)
+        window.open(mailto, '_blank')
+        toast('Factuurconcept geopend in uw e-mailprogramma!', { icon: '✉️' })
+      }
+    } finally {
+      setIsSendingEmail(false)
+    }
+  }
+
   const onSubmit = (data: FormData) => saveMutation.mutate(data)
 
   const selectedClient = clients.find(c => c.id === selectedClientId)
@@ -197,31 +228,23 @@ export default function InvoiceEditor() {
 
         {/* Action buttons */}
         <div className="flex items-center gap-2 flex-wrap">
-          {isEdit && (
+          {isEdit && existing && (
             <>
               <button
                 type="button"
-                onClick={() => setShowPreview(!showPreview)}
-                className="btn-secondary text-xs sm:text-sm py-1.5 px-2.5 sm:px-3"
+                onClick={() => setShowPrintModal(true)}
+                className="btn-secondary text-xs sm:text-sm py-1.5 px-2.5 sm:px-3 text-brand-400 border-brand-500/30"
+                title="Afdrukken of opslaan als PDF"
               >
-                {showPreview ? <EyeOff size={14} /> : <Eye size={14} />}
-                <span className="hidden xs:inline">{showPreview ? 'Verberg' : 'Preview'}</span>
+                <Download size={14} /> <span className="hidden xs:inline">PDF / Afdrukken</span>
               </button>
               <button
                 type="button"
-                onClick={() => renderPdfMutation.mutate()}
-                className="btn-secondary text-xs sm:text-sm py-1.5 px-2.5 sm:px-3"
-                disabled={renderPdfMutation.isPending}
-              >
-                <Download size={14} /> <span className="hidden xs:inline">PDF</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => sendMutation.mutate()}
+                onClick={handleSendInvoice}
                 className="btn-secondary text-xs sm:text-sm py-1.5 px-2.5 sm:px-3 text-emerald-400 border-emerald-500/30"
-                disabled={sendMutation.isPending}
+                disabled={isSendingEmail}
               >
-                <Send size={14} /> Verzenden
+                <Send size={14} /> {isSendingEmail ? 'Verzenden...' : 'Verzenden'}
               </button>
             </>
           )}
@@ -446,6 +469,15 @@ export default function InvoiceEditor() {
           </div>
         )}
       </div>
+
+      {/* In-browser vector PDF / Print Modal */}
+      {showPrintModal && existing && (
+        <InvoicePrintModal
+          invoice={existing}
+          settings={settings}
+          onClose={() => setShowPrintModal(false)}
+        />
+      )}
     </div>
   )
 }

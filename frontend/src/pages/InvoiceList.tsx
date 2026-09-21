@@ -2,8 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Search, Download, Eye, Calendar } from 'lucide-react'
 import { useState } from 'react'
-import { invoicesApi, fmt } from '@/lib/api'
-import { Invoice, InvoiceStatus } from '@/lib/types'
+import { invoicesApi, settingsApi, fmt } from '@/lib/api'
+import { Invoice, InvoiceStatus, BusinessSettings } from '@/lib/types'
+import InvoicePrintModal from '@/components/InvoicePrintModal'
 import { clsx } from 'clsx'
 
 const STATUS_MAP: Record<InvoiceStatus, { label: string; cls: string }> = {
@@ -18,6 +19,12 @@ export default function InvoiceList() {
   const nav = useNavigate()
   const [filter, setFilter] = useState<string>('')
   const [search, setSearch] = useState('')
+  const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null)
+
+  const { data: settings } = useQuery<BusinessSettings>({
+    queryKey: ['settings'],
+    queryFn: () => settingsApi.get(),
+  })
 
   const { data: invoices = [], isLoading } = useQuery<Invoice[]>({
     queryKey: ['invoices', filter],
@@ -160,17 +167,13 @@ export default function InvoiceList() {
                       >
                         <Eye size={14} />
                       </button>
-                      {inv.pdf_path && (
-                        <a
-                          href={invoicesApi.pdfUrl(inv.id)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn-ghost p-1.5 rounded-lg text-slate-400 hover:text-slate-200"
-                          title="PDF downloaden"
-                        >
-                          <Download size={14} />
-                        </a>
-                      )}
+                      <button
+                        onClick={() => setPrintInvoice(inv)}
+                        className="btn-ghost p-1.5 rounded-lg text-brand-400 hover:text-brand-300"
+                        title="Afdrukken / PDF"
+                      >
+                        <Download size={14} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -179,6 +182,15 @@ export default function InvoiceList() {
           </tbody>
         </table>
       </div>
+
+      {/* In-browser vector PDF / Print Modal */}
+      {printInvoice && (
+        <InvoicePrintModal
+          invoice={printInvoice}
+          settings={settings}
+          onClose={() => setPrintInvoice(null)}
+        />
+      )}
     </div>
   )
 }
