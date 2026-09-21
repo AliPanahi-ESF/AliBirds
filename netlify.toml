@@ -6,7 +6,10 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# Fallback proxy rule for API if a remote backend URL is provided via VITE_API_URL or Netlify env
+[[redirects]]
+  from = "/api/*"
+  status = 404
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

@@ -161,7 +161,7 @@ export default function Dashboard() {
             </button>
           </div>
           <div className="space-y-1.5">
-            {recentInvoices.slice(0, 6).map((inv) => (
+            {(Array.isArray(recentInvoices) ? recentInvoices : []).slice(0, 6).map((inv) => (
               <div
                 key={inv.id}
                 onClick={() => nav(`/invoices/${inv.id}/edit`)}
@@ -183,7 +183,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {recentInvoices.length === 0 && (
+            {(!Array.isArray(recentInvoices) || recentInvoices.length === 0) && (
               <div className="text-sm text-slate-500 text-center py-8">
                 Nog geen facturen — maak er direct een aan!
               </div>

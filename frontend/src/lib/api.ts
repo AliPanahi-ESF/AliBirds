@@ -7,20 +7,33 @@ const api = axios.create({
   timeout: 4000,
 })
 
+// Intercept HTML responses from SPA rewrites (e.g. Netlify returning index.html for unknown /api/*)
+api.interceptors.response.use(response => {
+  if (
+    typeof response.data === 'string' &&
+    (response.data.trim().startsWith('<!DOCTYPE') ||
+     response.data.includes('<html') ||
+     (response.headers['content-type'] && response.headers['content-type'].includes('text/html')))
+  ) {
+    throw new Error('API route returned HTML SPA fallback instead of JSON');
+  }
+  return response;
+})
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 export const fmt = {
   currency: (n: number = 0) =>
-    new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n || 0),
+    new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(Number(n) || 0),
   date: (s: string) => {
     if (!s) return ''
     try {
       return new Date(s).toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric' })
     } catch {
-      return s
+      return String(s)
     }
   },
-  dateInput: (s: string) => s?.slice(0, 10) ?? '',
+  dateInput: (s: string) => (typeof s === 'string' ? s.slice(0, 10) : ''),
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -29,7 +42,10 @@ export const dashboardApi = {
   kpis: async () => {
     try {
       const res = await api.get('/dashboard/kpis')
-      return res.data
+      if (res.data && typeof res.data === 'object' && typeof res.data.outstanding_revenue === 'number') {
+        return res.data
+      }
+      return demoStore.getKPIs()
     } catch (err) {
       console.info('Using local demo data for KPIs')
       return demoStore.getKPIs()
@@ -43,7 +59,12 @@ export const invoicesApi = {
   list: async (params?: any) => {
     try {
       const res = await api.get('/invoices', { params })
-      return res.data
+      if (Array.isArray(res.data)) {
+        return res.data
+      }
+      let list = demoStore.getInvoices()
+      if (params?.status) list = list.filter(i => i.status === params.status)
+      return list
     } catch (err) {
       console.info('Using local demo data for Invoices')
       let list = demoStore.getInvoices()
@@ -56,7 +77,12 @@ export const invoicesApi = {
   get: async (id: string) => {
     try {
       const res = await api.get(`/invoices/${id}`)
-      return res.data
+      if (res.data && typeof res.data === 'object' && res.data.id) {
+        return res.data
+      }
+      const found = demoStore.getInvoice(id)
+      if (found) return found
+      throw new Error('Factuur niet gevonden')
     } catch (err) {
       const found = demoStore.getInvoice(id)
       if (found) return found
@@ -66,7 +92,8 @@ export const invoicesApi = {
   create: async (data: any) => {
     try {
       const res = await api.post('/invoices', data)
-      return res.data
+      if (res.data && typeof res.data === 'object' && res.data.id) return res.data
+      return demoStore.saveInvoice(data)
     } catch (err) {
       return demoStore.saveInvoice(data)
     }
@@ -74,7 +101,8 @@ export const invoicesApi = {
   update: async (id: string, data: any) => {
     try {
       const res = await api.put(`/invoices/${id}`, data)
-      return res.data
+      if (res.data && typeof res.data === 'object' && res.data.id) return res.data
+      return demoStore.saveInvoice({ ...data, id })
     } catch (err) {
       return demoStore.saveInvoice({ ...data, id })
     }
@@ -113,7 +141,8 @@ export const invoicesApi = {
   calculate: async (data: any) => {
     try {
       const res = await api.post('/invoices/calculate', data)
-      return res.data
+      if (res.data && typeof res.data === 'object' && res.data.items) return res.data
+      return demoStore.calculateVat(data)
     } catch (err) {
       return demoStore.calculateVat(data)
     }
@@ -126,7 +155,13 @@ export const clientsApi = {
   list: async (search?: string) => {
     try {
       const res = await api.get('/clients', { params: { search } })
-      return res.data
+      if (Array.isArray(res.data)) return res.data
+      let list = demoStore.getClients()
+      if (search) {
+        const q = search.toLowerCase()
+        list = list.filter(c => c.name.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q))
+      }
+      return list
     } catch (err) {
       let list = demoStore.getClients()
       if (search) {
@@ -139,7 +174,8 @@ export const clientsApi = {
   get: async (id: string) => {
     try {
       const res = await api.get(`/clients/${id}`)
-      return res.data
+      if (res.data && typeof res.data === 'object' && res.data.id) return res.data
+      return demoStore.getClients().find(c => c.id === id)
     } catch (err) {
       return demoStore.getClients().find(c => c.id === id)
     }
@@ -147,7 +183,8 @@ export const clientsApi = {
   create: async (data: any) => {
     try {
       const res = await api.post('/clients', data)
-      return res.data
+      if (res.data && typeof res.data === 'object' && res.data.id) return res.data
+      return demoStore.saveClient(data)
     } catch (err) {
       return demoStore.saveClient(data)
     }
@@ -155,7 +192,8 @@ export const clientsApi = {
   update: async (id: string, data: any) => {
     try {
       const res = await api.put(`/clients/${id}`, data)
-      return res.data
+      if (res.data && typeof res.data === 'object' && res.data.id) return res.data
+      return demoStore.saveClient({ ...data, id })
     } catch (err) {
       return demoStore.saveClient({ ...data, id })
     }
@@ -186,7 +224,8 @@ export const bankApi = {
   transactions: async (params?: any) => {
     try {
       const res = await api.get('/bank/transactions', { params })
-      return res.data
+      if (Array.isArray(res.data)) return res.data
+      return demoStore.getBankTransactions()
     } catch (err) {
       return demoStore.getBankTransactions()
     }
@@ -224,7 +263,8 @@ export const taxApi = {
   btw: async (year: number = 2026, quarter: number = 3) => {
     try {
       const res = await api.get('/tax/btw-aangifte', { params: { year, quarter } })
-      return res.data
+      if (res.data && res.data.rubrics) return res.data
+      return demoStore.getBtwAangifte(`Q${quarter}`, String(year))
     } catch (err) {
       return demoStore.getBtwAangifte(`Q${quarter}`, String(year))
     }
@@ -232,7 +272,8 @@ export const taxApi = {
   quarters: async () => {
     try {
       const res = await api.get('/tax/quarters')
-      return res.data
+      if (Array.isArray(res.data)) return res.data
+      return ['2026-Q3', '2026-Q2', '2026-Q1', '2025-Q4']
     } catch (err) {
       return ['2026-Q3', '2026-Q2', '2026-Q1', '2025-Q4']
     }
@@ -245,7 +286,8 @@ export const expensesApi = {
   list: async (params?: any) => {
     try {
       const res = await api.get('/expenses', { params })
-      return res.data
+      if (Array.isArray(res.data)) return res.data
+      return demoStore.getExpenses()
     } catch (err) {
       return demoStore.getExpenses()
     }
@@ -253,7 +295,8 @@ export const expensesApi = {
   create: async (data: any) => {
     try {
       const res = await api.post('/expenses', data)
-      return res.data
+      if (res.data && typeof res.data === 'object' && res.data.id) return res.data
+      return demoStore.saveExpense(data)
     } catch (err) {
       return demoStore.saveExpense(data)
     }
@@ -284,7 +327,8 @@ export const settingsApi = {
   get: async () => {
     try {
       const res = await api.get('/settings')
-      return res.data
+      if (res.data && typeof res.data === 'object' && res.data.company_name) return res.data
+      return demoStore.getSettings()
     } catch (err) {
       return demoStore.getSettings()
     }
@@ -292,7 +336,8 @@ export const settingsApi = {
   update: async (data: any) => {
     try {
       const res = await api.put('/settings', data)
-      return res.data
+      if (res.data && typeof res.data === 'object' && res.data.company_name) return res.data
+      return demoStore.saveSettings(data)
     } catch (err) {
       return demoStore.saveSettings(data)
     }
@@ -305,7 +350,22 @@ export const recurringApi = {
   list: async () => {
     try {
       const res = await api.get('/recurring')
-      return res.data
+      if (Array.isArray(res.data)) return res.data
+      return [
+        {
+          id: 'rec-1',
+          client_id: 'client-1',
+          client: demoStore.getClients()[0],
+          frequency: 'MONTHLY',
+          start_date: '2026-01-01',
+          next_run_date: '2026-10-01',
+          auto_send: true,
+          is_active: true,
+          line_items: [
+            { description: 'Maandelijks onderhoud & hosting', quantity: 1, unit_price: 250, vat_rate: '21' }
+          ]
+        }
+      ]
     } catch (err) {
       return [
         {
