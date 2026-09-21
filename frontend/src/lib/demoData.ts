@@ -527,6 +527,17 @@ export const demoStore = {
   },
 
   getBankTransactions: (): BankTransaction[] => getStored(STORAGE_KEYS.BANK, INITIAL_BANK),
+  saveBankTransactions: (txs: any[]): void => {
+    const list = demoStore.getBankTransactions()
+    // Append or update by raw_hash or id
+    const hashSet = new Set(list.map(t => t.raw_hash || t.id))
+    const newItems = txs.filter(t => !hashSet.has(t.raw_hash || t.id))
+    const combined = [...newItems, ...list]
+    setStored(STORAGE_KEYS.BANK, combined)
+  },
+  clearBankTransactions: (): void => {
+    setStored(STORAGE_KEYS.BANK, [])
+  },
   matchBankTransaction: (bankId: string, invoiceId: string): void => {
     const list = demoStore.getBankTransactions()
     const tx = list.find(t => t.id === bankId)

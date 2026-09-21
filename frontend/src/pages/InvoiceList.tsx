@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Download, Eye, Calendar, Trash2 } from 'lucide-react'
+import { Plus, Search, Download, Eye, Calendar, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { invoicesApi, settingsApi, fmt } from '@/lib/api'
-import { Invoice, InvoiceStatus, BusinessSettings } from '@/lib/types'
+import { invoicesApi, settingsApi, clientsApi, fmt } from '@/lib/api'
+import { Invoice, InvoiceStatus, BusinessSettings, Client } from '@/lib/types'
 import InvoicePrintModal from '@/components/InvoicePrintModal'
+import ImportInvoicePdfModal from '@/components/ImportInvoicePdfModal'
 import { clsx } from 'clsx'
 
 const STATUS_MAP: Record<InvoiceStatus, { label: string; cls: string }> = {
@@ -22,10 +23,16 @@ export default function InvoiceList() {
   const [filter, setFilter] = useState<string>('')
   const [search, setSearch] = useState('')
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null)
+  const [showImportPdf, setShowImportPdf] = useState(false)
 
   const { data: settings } = useQuery<BusinessSettings>({
     queryKey: ['settings'],
     queryFn: () => settingsApi.get(),
+  })
+
+  const { data: clients = [] } = useQuery<Client[]>({
+    queryKey: ['clients'],
+    queryFn: () => clientsApi.list(),
   })
 
   const { data: invoices = [], isLoading } = useQuery<Invoice[]>({
@@ -91,6 +98,14 @@ export default function InvoiceList() {
               <span>Alle wissen</span>
             </button>
           )}
+          <button
+            onClick={() => setShowImportPdf(true)}
+            className="btn-secondary text-xs sm:text-sm py-2 px-3 flex items-center gap-1.5"
+            title="Eerdere facturen importeren via PDF"
+          >
+            <Upload size={14} />
+            <span>PDF importeren</span>
+          </button>
           <button onClick={() => nav('/invoices/new')} className="btn-primary text-xs sm:text-sm py-2 px-3.5">
             <Plus size={15} /> Nieuwe factuur
           </button>
@@ -243,6 +258,14 @@ export default function InvoiceList() {
           invoice={printInvoice}
           settings={settings}
           onClose={() => setPrintInvoice(null)}
+        />
+      )}
+
+      {/* Historical PDF Import Modal */}
+      {showImportPdf && (
+        <ImportInvoicePdfModal
+          clients={clients}
+          onClose={() => setShowImportPdf(false)}
         />
       )}
     </div>

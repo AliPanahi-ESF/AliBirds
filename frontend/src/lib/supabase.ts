@@ -175,19 +175,32 @@ export const supabaseDb = {
 
   deleteInvoice: async (id: string) => {
     if (!isSupabaseConfigured()) return null
-    const { error } = await supabase.from('invoices').delete().eq('id', id)
-    if (error) throw error
+    try {
+      // 1. Unlink bank transactions
+      await supabase.from('bank_transactions').update({ matched_invoice_id: null }).eq('matched_invoice_id', id)
+      // 2. Delete invoice line items first to prevent FK violation
+      await supabase.from('invoice_line_items').delete().eq('invoice_id', id)
+      // 3. Delete invoice
+      const { error } = await supabase.from('invoices').delete().eq('id', id)
+      if (error) throw error
+    } catch (err) {
+      console.warn('Supabase deleteInvoice warning:', err)
+    }
+    demoStore.deleteInvoice(id)
     return true
   },
 
   clearAllInvoices: async () => {
-    if (!isSupabaseConfigured()) return null
-    // RLS ensures only the current user's invoices are deleted
-    const { error } = await supabase
-      .from('invoices')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000')
-    if (error) throw error
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('bank_transactions').update({ matched_invoice_id: null }).neq('id', '00000000-0000-0000-0000-000000000000')
+        await supabase.from('invoice_line_items').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+        await supabase.from('invoices').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+      } catch (err) {
+        console.warn('Supabase clearAllInvoices warning:', err)
+      }
+    }
+    demoStore.clearAllInvoices()
     return true
   },
 
@@ -267,5 +280,76 @@ export const supabaseDb = {
       if (error) throw error
       return data
     }
+  },
+
+  // ── Bank Transactions (MT940) ──────────────────────────────────────────────
+  getBankTransactions: async () => {
+    if (!isSupabaseConfigured()) return null
+    const { data, error } = await supabase
+      .from('bank_transactions')
+      .select('*')
+      .order('value_date', { ascending: false })
+    if (error) throw error
+    return data
+  },
+
+  saveBankTransactions: async (transactions: any[]) => {
+    if (!isSupabaseConfigured()) return null
+    if (!transactions.length) return []
+
+    // Upsert transactions based on (user_id, raw_hash)
+    const { data, error } = await supabase
+      .from('bank_transactions')
+      .upsert(
+        transactions.map(t => {
+          const { id: _id, ...clean } = t
+          return clean
+        }),
+        { onConflict: 'user_id,raw_hash' }
+      )
+      .select()
+    if (error) {
+      console.warn('Supabase upsert bank_transactions error:', error)
+      // If upsert fails due to unique constraint, try simple insert
+      const { data: insData } = await supabase.from('bank_transactions').insert(
+        transactions.map(t => {
+          const { id: _id, ...clean } = t
+          return clean
+        })
+      ).select()
+      return insData || transactions
+    }
+    return data
+  },
+
+  matchBankTransaction: async (txId: string, invoiceId: string) => {
+    if (!isSupabaseConfigured()) return null
+    const { data, error } = await supabase
+      .from('bank_transactions')
+      .update({
+        matched_invoice_id: invoiceId,
+        reconciliation_status: 'MATCHED',
+      })
+      .eq('id', txId)
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  unmatchBankTransaction: async (txId: string) => {
+    if (!isSupabaseConfigured()) return null
+    const { data, error } = await supabase
+      .from('bank_transactions')
+      .update({
+        matched_invoice_id: null,
+        reconciliation_status: 'UNMATCHED',
+        match_score: null,
+      })
+      .eq('id', txId)
+      .select()
+      .single()
+    if (error) throw error
+    return data
   },
 }

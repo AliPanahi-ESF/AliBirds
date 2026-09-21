@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
-import { Plus, Trash2, Edit2, Search, Users, Mail, Phone, MapPin, X } from 'lucide-react'
+import { Plus, Trash2, Edit2, Search, Users, Mail, Phone, MapPin, X, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { clientsApi } from '@/lib/api'
-import { Client } from '@/lib/types'
+import { clientsApi, bankApi } from '@/lib/api'
+import { Client, BankTransaction } from '@/lib/types'
 
 const COUNTRIES = [
   { code: 'NL', name: 'Nederland' }, { code: 'BE', name: 'België' },
@@ -22,6 +22,29 @@ export default function Clients() {
     queryKey: ['clients', search],
     queryFn: () => clientsApi.list(search || undefined),
   })
+
+  const { data: bankTransactions = [] } = useQuery<BankTransaction[]>({
+    queryKey: ['bank-transactions'],
+    queryFn: () => bankApi.transactions(),
+  })
+
+  const existingNames = new Set(clients.map(c => c.name.toLowerCase().trim()))
+  const discoveredCandidates: { name: string; iban?: string }[] = []
+  const seenNames = new Set<string>()
+
+  for (const tx of bankTransactions) {
+    if (tx.type === 'CREDIT' && tx.counterpart_name) {
+      const norm = tx.counterpart_name.trim()
+      const low = norm.toLowerCase()
+      if (!existingNames.has(low) && !seenNames.has(low)) {
+        seenNames.add(low)
+        discoveredCandidates.push({
+          name: norm,
+          iban: tx.counterpart_iban,
+        })
+      }
+    }
+  }
 
   const { register, handleSubmit, reset } = useForm<Partial<Client>>({
     defaultValues: {
@@ -102,6 +125,50 @@ export default function Clients() {
           {showForm ? 'Sluiten' : 'Klant toevoegen'}
         </button>
       </div>
+
+      {/* Discovered from Bank Statement Banner */}
+      {discoveredCandidates.length > 0 && (
+        <div className="card p-3.5 sm:p-4 bg-gradient-to-r from-brand-950/40 via-slate-900 to-slate-900 border border-brand-500/30 animate-fade-in">
+          <div className="flex items-center gap-2 text-brand-400 font-medium text-xs sm:text-sm mb-1.5">
+            <Sparkles size={16} />
+            <span>Ontdekt uit MT940 bankafschrift ({discoveredCandidates.length})</span>
+          </div>
+          <p className="text-xs text-slate-400 mb-2.5">
+            Onderstaande betalers zijn herkend uit bijschrijvingen in uw banktransacties maar nog niet toegevoegd als klant:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {discoveredCandidates.map(c => (
+              <button
+                key={c.name}
+                onClick={() => {
+                  setEditing(null)
+                  reset({
+                    name: c.name,
+                    contact_person: '',
+                    email: '',
+                    phone: '',
+                    vat_number: '',
+                    kvk_number: '',
+                    billing_address_street: '',
+                    billing_address_city: '',
+                    billing_address_postcode: '',
+                    country_code: 'NL',
+                    default_payment_term_days: 14,
+                    notes: c.iban ? `IBAN: ${c.iban}` : '',
+                  })
+                  setShowForm(true)
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600/20 hover:bg-brand-600/30 border border-brand-500/30 text-xs text-brand-200 transition-colors"
+                title="Klantgegevens automatisch invullen"
+              >
+                <Plus size={13} className="text-brand-400" />
+                <span className="font-semibold">{c.name}</span>
+                {c.iban && <span className="font-mono text-[10px] text-brand-400 opacity-80">({c.iban.slice(0, 8)}...)</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative w-full sm:max-w-xs">

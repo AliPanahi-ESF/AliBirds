@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { demoStore } from './demoData'
 import { isSupabaseConfigured, supabaseDb } from './supabase'
+import { parseMT940, autoMatchTransactions } from './mt940'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -331,47 +332,109 @@ export const clientsApi = {
 export const bankApi = {
   upload: async (file: File) => {
     try {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await api.post('/bank/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
-      return res.data
-    } catch (err) {
-      return { success: true, count: 3, message: 'MT940 verwerkt (Demo)' }
+      const text = await file.text()
+      const parsed = parseMT940(text)
+
+      if (!parsed.transactions.length) {
+        return { success: false, count: 0, message: 'Geen geldige transacties gevonden in dit MT940 bestand.' }
+      }
+
+      // Fetch outstanding invoices to attempt auto-reconciliation
+      let invoices: any[] = []
+      try {
+        invoices = (await invoicesApi.list()) || []
+      } catch {
+        // ignore
+      }
+
+      const { results } = autoMatchTransactions(parsed.transactions, invoices)
+      const finalTxs = results.map(r => r.tx)
+
+      // Save to Supabase if configured
+      if (isSupabaseConfigured()) {
+        try {
+          await supabaseDb.saveBankTransactions(finalTxs)
+        } catch (supaErr) {
+          console.warn('Supabase saveBankTransactions warning:', supaErr)
+        }
+      }
+
+      // Always save to demoStore as local cache
+      demoStore.saveBankTransactions(finalTxs)
+
+      return {
+        success: true,
+        count: finalTxs.length,
+        message: `${finalTxs.length} transacties succesvol geïmporteerd uit MT940!`,
+      }
+    } catch (err: any) {
+      console.error('MT940 parse error:', err)
+      return { success: false, count: 0, message: 'Fout bij het verwerken van het MT940 bestand.' }
     }
   },
+
   transactions: async (params?: any) => {
-    try {
-      const res = await api.get('/bank/transactions', { params })
-      if (Array.isArray(res.data)) return res.data
-      return demoStore.getBankTransactions()
-    } catch (err) {
-      return demoStore.getBankTransactions()
+    if (isSupabaseConfigured()) {
+      try {
+        const supaTxs = await supabaseDb.getBankTransactions()
+        if (Array.isArray(supaTxs) && supaTxs.length > 0) return supaTxs
+      } catch (err) {
+        console.warn('Supabase getBankTransactions error:', err)
+      }
     }
+    return demoStore.getBankTransactions()
   },
+
   reconcile: async () => {
-    try {
-      const res = await api.post('/bank/reconcile')
-      return res.data
-    } catch (err) {
-      return { matched: 1, total: 3 }
+    const txs = await bankApi.transactions()
+    const invoices = (await invoicesApi.list()) || []
+    const { matched, results } = autoMatchTransactions(txs, invoices)
+
+    for (const r of results) {
+      if (r.invoiceId && r.tx.id) {
+        await bankApi.match(r.tx.id, r.invoiceId)
+      }
     }
+    return { matched, total: txs.length }
   },
+
   match: async (txId: string, invoiceId: string) => {
-    try {
-      const res = await api.post(`/bank/transactions/${txId}/match`, { invoice_id: invoiceId })
-      return res.data
-    } catch (err) {
-      demoStore.matchBankTransaction(txId, invoiceId)
-      return { success: true }
+    if (isSupabaseConfigured()) {
+      try {
+        await supabaseDb.matchBankTransaction(txId, invoiceId)
+        await supabase
+          .from('invoices')
+          .update({ status: 'PAID', paid_at: new Date().toISOString() })
+          .eq('id', invoiceId)
+      } catch (err) {
+        console.warn('Supabase match error:', err)
+      }
     }
+    demoStore.matchBankTransaction(txId, invoiceId)
+    return { success: true }
   },
+
   unmatch: async (txId: string) => {
-    try {
-      const res = await api.post(`/bank/transactions/${txId}/unmatch`)
-      return res.data
-    } catch (err) {
-      return { success: true }
+    if (isSupabaseConfigured()) {
+      try {
+        await supabaseDb.unmatchBankTransaction(txId)
+      } catch (err) {
+        console.warn('Supabase unmatch error:', err)
+      }
     }
+    return { success: true }
+  },
+
+  clearAll: async () => {
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('bank_transactions').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+      } catch (err) {
+        console.warn('Supabase clearAll bank_transactions error:', err)
+      }
+    }
+    demoStore.clearBankTransactions()
+    return { success: true }
   },
 }
 
