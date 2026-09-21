@@ -1,0 +1,37 @@
+# Environment & secrets
+.env
+*.env
+!.env.example
+
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.eslintcache
+
+# Storage & runtime data
+storage/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <title>Factuur {{ invoice.invoice_number }}</title>
+  <style>
+    /* ── Fonts ── */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    /* ── Reset & Page ── */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    @page {
+      size: A4 portrait;
+      margin: 22mm 20mm 20mm 20mm;
+    }
+
+    body {
+      font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+      font-size: 9.5pt;
+      color: #1a1a2e;
+      line-height: 1.5;
+    }
+
+    /* ── Accent helpers ── */
+    :root { --accent: {{ accent_color }}; }
+
+    .accent-bg  { background-color: var(--accent); }
+    .accent-txt { color: var(--accent); }
+    .accent-border { border-color: var(--accent); }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 28pt;
+      padding-bottom: 16pt;
+      border-bottom: 2px solid var(--accent);
+    }
+    .header-logo img {
+      max-height: 56pt;
+      max-width: 160pt;
+      object-fit: contain;
+    }
+    .header-logo .company-name-fallback {
+      font-size: 18pt;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: -0.5px;
+    }
+    .header-meta {
+      text-align: right;
+      font-size: 8pt;
+      color: #555;
+    }
+    .header-meta .invoice-label {
+      font-size: 22pt;
+      font-weight: 700;
+      color: var(--accent);
+      display: block;
+      line-height: 1.1;
+    }
+    .header-meta .invoice-number {
+      font-size: 11pt;
+      font-weight: 600;
+      color: #1a1a2e;
+    }
+
+    /* ── Parties ── */
+    .parties {
+      display: flex;
+      gap: 32pt;
+      margin-bottom: 24pt;
+    }
+    .party { flex: 1; }
+    .party-label {
+      font-size: 7pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--accent);
+      margin-bottom: 5pt;
+    }
+    .party-name {
+      font-size: 11pt;
+      font-weight: 600;
+      color: #1a1a2e;
+    }
+    .party p { font-size: 8.5pt; color: #444; line-height: 1.6; }
+
+    /* ── Invoice Meta Grid ── */
+    .invoice-meta {
+      display: flex;
+      gap: 0;
+      margin-bottom: 24pt;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .invoice-meta-cell {
+      flex: 1;
+      padding: 8pt 12pt;
+      border-right: 1px solid #e5e7eb;
+    }
+    .invoice-meta-cell:last-child { border-right: none; }
+    .invoice-meta-cell .meta-label {
+      font-size: 7pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: #9ca3af;
+      margin-bottom: 3pt;
+    }
+    .invoice-meta-cell .meta-value {
+      font-size: 10pt;
+      font-weight: 600;
+      color: #1a1a2e;
+    }
+    .invoice-meta-cell.due .meta-value { color: #dc2626; }
+
+    /* ── Line Items Table ── */
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16pt;
+    }
+    .items-table thead tr {
+      background-color: var(--accent);
+      color: #fff;
+    }
+    .items-table thead th {
+      padding: 7pt 10pt;
+      font-size: 8pt;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      text-align: left;
+    }
+    .items-table thead th.right { text-align: right; }
+    .items-table tbody tr { border-bottom: 1px solid #f3f4f6; }
+    .items-table tbody tr:nth-child(even) { background: #f9fafb; }
+    .items-table tbody td {
+      padding: 6pt 10pt;
+      font-size: 9pt;
+      vertical-align: top;
+    }
+    .items-table tbody td.right { text-align: right; font-variant-numeric: tabular-nums; }
+    .items-table .desc { max-width: 220pt; }
+    .vat-badge {
+      display: inline-block;
+      padding: 1pt 5pt;
+      border-radius: 3px;
+      font-size: 7pt;
+      font-weight: 600;
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    .vat-badge.verlegd { background: #fef3c7; color: #92400e; }
+    .vat-badge.zero { background: #f0fdf4; color: #166534; }
+
+    /* ── Totals Block ── */
+    .totals-wrapper {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 20pt;
+    }
+    .totals-table {
+      width: 220pt;
+      border-collapse: collapse;
+    }
+    .totals-table tr td {
+      padding: 4pt 8pt;
+      font-size: 9pt;
+    }
+    .totals-table tr td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+    .totals-table .subtotal { color: #6b7280; }
+    .totals-table .vat-line { color: #6b7280; }
+    .totals-table .total-row {
+      font-size: 11pt;
+      font-weight: 700;
+      color: #1a1a2e;
+      border-top: 2px solid var(--accent);
+    }
+    .totals-table .total-row td { padding-top: 7pt; }
+
+    /* ── VAT Breakdown ── */
+    .vat-breakdown {
+      margin-bottom: 16pt;
+      padding: 8pt 12pt;
+      background: #f9fafb;
+      border-left: 3px solid var(--accent);
+      border-radius: 0 4px 4px 0;
+    }
+    .vat-breakdown-title {
+      font-size: 7.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: #9ca3af;
+      margin-bottom: 5pt;
+    }
+    .vat-breakdown table { width: 100%; border-collapse: collapse; }
+    .vat-breakdown table td { font-size: 8.5pt; padding: 2pt 0; }
+    .vat-breakdown table td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+
+    /* ── Payment ── */
+    .payment-section {
+      padding: 12pt 14pt;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      margin-bottom: 16pt;
+    }
+    .payment-section .payment-label {
+      font-size: 7pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: #9ca3af;
+      margin-bottom: 6pt;
+    }
+    .payment-section .iban-line {
+      font-size: 10.5pt;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+      color: var(--accent);
+      letter-spacing: 0.5px;
+    }
+    .payment-section .payment-ref {
+      font-size: 8.5pt;
+      color: #555;
+      margin-top: 3pt;
+    }
+
+    /* ── Notes ── */
+    .notes {
+      font-size: 8.5pt;
+      color: #6b7280;
+      font-style: italic;
+      margin-bottom: 16pt;
+    }
+
+    /* ── Legal Footer ── */
+    .legal-footer {
+      border-top: 1px solid #e5e7eb;
+      padding-top: 10pt;
+      font-size: 7.5pt;
+      color: #9ca3af;
+      line-height: 1.7;
+    }
+    .legal-footer .reverse-charge-notice {
+      margin-top: 6pt;
+      padding: 6pt 10pt;
+      background: #fef3c7;
+      border-left: 3px solid #f59e0b;
+      border-radius: 0 4px 4px 0;
+      color: #92400e;
+      font-size: 8pt;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════════════════════════════ -->
+<div class="header">
+  <div class="header-logo">
+    {% if logo_src %}
+      <img src="{{ logo_src }}" alt="{{ business.company_name }}" />
+    {% else %}
+      <span class="company-name-fallback">{{ business.trade_name or business.company_name }}</span>
+    {% endif %}
+  </div>
+  <div class="header-meta">
+    <span class="invoice-label">Factuur</span>
+    <span class="invoice-number">{{ invoice.invoice_number }}</span>
+  </div>
+</div>
+
+<!-- ═══ PARTIES ══════════════════════════════════════════════════════════════ -->
+<div class="parties">
+  <!-- Supplier -->
+  <div class="party">
+    <div class="party-label">Van</div>
+    <div class="party-name">{{ business.company_name }}</div>
+    {% if business.trade_name and business.trade_name != business.company_name %}
+      <p>{{ business.trade_name }}</p>
+    {% endif %}
+    <p>{{ business.address_street }}</p>
+    <p>{{ business.address_postcode }} {{ business.address_city }}</p>
+    <p>{{ business.address_country }}</p>
+    {% if business.kvk_number %}<p>KVK: {{ business.kvk_number }}</p>{% endif %}
+    {% if business.btw_id %}<p>BTW: {{ business.btw_id }}</p>{% endif %}
+    {% if business.email %}<p>{{ business.email }}</p>{% endif %}
+    {% if business.website %}<p>{{ business.website }}</p>{% endif %}
+  </div>
+
+  <!-- Client -->
+  <div class="party">
+    <div class="party-label">Aan</div>
+    <div class="party-name">{{ client.name }}</div>
+    {% if client.contact_person %}<p>t.a.v. {{ client.contact_person }}</p>{% endif %}
+    <p>{{ client.billing_address_street }}</p>
+    <p>{{ client.billing_address_postcode }} {{ client.billing_address_city }}</p>
+    <p>{{ client.country_code }}</p>
+    {% if client.kvk_number %}<p>KVK: {{ client.kvk_number }}</p>{% endif %}
+    {% if client.vat_number %}<p>BTW: {{ client.vat_number }}</p>{% endif %}
+    {% if client.email %}<p>{{ client.email }}</p>{% endif %}
+  </div>
+</div>
+
+<!-- ═══ INVOICE META ══════════════════════════════════════════════════════════ -->
+<div class="invoice-meta">
+  <div class="invoice-meta-cell">
+    <div class="meta-label">Factuurdatum</div>
+    <div class="meta-value">{{ invoice.issue_date.strftime('%d-%m-%Y') }}</div>
+  </div>
+  {% if invoice.delivery_date %}
+  <div class="invoice-meta-cell">
+    <div class="meta-label">Leveringsdatum</div>
+    <div class="meta-value">{{ invoice.delivery_date.strftime('%d-%m-%Y') }}</div>
+  </div>
+  {% endif %}
+  <div class="invoice-meta-cell due">
+    <div class="meta-label">Vervaldatum</div>
+    <div class="meta-value">{{ invoice.due_date.strftime('%d-%m-%Y') }}</div>
+  </div>
+  {% if invoice.payment_reference %}
+  <div class="invoice-meta-cell">
+    <div class="meta-label">Betalingskenmerk</div>
+    <div class="meta-value">{{ invoice.payment_reference }}</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ═══ LINE ITEMS ════════════════════════════════════════════════════════════ -->
+<table class="items-table">
+  <thead>
+    <tr>
+      <th style="width:38%">Omschrijving</th>
+      <th class="right" style="width:8%">Aantal</th>
+      <th class="right" style="width:14%">Prijs excl.</th>
+      <th class="right" style="width:10%">Btw%</th>
+      <th class="right" style="width:13%">Btw bedrag</th>
+      <th class="right" style="width:17%">Totaal incl.</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for li in line_items %}
+    <tr>
+      <td class="desc">{{ li.description }}</td>
+      <td class="right">{{ li.quantity | float | round(2) }}</td>
+      <td class="right">€ {{ "%.2f"|format(li.line_total_excl | float) }}</td>
+      <td class="right">
+        {% set rate = li.vat_rate.value if li.vat_rate.value is defined else li.vat_rate %}
+        {% if rate == 'REVERSE_CHARGE' %}
+          <span class="vat-badge verlegd">Verlegd</span>
+        {% elif rate == '0' %}
+          <span class="vat-badge zero">0%</span>
+        {% else %}
+          <span class="vat-badge">{{ rate }}%</span>
+        {% endif %}
+      </td>
+      <td class="right">€ {{ "%.2f"|format(li.vat_amount | float) }}</td>
+      <td class="right"><strong>€ {{ "%.2f"|format(li.line_total_incl | float) }}</strong></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- ═══ VAT BREAKDOWN ═════════════════════════════════════════════════════════ -->
+{% if vat_groups %}
+<div class="vat-breakdown">
+  <div class="vat-breakdown-title">Btw specificatie</div>
+  <table>
+    {% for rate, amounts in vat_groups.items() %}
+    <tr>
+      <td>
+        {% if rate == 'REVERSE_CHARGE' %}Btw verlegd (0%){% else %}Btw {{ rate }}%{% endif %}
+        &nbsp;—&nbsp; Grondslag
+      </td>
+      <td>€ {{ "%.2f"|format(amounts.base) }}</td>
+      <td>Btw</td>
+      <td>€ {{ "%.2f"|format(amounts.vat) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<!-- ═══ TOTALS ════════════════════════════════════════════════════════════════ -->
+<div class="totals-wrapper">
+  <table class="totals-table">
+    <tr class="subtotal">
+      <td>Subtotaal excl. btw</td>
+      <td>€ {{ "%.2f"|format(invoice.subtotal_excl_vat | float) }}</td>
+    </tr>
+    <tr class="vat-line">
+      <td>Totaal btw</td>
+      <td>€ {{ "%.2f"|format(invoice.total_vat_amount | float) }}</td>
+    </tr>
+    <tr class="total-row">
+      <td><strong>Te betalen</strong></td>
+      <td><strong>€ {{ "%.2f"|format(invoice.total_incl_vat | float) }}</strong></td>
+    </tr>
+  </table>
+</div>
+
+<!-- ═══ PAYMENT DETAILS ═══════════════════════════════════════════════════════ -->
+{% if business.iban %}
+<div class="payment-section">
+  <div class="payment-label">Betalingsgegevens</div>
+  <div class="iban-line">{{ business.iban }}{% if business.bic %} &nbsp;·&nbsp; BIC: {{ business.bic }}{% endif %}</div>
+  {% if invoice.payment_reference %}
+  <div class="payment-ref">Graag overmaken o.v.v. <strong>{{ invoice.payment_reference or invoice.invoice_number }}</strong></div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- ═══ NOTES ═════════════════════════════════════════════════════════════════ -->
+{% if invoice.notes %}
+<div class="notes">{{ invoice.notes }}</div>
+{% endif %}
+
+<!-- ═══ LEGAL FOOTER ══════════════════════════════════════════════════════════ -->
+<div class="legal-footer">
+  <div>
+    {{ business.company_name }}
+    {% if business.kvk_number %}&nbsp;·&nbsp; KVK {{ business.kvk_number }}{% endif %}
+    {% if business.btw_id %}&nbsp;·&nbsp; BTW-id {{ business.btw_id }}{% endif %}
+    {% if business.address_street %}&nbsp;·&nbsp; {{ business.address_street }}, {{ business.address_postcode }} {{ business.address_city }}{% endif %}
+  </div>
+  <div>Betaaltermijn: {{ client.default_payment_term_days or 14 }} dagen na factuurdatum.</div>
+
+  {% if is_reverse_charge %}
+  <div class="reverse-charge-notice">
+    ⚠️ <strong>Btw verlegd</strong> — De btw wordt verlegd naar de afnemer op grond van artikel 194 van Richtlijn 2006/112/EG
+    (<em>VAT reverse-charged under Article 194 of Directive 2006/112/EC</em>).
+  </div>
+  {% endif %}
+</div>
+
+</body>
+</html>
