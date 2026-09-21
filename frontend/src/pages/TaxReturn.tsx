@@ -30,6 +30,7 @@ function CopyButton({ value }: { value: number }) {
 }
 
 interface RubricRowProps {
+  key?: string
   code: string
   description: string
   turnover?: number
