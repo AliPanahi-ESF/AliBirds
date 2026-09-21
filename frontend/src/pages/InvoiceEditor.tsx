@@ -204,6 +204,9 @@ export default function InvoiceEditor() {
           qc.invalidateQueries({ queryKey: ['invoice', id] })
         } else {
           toast.error(res.message)
+          // Fallback to client email client so work is never blocked
+          const mailto = generateMailtoUrl(existing, settings)
+          window.open(mailto, '_blank')
         }
       } else {
         const mailto = generateMailtoUrl(existing, settings)
