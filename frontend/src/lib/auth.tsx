@@ -93,6 +93,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
+    // Check for Supabase Auth hash errors (e.g. #error=access_denied&error_code=otp_expired)
+    if (window.location.hash) {
+      try {
+        const hash = window.location.hash.replace(/^#/, '')
+        const params = new URLSearchParams(hash)
+        const errorCode = params.get('error_code')
+        const errorDesc = params.get('error_description')
+
+        if (errorCode || errorDesc) {
+          console.warn('Supabase auth URL error detected:', { errorCode, errorDesc })
+          if (errorCode === 'otp_expired') {
+            toast.error(
+              'De bevestigingslink is verlopen of al geopend door uw e-mailfilter. U kunt direct inloggen met uw wachtwoord of een nieuwe link aanvragen.',
+              { duration: 8000 }
+            )
+          } else {
+            toast.error(`Aanmeldingsfout: ${decodeURIComponent(errorDesc || errorCode || '')}`, { duration: 6000 })
+          }
+          window.history.replaceState(null, '', window.location.pathname)
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     // Get session on first render
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -169,18 +194,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const registerUser = useCallback(async (name: string, email: string, password: string): Promise<User> => {
     localStorage.removeItem(DEMO_ACTIVE_KEY)
     if (isSupabaseConfigured()) {
+      const redirectUrl = `${window.location.origin}/`
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: { full_name: name },
+          emailRedirectTo: redirectUrl,
         },
       })
       if (error) throw new Error(error.message)
       if (!data.user) throw new Error('Registratie mislukt. Probeer het opnieuw.')
 
       const appUser = supabaseUserToAppUser(data.user)
-      setUser(appUser)
+      // Only set user if session is established immediately (e.g. email confirm disabled)
+      if (data.session) {
+        setUser(appUser)
+      }
       return appUser
     } else {
       // Seamless zero-friction registration

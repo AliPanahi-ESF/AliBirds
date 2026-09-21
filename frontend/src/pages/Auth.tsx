@@ -34,12 +34,27 @@ export default function AuthPage() {
           setLoading(false)
           return
         }
-        const u = await registerUser(name, email, password)
+        await registerUser(name, email, password)
+        if (isSupabaseConfigured()) {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (!session) {
+            toast.success('Account geregistreerd! Bevestig uw e-mail via de link in uw inbox (of schakel "Confirm email" uit in Supabase om direct in te loggen).', {
+              duration: 8000,
+            })
+            setMode('login')
+            return
+          }
+        }
         toast.success('Account succesvol aangemaakt!')
         navigate('/onboarding')
       }
     } catch (err: any) {
-      toast.error(err.message || 'Inloggen mislukt. Controleer uw gegevens.')
+      const msg = err.message || 'Inloggen mislukt. Controleer uw gegevens.'
+      if (msg.toLowerCase().includes('email not confirmed')) {
+        toast.error('Uw e-mail is nog niet bevestigd. Klik hieronder op "Bevestigingsmail opnieuw" of schakel "Confirm email" uit in uw Supabase Dashboard.', { duration: 8000 })
+      } else {
+        toast.error(msg)
+      }
     } finally {
       setLoading(false)
     }
@@ -55,11 +70,34 @@ export default function AuthPage() {
       return
     }
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email)
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/`,
+      })
       if (error) throw error
       toast.success('Wachtwoord reset link verstuurd naar uw e-mail!')
     } catch (err: any) {
       toast.error(err.message || 'Kan reset e-mail niet versturen.')
+    }
+  }
+
+  const handleResendConfirmation = async () => {
+    if (!email) {
+      toast.error('Voer eerst uw e-mailadres in om de link opnieuw te sturen.')
+      return
+    }
+    if (!isSupabaseConfigured()) return
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+        },
+      })
+      if (error) throw error
+      toast.success('Nieuwe bevestigingslink verstuurd naar uw e-mail!')
+    } catch (err: any) {
+      toast.error(err.message || 'Kan bevestigingsmail niet opnieuw versturen.')
     }
   }
 
@@ -148,9 +186,15 @@ export default function AuthPage() {
               <div className="flex items-center justify-between">
                 <label className="label">Wachtwoord *</label>
                 {mode === 'login' && (
-                  <span className="text-[11px] text-brand-400 hover:underline cursor-pointer" onClick={handleForgotPassword}>
-                    Vergeten?
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 hover:text-brand-300 hover:underline cursor-pointer" onClick={handleResendConfirmation}>
+                      Bevestigingsmail opnieuw?
+                    </span>
+                    <span className="text-slate-600">·</span>
+                    <span className="text-[11px] text-brand-400 hover:underline cursor-pointer" onClick={handleForgotPassword}>
+                      Vergeten?
+                    </span>
+                  </div>
                 )}
               </div>
               <div className="relative">
