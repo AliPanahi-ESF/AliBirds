@@ -165,6 +165,18 @@ export const supabaseDb = {
 
     return invoice
   },
+  deleteInvoice: async (id: string) => {
+    const client = getSupabaseHttp()
+    if (!client) return null
+    await client.delete(`/invoices?id=eq.${id}`)
+    return true
+  },
+  clearAllInvoices: async () => {
+    const client = getSupabaseHttp()
+    if (!client) return null
+    await client.delete('/invoices?id=neq.00000000-0000-0000-0000-000000000000')
+    return true
+  },
 
   // Expenses
   getExpenses: async () => {

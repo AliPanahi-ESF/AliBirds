@@ -1,7 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Download, Eye, Calendar } from 'lucide-react'
+import { Plus, Search, Download, Eye, Calendar, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import toast from 'react-hot-toast'
 import { invoicesApi, settingsApi, fmt } from '@/lib/api'
 import { Invoice, InvoiceStatus, BusinessSettings } from '@/lib/types'
 import InvoicePrintModal from '@/components/InvoicePrintModal'
@@ -17,6 +18,7 @@ const STATUS_MAP: Record<InvoiceStatus, { label: string; cls: string }> = {
 
 export default function InvoiceList() {
   const nav = useNavigate()
+  const qc = useQueryClient()
   const [filter, setFilter] = useState<string>('')
   const [search, setSearch] = useState('')
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null)
@@ -31,6 +33,38 @@ export default function InvoiceList() {
     queryFn: () => invoicesApi.list(filter ? { status: filter } : {}),
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => invoicesApi.delete(id),
+    onSuccess: () => {
+      toast.success('Factuur succesvol verwijderd!')
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      qc.invalidateQueries({ queryKey: ['kpis'] })
+    },
+    onError: () => toast.error('Verwijderen mislukt'),
+  })
+
+  const clearAllMutation = useMutation({
+    mutationFn: () => invoicesApi.clearAll(),
+    onSuccess: () => {
+      toast.success('Alle facturen zijn gewist!')
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      qc.invalidateQueries({ queryKey: ['kpis'] })
+    },
+    onError: () => toast.error('Wissen mislukt'),
+  })
+
+  const handleDelete = (inv: Invoice) => {
+    if (window.confirm(`Weet u zeker dat u factuur "${inv.invoice_number}" definitief wilt verwijderen?`)) {
+      deleteMutation.mutate(inv.id)
+    }
+  }
+
+  const handleClearAll = () => {
+    if (window.confirm('Weet u zeker dat u ALLE facturen wilt verwijderen? Dit kan niet ongedaan worden gemaakt.')) {
+      clearAllMutation.mutate()
+    }
+  }
+
   const filtered = invoices.filter(inv =>
     !search ||
     inv.invoice_number.toLowerCase().includes(search.toLowerCase()) ||
@@ -40,14 +74,27 @@ export default function InvoiceList() {
   return (
     <div className="space-y-4 sm:space-y-5 max-w-6xl">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-100">Facturen</h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{invoices.length} facturen geregistreerd</p>
         </div>
-        <button onClick={() => nav('/invoices/new')} className="btn-primary text-xs sm:text-sm py-2 px-3.5">
-          <Plus size={15} /> Nieuwe factuur
-        </button>
+        <div className="flex items-center gap-2">
+          {invoices.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              disabled={clearAllMutation.isPending}
+              className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-2 px-3 border border-red-500/20"
+              title="Alle facturen verwijderen"
+            >
+              <Trash2 size={14} />
+              <span>Alle wissen</span>
+            </button>
+          )}
+          <button onClick={() => nav('/invoices/new')} className="btn-primary text-xs sm:text-sm py-2 px-3.5">
+            <Plus size={15} /> Nieuwe factuur
+          </button>
+        </div>
       </div>
 
       {/* Search & Filter Bar */}
@@ -173,6 +220,13 @@ export default function InvoiceList() {
                         title="Afdrukken / PDF"
                       >
                         <Download size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(inv)}
+                        className="btn-ghost p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                        title="Factuur verwijderen"
+                      >
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </td>

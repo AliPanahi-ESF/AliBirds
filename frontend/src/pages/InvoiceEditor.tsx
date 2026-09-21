@@ -173,10 +173,23 @@ export default function InvoiceEditor() {
       toast.success('PDF gegenereerd!')
       setShowPreview(true)
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail ?? 'PDF genereren mislukt')
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: () => invoicesApi.delete(id!),
+    onSuccess: () => {
+      toast.success('Factuur succesvol verwijderd!')
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      qc.invalidateQueries({ queryKey: ['kpis'] })
+      nav('/invoices')
     },
+    onError: () => toast.error('Verwijderen mislukt'),
   })
+
+  const handleDelete = () => {
+    if (window.confirm(`Weet u zeker dat u factuur "${existing?.invoice_number}" definitief wilt verwijderen?`)) {
+      deleteMutation.mutate()
+    }
+  }
 
   const handleSendInvoice = async () => {
     if (!existing) return
@@ -245,6 +258,15 @@ export default function InvoiceEditor() {
                 disabled={isSendingEmail}
               >
                 <Send size={14} /> {isSendingEmail ? 'Verzenden...' : 'Verzenden'}
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1.5 px-2.5 border border-red-500/20"
+                title="Factuur verwijderen"
+                disabled={deleteMutation.isPending}
+              >
+                <Trash2 size={14} /> <span className="hidden xs:inline">{deleteMutation.isPending ? 'Wissen...' : 'Verwijderen'}</span>
               </button>
             </>
           )}

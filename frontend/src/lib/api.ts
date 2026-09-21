@@ -148,13 +148,37 @@ export const invoicesApi = {
       return demoStore.saveInvoice({ ...data, id })
     }
   },
-  cancel: async (id: string) => {
+  delete: async (id: string) => {
+    if (isSupabaseConfigured()) {
+      try {
+        await supabaseDb.deleteInvoice(id)
+        return { success: true }
+      } catch (err) {
+        console.warn('Supabase deleteInvoice error:', err)
+      }
+    }
+
     try {
       return await api.delete(`/invoices/${id}`)
     } catch (err) {
       demoStore.deleteInvoice(id)
       return { success: true }
     }
+  },
+  cancel: async (id: string) => {
+    return invoicesApi.delete(id)
+  },
+  clearAll: async () => {
+    if (isSupabaseConfigured()) {
+      try {
+        await supabaseDb.clearAllInvoices()
+        return { success: true }
+      } catch (err) {
+        console.warn('Supabase clearAllInvoices error:', err)
+      }
+    }
+    demoStore.clearAllInvoices()
+    return { success: true }
   },
   send: async (id: string) => {
     try {

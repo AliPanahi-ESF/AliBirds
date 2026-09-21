@@ -490,6 +490,9 @@ export const demoStore = {
     const list = demoStore.getInvoices().filter(i => i.id !== id)
     setStored(STORAGE_KEYS.INVOICES, list)
   },
+  clearAllInvoices: (): void => {
+    setStored(STORAGE_KEYS.INVOICES, [])
+  },
 
   getExpenses: (): Expense[] => getStored(STORAGE_KEYS.EXPENSES, INITIAL_EXPENSES),
   saveExpense: (exp: any): Expense => {
