@@ -8,15 +8,19 @@ import { createClient } from '@supabase/supabase-js'
 
 const STORAGE_KEY_CONFIG = 'alibirds_supabase_config'
 
-function getCredentials(): { url: string; key: string } | null {
-  // 1. Environment variables
+// Built-in default production Supabase instance — zero setup required by end users
+const DEFAULT_URL = 'https://gnizaskjsgxwgdirzrrf.supabase.co'
+const DEFAULT_KEY = 'sb_publishable_lxxsKIS_pObg-cS-pXQrxw_vHqy2dG3'
+
+function getCredentials(): { url: string; key: string } {
+  // 1. Environment variables (if overridden)
   const envUrl = (import.meta.env.VITE_SUPABASE_URL as string) || ''
   const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || ''
   if (envUrl && envKey && envUrl.startsWith('https://') && !envUrl.includes('placeholder')) {
     return { url: envUrl.trim().replace(/\/+$/, ''), key: envKey.trim() }
   }
 
-  // 2. Previously stored in browser localStorage
+  // 2. Previously stored in browser localStorage (if overridden)
   if (typeof window !== 'undefined') {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_CONFIG)
@@ -31,25 +35,25 @@ function getCredentials(): { url: string; key: string } | null {
     }
   }
 
-  return null
+  // 3. Default production instance
+  return { url: DEFAULT_URL, key: DEFAULT_KEY }
 }
 
 const creds = getCredentials()
 
 export function isSupabaseConfigured(): boolean {
-  return !!creds
+  return true
 }
 
-// Fallback dummy credentials when not configured, preventing createClient from throwing at module load
-const safeUrl = creds ? creds.url : 'https://placeholder.supabase.co'
-const safeKey = creds ? creds.key : 'placeholder-anon-key'
+const safeUrl = creds.url
+const safeKey = creds.key
 
 // Single shared client — auth session is persisted automatically by the SDK
 export const supabase = createClient(safeUrl, safeKey, {
   auth: {
-    persistSession: !!creds,
-    autoRefreshToken: !!creds,
-    detectSessionInUrl: !!creds,
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
   },
 })
 
