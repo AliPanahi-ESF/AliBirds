@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bird, Lock, Mail, User as UserIcon, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { Bird, Lock, Mail, User as UserIcon, ArrowRight, CheckCircle2, Sparkles, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/lib/auth'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
@@ -8,7 +8,7 @@ import { clsx } from 'clsx'
 
 export default function AuthPage() {
   const navigate = useNavigate()
-  const { login, registerUser } = useAuth()
+  const { login, registerUser, loginDemo } = useAuth()
 
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [name, setName] = useState('')
@@ -175,6 +175,34 @@ export default function AuthPage() {
               <ArrowRight size={15} />
             </button>
           </form>
+
+          {/* 1-Click Demo Studio Button */}
+          <div className="pt-1 space-y-2.5">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-800" /></div>
+              <div className="relative flex justify-center text-[10px] uppercase tracking-wider text-slate-500 font-semibold bg-slate-900 px-2 w-max mx-auto">
+                Of direct bekijken
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={loginDemo}
+              className="w-full py-2.5 px-3 rounded-xl text-xs font-semibold text-brand-300 hover:text-white bg-brand-600/15 hover:bg-brand-600/25 border border-brand-500/30 hover:border-brand-500/50 transition-all flex items-center justify-center gap-2 shadow-sm active:scale-98"
+            >
+              <Sparkles size={14} className="text-brand-400" />
+              <span>1-Click Demo Studio (Zonder inloggen)</span>
+            </button>
+          </div>
+
+          {!isSupabaseConfigured() && (
+            <div className="p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-xl text-[11px] text-amber-300/90 flex items-start gap-2">
+              <AlertCircle size={15} className="text-amber-400 shrink-0 mt-0.5" />
+              <p>
+                <strong>Tip:</strong> Om accounts en cloud sync te activeren, voegt u eenmalig <code className="text-amber-200">VITE_SUPABASE_URL</code> en <code className="text-amber-200">VITE_SUPABASE_ANON_KEY</code> toe in Netlify Site Settings.
+              </p>
+            </div>
+          )}
 
           {/* Security note */}
           <p className="text-[11px] text-slate-500 text-center pt-1">

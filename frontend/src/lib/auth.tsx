@@ -12,12 +12,14 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<User>
   registerUser: (name: string, email: string, password: string) => Promise<User>
   completeOnboarding: (companyData: Partial<BusinessSettings>) => Promise<void>
+  loginDemo: () => void
   logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 const ONBOARDING_KEY = 'alibirds_onboarding_status' // tracks per-uid whether onboarding is done
+const DEMO_ACTIVE_KEY = 'alibirds_demo_active'
 
 function getOnboardingStatus(uid: string): boolean {
   try {
@@ -59,8 +61,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Listen to Supabase auth state changes — fires on login, logout, token refresh, and page load
   useEffect(() => {
+    // Check if demo session is active
+    const isDemo = localStorage.getItem(DEMO_ACTIVE_KEY) === 'true'
+    if (isDemo) {
+      setUser({
+        id: 'demo-user-id',
+        name: 'Ali Demo Studio',
+        email: 'demo@alibirds.nl',
+        company_name: 'Ali Creative Studio',
+        is_onboarded: true,
+      })
+      setIsLoading(false)
+      return
+    }
+
     if (!isSupabaseConfigured()) {
-      // No Supabase configured — app will work in local demo mode only
       setIsLoading(false)
       return
     }
@@ -71,13 +86,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(supabaseUserToAppUser(session.user))
       }
       setIsLoading(false)
+    }).catch(() => {
+      setIsLoading(false)
     })
 
     // Subscribe to future auth events (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(supabaseUserToAppUser(session.user))
-      } else {
+      } else if (localStorage.getItem(DEMO_ACTIVE_KEY) !== 'true') {
         setUser(null)
       }
     })
@@ -85,10 +102,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
+  const loginDemo = useCallback(() => {
+    localStorage.setItem(DEMO_ACTIVE_KEY, 'true')
+    setUser({
+      id: 'demo-user-id',
+      name: 'Ali Demo Studio',
+      email: 'demo@alibirds.nl',
+      company_name: 'Ali Creative Studio',
+      is_onboarded: true,
+    })
+    toast.success('Welkom in de Demo Studio!')
+  }, [])
+
   const login = useCallback(async (email: string, password: string): Promise<User> => {
     if (!isSupabaseConfigured()) {
-      throw new Error('Supabase is niet geconfigureerd. Neem contact op met de beheerder.')
+      throw new Error('Supabase is nog niet geconfigureerd. Voeg VITE_SUPABASE_URL en VITE_SUPABASE_ANON_KEY toe aan Netlify, of gebruik de Demo Studio.')
     }
+    localStorage.removeItem(DEMO_ACTIVE_KEY)
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw new Error(error.message)
     const appUser = supabaseUserToAppUser(data.user)
@@ -98,8 +128,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const registerUser = useCallback(async (name: string, email: string, password: string): Promise<User> => {
     if (!isSupabaseConfigured()) {
-      throw new Error('Supabase is niet geconfigureerd. Neem contact op met de beheerder.')
+      throw new Error('Supabase is nog niet geconfigureerd. Voeg VITE_SUPABASE_URL en VITE_SUPABASE_ANON_KEY toe aan Netlify, of gebruik de Demo Studio.')
     }
+    localStorage.removeItem(DEMO_ACTIVE_KEY)
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -141,6 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user])
 
   const logout = useCallback(async (): Promise<void> => {
+    localStorage.removeItem(DEMO_ACTIVE_KEY)
     try {
       if (isSupabaseConfigured()) {
         await supabase.auth.signOut()
@@ -154,7 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, registerUser, completeOnboarding, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, registerUser, completeOnboarding, loginDemo, logout }}>
       {children}
     </AuthContext.Provider>
   )

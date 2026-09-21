@@ -6,21 +6,30 @@
  */
 import { createClient } from '@supabase/supabase-js'
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-
-// Single shared client — auth session is persisted automatically by the SDK
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,     // survives page refreshes on all devices
-    autoRefreshToken: true,
-    detectSessionInUrl: true, // for email magic-link / OAuth flows
-  },
-})
+const rawUrl = (import.meta.env.VITE_SUPABASE_URL as string) || ''
+const rawKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || ''
 
 export function isSupabaseConfigured(): boolean {
-  return !!(SUPABASE_URL && SUPABASE_ANON_KEY)
+  return !!(
+    rawUrl &&
+    rawKey &&
+    rawUrl.startsWith('https://') &&
+    !rawUrl.includes('placeholder')
+  )
 }
+
+// Fallback dummy credentials when not configured, preventing createClient from throwing at module load
+const safeUrl = isSupabaseConfigured() ? rawUrl : 'https://placeholder.supabase.co'
+const safeKey = isSupabaseConfigured() ? rawKey : 'placeholder-anon-key'
+
+// Single shared client — auth session is persisted automatically by the SDK
+export const supabase = createClient(safeUrl, safeKey, {
+  auth: {
+    persistSession: isSupabaseConfigured(),
+    autoRefreshToken: isSupabaseConfigured(),
+    detectSessionInUrl: isSupabaseConfigured(),
+  },
+})
 
 /**
  * Supabase Data Access Object
