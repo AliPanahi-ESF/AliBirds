@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { X, Upload, FileText, Check, AlertCircle, Building2, Calendar, Eye } from 'lucide-react'
+import { X, Upload, FileText, Check, AlertCircle, Building2, Calendar, Eye, Sparkles } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { invoicesApi, clientsApi, bankApi } from '@/lib/api'
 import { Client } from '@/lib/types'
+import { parsePdfInvoice, ExtractedInvoiceData } from '@/lib/pdfInvoiceParser'
 
 interface Props {
   clients: Client[]
@@ -15,6 +16,7 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
   const qc = useQueryClient()
   const [file, setFile] = useState<File | null>(null)
   const [pdfDataUrl, setPdfDataUrl] = useState<string | null>(null)
+  const [parsedInfo, setParsedInfo] = useState<ExtractedInvoiceData | null>(null)
   const [isParsing, setIsParsing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -61,112 +63,52 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
     }
 
     try {
-      // 1. Extract hints from filename (e.g. Factuur_2026-0001_Anivation.pdf)
-      const fname = selectedFile.name
-      const numMatch =
-        fname.match(/(?:factuur[_-]?|inv[_-]?|invoice[_-]?)?([0-9]{4}[-_][0-9]{3,5}|202\d{5})/i) ||
-        fname.match(/(202\d[-_]\d+)/) ||
-        fname.match(/\b([A-Z]{2,4}[-_]?\d{3,6})\b/i)
+      // Use our high-accuracy PDF stream decompressor & text extractor
+      const parsed = await parsePdfInvoice(selectedFile, clients)
+      setParsedInfo(parsed)
 
-      if (numMatch && numMatch[1]) {
-        setInvoiceNumber(numMatch[1].replace('_', '-'))
-      } else {
-        setInvoiceNumber(`FACT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`)
+      // Auto-populate invoice number
+      if (parsed.invoiceNumber) {
+        setInvoiceNumber(parsed.invoiceNumber)
       }
 
-      // Check if client name is in filename
-      for (const cl of clients) {
-        if (cl.name && fname.toLowerCase().includes(cl.name.toLowerCase())) {
-          setClientId(cl.id)
-          break
+      // Auto-populate client
+      if (parsed.matchedClientId) {
+        setClientId(parsed.matchedClientId)
+        if (parsed.matchedClientId === 'NEW') {
+          setNewClientName(parsed.matchedClientName)
         }
+      } else if (parsed.counterparty) {
+        setClientId('NEW')
+        setNewClientName(parsed.counterparty)
       }
 
-      // 2. Read file as binary to scan strings
-      const buffer = await selectedFile.arrayBuffer()
-      const decoder = new TextDecoder('iso-8859-1')
-      let content = decoder.decode(buffer)
-
-      // Try decompressing FlateDecode streams if available in browser
-      if (typeof DecompressionStream !== 'undefined') {
-        const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g
-        let streamMatch: RegExpExecArray | null
-        let decompCount = 0
-        while ((streamMatch = streamRegex.exec(content)) !== null && decompCount < 10) {
-          try {
-            const rawBytes = new Uint8Array(streamMatch[1].length)
-            for (let b = 0; b < streamMatch[1].length; b++) {
-              rawBytes[b] = streamMatch[1].charCodeAt(b)
-            }
-            const ds = new DecompressionStream('deflate')
-            const writer = ds.writable.getWriter()
-            writer.write(rawBytes)
-            writer.close()
-            const decompressed = await new Response(ds.readable).arrayBuffer()
-            const decompText = new TextDecoder('utf-8', { fatal: false }).decode(decompressed)
-            content += ' ' + decompText
-            decompCount++
-          } catch {
-            // stream is not raw deflate or corrupted, ignore
-          }
-        }
+      // Auto-populate dates
+      if (parsed.date) {
+        setIssueDate(parsed.date)
+        setDueDate(parsed.date)
       }
 
-      // Search for invoice number in content
-      const textNum = content.match(/(?:factuur(?:nummer|nr)?|invoice\s*(?:no|number)?)\s*[:.\s#]*([A-Z0-9_-]{4,18})/i)
-      if (textNum && textNum[1] && textNum[1].length >= 4 && !textNum[1].includes('obj') && !textNum[1].includes('endobj')) {
-        setInvoiceNumber(textNum[1].trim())
+      // Auto-populate amounts
+      if (parsed.amountIncl > 0) {
+        setAmountIncl(parsed.amountIncl)
+        setAmountExcl(parsed.amountExcl)
+        setVatAmount(parsed.vatAmount)
+        setVatRate(parsed.vatRate)
       }
 
-      // Search for euro amounts (handles 1.250,00 or 1250,00 or 665.50)
-      const eurMatches =
-        content.match(/(?:€|EUR|eur|euro)[\s:]*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/gi) ||
-        content.match(/([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})[\s]*(?:€|EUR)/gi) ||
-        content.match(/(?:totaal|total|subtotaal)[\s:]*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/gi)
-
-      if (eurMatches && eurMatches.length > 0) {
-        let maxVal = 0
-        for (const m of eurMatches) {
-          const clean = m.replace(/(?:€|EUR|eur|euro|totaal|total|subtotaal|[\s:])/gi, '')
-          // Convert Dutch format 1.250,00 or 665,50 to standard 1250.00 / 665.50
-          let norm = clean
-          if (clean.includes(',') && clean.includes('.')) {
-            norm = clean.replace(/\./g, '').replace(',', '.')
-          } else if (clean.includes(',')) {
-            norm = clean.replace(',', '.')
-          }
-          const val = parseFloat(norm)
-          if (!isNaN(val) && val > maxVal && val < 500000) {
-            maxVal = val
-          }
-        }
-        if (maxVal > 0) {
-          const excl = Math.round((maxVal / 1.21) * 100) / 100
-          recalculateAmounts(excl, '21')
-        }
+      // Auto-populate description
+      if (parsed.reference) {
+        setDescription(parsed.reference)
       }
 
-      // Search for dates
-      const dateMatch =
-        content.match(/\b(202\d[-/.](?:0[1-9]|1[0-2])[-/.](?:0[1-9]|[12]\d|3[01]))\b/) ||
-        content.match(/\b((?:0[1-9]|[12]\d|3[01])[-/.](?:0[1-9]|1[0-2])[-/.](?:202\d))\b/)
-
-      if (dateMatch && dateMatch[1]) {
-        let rawD = dateMatch[1].replace(/[/.]/g, '-')
-        const parts = rawD.split('-')
-        let normalizedDate = rawD
-        if (parts[0].length === 2 && parts[2].length === 4) {
-          // DD-MM-YYYY -> YYYY-MM-DD
-          normalizedDate = `${parts[2]}-${parts[1]}-${parts[0]}`
-        }
-        setIssueDate(normalizedDate)
-        setDueDate(normalizedDate)
-      }
-
-      toast.success('PDF geanalyseerd! Controleer de gegevens hieronder.')
+      toast.success(
+        `PDF succesvol uitgelezen! ${parsed.counterparty ? parsed.counterparty + ' - ' : ''}€ ${parsed.amountIncl > 0 ? parsed.amountIncl.toFixed(2) : ''}`,
+        { icon: '📄', duration: 4000 }
+      )
     } catch (err) {
       console.warn('PDF parsing error:', err)
-      toast('PDF geladen. Vul de details in.', { icon: '📄' })
+      toast('PDF geopend. U kunt de gegevens handmatig aanvullen.', { icon: '📄' })
     } finally {
       setIsParsing(false)
     }
@@ -339,6 +281,30 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
             )}
           </div>
 
+          {/* Parsed feedback indicator */}
+          {parsedInfo && (
+            <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-3 text-xs text-emerald-300 flex items-start gap-2.5 animate-fade-in">
+              <Sparkles size={16} className="text-emerald-400 mt-0.5 shrink-0" />
+              <div className="space-y-1">
+                <p className="font-semibold text-emerald-200">PDF gegevens automatisch herkend:</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-300 text-[11px]">
+                  {parsedInfo.counterparty && (
+                    <span>Klant/Tegenpartij: <strong className="text-white">{parsedInfo.counterparty}</strong></span>
+                  )}
+                  {parsedInfo.invoiceNumber && (
+                    <span>Factuur/Ref: <strong className="text-white">{parsedInfo.invoiceNumber}</strong></span>
+                  )}
+                  {parsedInfo.amountIncl > 0 && (
+                    <span>Bedrag: <strong className="text-emerald-400">€ {parsedInfo.amountIncl.toFixed(2)}</strong></span>
+                  )}
+                  {parsedInfo.date && (
+                    <span>Datum: <strong className="text-white">{parsedInfo.date}</strong></span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Form Fields */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -374,22 +340,25 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
                 value={clientId}
                 onChange={e => setClientId(e.target.value)}
               >
-                <option value="">-- Geen / Kies bestaande klant --</option>
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                <option key="opt-default" value="">-- Geen / Kies bestaande klant --</option>
+                {clients.map((c, idx) => (
+                  <option key={c.id || `client-opt-${idx}`} value={c.id}>{c.name}</option>
                 ))}
-                <option value="NEW">+ Nieuwe klant invoeren...</option>
+                <option key="opt-new" value="NEW">+ Nieuwe klant invoeren...</option>
               </select>
 
-              {clientId === 'NEW' && (
-                <input
-                  className="input text-xs sm:text-sm animate-fade-in"
-                  placeholder="Bedrijfsnaam van de nieuwe klant..."
-                  value={newClientName}
-                  onChange={e => setNewClientName(e.target.value)}
-                  autoFocus
-                />
-              )}
+              <div key="new-client-container">
+                {clientId === 'NEW' ? (
+                  <input
+                    key="new-client-input"
+                    className="input text-xs sm:text-sm animate-fade-in"
+                    placeholder="Bedrijfsnaam van de nieuwe klant..."
+                    value={newClientName}
+                    onChange={e => setNewClientName(e.target.value)}
+                    autoFocus
+                  />
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -477,7 +446,7 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
               onClick={onClose}
               className="btn-secondary text-xs sm:text-sm py-2 px-3"
             >
-              Annuleren
+              <span>Annuleren</span>
             </button>
             <button
               type="submit"
@@ -485,7 +454,7 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
               className="btn-primary text-xs sm:text-sm py-2 px-4 flex items-center gap-1.5"
             >
               <Check size={15} />
-              {isSaving ? 'Opslaan...' : 'Factuur opslaan'}
+              <span>{isSaving ? 'Opslaan...' : 'Factuur opslaan'}</span>
             </button>
           </div>
         </form>

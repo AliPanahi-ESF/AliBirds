@@ -286,6 +286,56 @@ export const supabaseDb = {
     return true
   },
 
+  // ── Clients ────────────────────────────────────────────────────────────────
+  getClients: async () => {
+    if (!isSupabaseConfigured()) return null
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .order('name', { ascending: true })
+      if (error) throw error
+      return data || []
+    } catch (err) {
+      console.warn('Supabase getClients error:', err)
+      return null
+    }
+  },
+
+  saveClient: async (clientData: any) => {
+    if (!isSupabaseConfigured()) return null
+    const { id, created_at, updated_at, ...fields } = clientData
+
+    if (id && typeof id === 'string' && id.length > 20) {
+      const { data, error } = await supabase
+        .from('clients')
+        .update(fields)
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) throw error
+      demoStore.saveClient(data)
+      return data
+    } else {
+      const { data, error } = await supabase
+        .from('clients')
+        .insert(fields)
+        .select()
+        .single()
+      if (error) throw error
+      demoStore.saveClient(data)
+      return data
+    }
+  },
+
+  deleteClient: async (id: string) => {
+    if (!isSupabaseConfigured()) return null
+    const { error } = await supabase.from('clients').delete().eq('id', id)
+    if (error) throw error
+    demoStore.deleteClient(id)
+    return true
+  },
+
   // ── Expenses ───────────────────────────────────────────────────────────────
   getExpenses: async () => {
     if (!isSupabaseConfigured()) return null
