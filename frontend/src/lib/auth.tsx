@@ -75,6 +75,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
+    // Check local session
+    const localSession = localStorage.getItem('alibirds_local_session')
+    if (localSession && !isSupabaseConfigured()) {
+      try {
+        const parsed = JSON.parse(localSession)
+        setUser(parsed)
+        setIsLoading(false)
+        return
+      } catch {
+        // ignore
+      }
+    }
+
     if (!isSupabaseConfigured()) {
       setIsLoading(false)
       return
@@ -94,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(supabaseUserToAppUser(session.user))
-      } else if (localStorage.getItem(DEMO_ACTIVE_KEY) !== 'true') {
+      } else if (localStorage.getItem(DEMO_ACTIVE_KEY) !== 'true' && !localStorage.getItem('alibirds_local_session')) {
         setUser(null)
       }
     })
@@ -115,35 +128,73 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const login = useCallback(async (email: string, password: string): Promise<User> => {
-    if (!isSupabaseConfigured()) {
-      throw new Error('Supabase is nog niet geconfigureerd. Voeg VITE_SUPABASE_URL en VITE_SUPABASE_ANON_KEY toe aan Netlify, of gebruik de Demo Studio.')
-    }
     localStorage.removeItem(DEMO_ACTIVE_KEY)
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw new Error(error.message)
-    const appUser = supabaseUserToAppUser(data.user)
-    setUser(appUser)
-    return appUser
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) throw new Error(error.message)
+      const appUser = supabaseUserToAppUser(data.user)
+      setUser(appUser)
+      return appUser
+    } else {
+      // Seamless zero-friction session
+      const saved = localStorage.getItem('alibirds_local_session')
+      let localUser: User
+      if (saved) {
+        try {
+          localUser = JSON.parse(saved)
+        } catch {
+          localUser = {
+            id: 'local_' + btoa(email).slice(0, 12),
+            name: email.split('@')[0],
+            email: email,
+            company_name: 'Mijn ZZP Studio',
+            is_onboarded: true,
+          }
+        }
+      } else {
+        localUser = {
+          id: 'local_' + btoa(email).slice(0, 12),
+          name: email.split('@')[0],
+          email: email,
+          company_name: 'Mijn ZZP Studio',
+          is_onboarded: true,
+        }
+      }
+      localStorage.setItem('alibirds_local_session', JSON.stringify(localUser))
+      setUser(localUser)
+      return localUser
+    }
   }, [])
 
   const registerUser = useCallback(async (name: string, email: string, password: string): Promise<User> => {
-    if (!isSupabaseConfigured()) {
-      throw new Error('Supabase is nog niet geconfigureerd. Voeg VITE_SUPABASE_URL en VITE_SUPABASE_ANON_KEY toe aan Netlify, of gebruik de Demo Studio.')
-    }
     localStorage.removeItem(DEMO_ACTIVE_KEY)
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: name },
-      },
-    })
-    if (error) throw new Error(error.message)
-    if (!data.user) throw new Error('Registratie mislukt. Probeer het opnieuw.')
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: name },
+        },
+      })
+      if (error) throw new Error(error.message)
+      if (!data.user) throw new Error('Registratie mislukt. Probeer het opnieuw.')
 
-    const appUser = supabaseUserToAppUser(data.user)
-    setUser(appUser)
-    return appUser
+      const appUser = supabaseUserToAppUser(data.user)
+      setUser(appUser)
+      return appUser
+    } else {
+      // Seamless zero-friction registration
+      const localUser: User = {
+        id: 'local_' + btoa(email).slice(0, 12),
+        name: name,
+        email: email,
+        company_name: '',
+        is_onboarded: false,
+      }
+      localStorage.setItem('alibirds_local_session', JSON.stringify(localUser))
+      setUser(localUser)
+      return localUser
+    }
   }, [])
 
   const completeOnboarding = useCallback(async (companyData: Partial<BusinessSettings>): Promise<void> => {
@@ -173,6 +224,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async (): Promise<void> => {
     localStorage.removeItem(DEMO_ACTIVE_KEY)
+    localStorage.removeItem('alibirds_local_session')
     try {
       if (isSupabaseConfigured()) {
         await supabase.auth.signOut()

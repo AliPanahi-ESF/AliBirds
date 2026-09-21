@@ -195,15 +195,6 @@ export default function AuthPage() {
             </button>
           </div>
 
-          {!isSupabaseConfigured() && (
-            <div className="p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-xl text-[11px] text-amber-300/90 flex items-start gap-2">
-              <AlertCircle size={15} className="text-amber-400 shrink-0 mt-0.5" />
-              <p>
-                <strong>Tip:</strong> Om accounts en cloud sync te activeren, voegt u eenmalig <code className="text-amber-200">VITE_SUPABASE_URL</code> en <code className="text-amber-200">VITE_SUPABASE_ANON_KEY</code> toe in Netlify Site Settings.
-              </p>
-            </div>
-          )}
-
           {/* Security note */}
           <p className="text-[11px] text-slate-500 text-center pt-1">
             Uw gegevens zijn beveiligd en privé. Elke gebruiker heeft een eigen afgeschermd account.

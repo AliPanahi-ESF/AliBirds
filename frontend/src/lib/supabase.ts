@@ -6,28 +6,50 @@
  */
 import { createClient } from '@supabase/supabase-js'
 
-const rawUrl = (import.meta.env.VITE_SUPABASE_URL as string) || ''
-const rawKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || ''
+const STORAGE_KEY_CONFIG = 'alibirds_supabase_config'
+
+function getCredentials(): { url: string; key: string } | null {
+  // 1. Environment variables
+  const envUrl = (import.meta.env.VITE_SUPABASE_URL as string) || ''
+  const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || ''
+  if (envUrl && envKey && envUrl.startsWith('https://') && !envUrl.includes('placeholder')) {
+    return { url: envUrl.trim().replace(/\/+$/, ''), key: envKey.trim() }
+  }
+
+  // 2. Previously stored in browser localStorage
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_CONFIG)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed.url && parsed.anonKey && parsed.url.startsWith('https://')) {
+          return { url: parsed.url.trim().replace(/\/+$/, ''), key: parsed.anonKey.trim() }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return null
+}
+
+const creds = getCredentials()
 
 export function isSupabaseConfigured(): boolean {
-  return !!(
-    rawUrl &&
-    rawKey &&
-    rawUrl.startsWith('https://') &&
-    !rawUrl.includes('placeholder')
-  )
+  return !!creds
 }
 
 // Fallback dummy credentials when not configured, preventing createClient from throwing at module load
-const safeUrl = isSupabaseConfigured() ? rawUrl : 'https://placeholder.supabase.co'
-const safeKey = isSupabaseConfigured() ? rawKey : 'placeholder-anon-key'
+const safeUrl = creds ? creds.url : 'https://placeholder.supabase.co'
+const safeKey = creds ? creds.key : 'placeholder-anon-key'
 
 // Single shared client — auth session is persisted automatically by the SDK
 export const supabase = createClient(safeUrl, safeKey, {
   auth: {
-    persistSession: isSupabaseConfigured(),
-    autoRefreshToken: isSupabaseConfigured(),
-    detectSessionInUrl: isSupabaseConfigured(),
+    persistSession: !!creds,
+    autoRefreshToken: !!creds,
+    detectSessionInUrl: !!creds,
   },
 })
 
