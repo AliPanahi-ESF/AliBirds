@@ -4,7 +4,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
+import { registerServiceWorker } from './lib/pwaPush'
 import './index.css'
+
+// Register Service Worker for PWA & Web Push
+if (typeof window !== 'undefined') {
+  registerServiceWorker()
+}
 
 // Guard against DOM manipulation by browser extensions/translators (Google Translate, Grammarly, etc.)
 if (typeof Node === 'function' && Node.prototype) {

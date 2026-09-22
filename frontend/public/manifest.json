@@ -1,6 +1,7 @@
 {
-  "short_name": "AliBirds",
-  "name": "AliBirds — ZZP Boekhouding",
+  "short_name": "MoneyBirds",
+  "name": "MoneyBirds NL — حسابداری هوشمند و تمام‌خودکار هلند",
+  "description": "پلتفرم حسابداری تمام‌خودکار هلند با پشتیبانی بومی ۱۰۰٪ راست‌چین (RTL)، اتصال بانکی، فاکتور UBL و اظهارنامه مالیاتی Belastingdienst",
   "icons": [
     {
       "src": "/favicon.svg",
@@ -13,5 +14,38 @@
   "background_color": "#020617",
   "theme_color": "#4f46e5",
   "display": "standalone",
-  "orientation": "portrait"
+  "orientation": "portrait-primary",
+  "dir": "rtl",
+  "lang": "fa-NL",
+  "categories": ["finance", "business", "productivity"],
+  "shortcuts": [
+    {
+      "name": "صدور فاکتور جدید",
+      "short_name": "فاکتور جدید",
+      "description": "ایجاد سریع فاکتور فروش",
+      "url": "/invoices/new",
+      "icons": [{ "src": "/favicon.svg", "sizes": "96x96" }]
+    },
+    {
+      "name": "ثبت هزینه و اسکن رسید",
+      "short_name": "ثبت هزینه",
+      "description": "اسکن یا ثبت هزینه جدید",
+      "url": "/expenses",
+      "icons": [{ "src": "/favicon.svg", "sizes": "96x96" }]
+    },
+    {
+      "name": "تطبیق تراکنش‌های بانکی",
+      "short_name": "بانک",
+      "description": "تطبیق گردش حساب بانکی",
+      "url": "/bank",
+      "icons": [{ "src": "/favicon.svg", "sizes": "96x96" }]
+    },
+    {
+      "name": "اظهارنامه مالیاتی فصلی (BTW)",
+      "short_name": "مالیات BTW",
+      "description": "محاسبه روبیک‌های ۱a تا ۵b",
+      "url": "/tax",
+      "icons": [{ "src": "/favicon.svg", "sizes": "96x96" }]
+    }
+  ]
 }
