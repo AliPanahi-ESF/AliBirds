@@ -5,7 +5,137 @@
  * Users never see or touch any API keys — they just log in with email + password.
  */
 import { createClient } from '@supabase/supabase-js'
-import { Invoice, CalcMode } from './types'
+import { Invoice, CalcMode, BusinessSettings, Expense, Client } from './types'
+
+export function dbToSettings(row: any, userMetadata?: any): BusinessSettings {
+  if (!row) {
+    return {
+      id: '',
+      company_name: userMetadata?.company_name || '',
+      trade_name: userMetadata?.trade_name || userMetadata?.company_name || '',
+      kvk_number: '',
+      btw_id: '',
+      iban: '',
+      bic: '',
+      address_street: '',
+      address_city: '',
+      address_postcode: '',
+      address_country: 'NL',
+      default_payment_term_days: 14,
+      invoice_prefix: '2026-',
+      next_invoice_sequence: 1,
+      invoice_notes_default: userMetadata?.invoice_notes_default || 'Graag betalen binnen de gestelde termijn o.v.v. het factuurnummer.',
+      accent_color: '#4f46e5',
+      font_family: 'Inter',
+      payment_link: userMetadata?.payment_link || '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+  }
+
+  return {
+    id: row.id || '',
+    company_name: row.company_name || userMetadata?.company_name || '',
+    trade_name: row.trading_name || row.trade_name || userMetadata?.trade_name || row.company_name || '',
+    kvk_number: row.kvk_number || '',
+    btw_id: row.vat_number || row.btw_id || '',
+    iban: row.iban || '',
+    bic: row.bic || '',
+    address_street: row.address_street || '',
+    address_city: row.address_city || '',
+    address_postcode: row.address_postcode || '',
+    address_country: row.country_code || row.address_country || 'NL',
+    phone: row.phone || '',
+    email: row.email || '',
+    website: row.website || '',
+    logo_url: row.logo_base64 || row.logo_url || undefined,
+    accent_color: row.accent_color || '#4f46e5',
+    font_family: row.font_family || 'Inter',
+    invoice_prefix: row.invoice_prefix || '2026-',
+    default_payment_term_days: Number(row.default_payment_term_days) || 14,
+    next_invoice_sequence: Number(row.next_invoice_sequence) || 1,
+    invoice_notes_default: row.invoice_notes_default || userMetadata?.invoice_notes_default || 'Graag betalen binnen de gestelde termijn o.v.v. het factuurnummer.',
+    payment_link: row.payment_link || userMetadata?.payment_link || '',
+    created_at: row.created_at || new Date().toISOString(),
+    updated_at: row.updated_at || new Date().toISOString(),
+  }
+}
+
+export function settingsToDb(settings: any) {
+  const result: any = {}
+
+  if (settings.company_name !== undefined) result.company_name = settings.company_name
+  if (settings.trade_name !== undefined || settings.trading_name !== undefined) {
+    result.trading_name = settings.trade_name || settings.trading_name || null
+  }
+  if (settings.kvk_number !== undefined) result.kvk_number = settings.kvk_number
+  if (settings.btw_id !== undefined || settings.vat_number !== undefined) {
+    result.vat_number = settings.btw_id || settings.vat_number || null
+  }
+  if (settings.iban !== undefined) result.iban = settings.iban
+  if (settings.bic !== undefined) result.bic = settings.bic
+  if (settings.address_street !== undefined) result.address_street = settings.address_street
+  if (settings.address_city !== undefined) result.address_city = settings.address_city
+  if (settings.address_postcode !== undefined) result.address_postcode = settings.address_postcode
+  if (settings.address_country !== undefined || settings.country_code !== undefined) {
+    result.country_code = settings.address_country || settings.country_code || 'NL'
+  }
+  if (settings.email !== undefined) result.email = settings.email
+  if (settings.phone !== undefined) result.phone = settings.phone
+  if (settings.website !== undefined) result.website = settings.website
+  if (settings.logo_url !== undefined || settings.logo_base64 !== undefined) {
+    result.logo_base64 = settings.logo_url || settings.logo_base64 || null
+  }
+  if (settings.accent_color !== undefined) result.accent_color = settings.accent_color
+  if (settings.invoice_prefix !== undefined) result.invoice_prefix = settings.invoice_prefix
+  if (settings.default_payment_term_days !== undefined) {
+    result.default_payment_term_days = Number(settings.default_payment_term_days) || 14
+  }
+  if (settings.next_invoice_sequence !== undefined) {
+    result.next_invoice_sequence = Number(settings.next_invoice_sequence) || 1
+  }
+  if (settings.default_vat_rate !== undefined) result.default_vat_rate = settings.default_vat_rate
+
+  return result
+}
+
+export function dbToExpense(row: any): Expense {
+  return {
+    id: row.id,
+    vendor_name: row.vendor || row.vendor_name || 'Onbekend',
+    expense_date: row.date || row.expense_date || '',
+    category: row.category || 'Algemeen',
+    amount_excl_vat: Number(row.amount_excl ?? row.amount_excl_vat ?? 0),
+    vat_rate: String(row.vat_rate || '21'),
+    vat_amount: Number(row.vat_amount ?? 0),
+    amount_incl_vat: Number(row.amount_incl ?? row.amount_incl_vat ?? 0),
+    description: row.description || '',
+    receipt_file_path: row.receipt_path || row.receipt_file_path || undefined,
+    notes: row.notes || '',
+    created_at: row.created_at || new Date().toISOString(),
+    updated_at: row.updated_at || new Date().toISOString(),
+  }
+}
+
+export function expenseToDb(exp: any) {
+  const excl = Number(exp.amount_excl_vat ?? exp.amount_excl ?? 0)
+  const vat = Number(exp.vat_amount ?? 0)
+  const incl = Number(exp.amount_incl_vat ?? exp.amount_incl ?? (excl + vat))
+
+  return {
+    date: exp.expense_date || exp.date || new Date().toISOString().slice(0, 10),
+    vendor: exp.vendor_name || exp.vendor || 'Onbekend',
+    description: exp.description || exp.vendor_name || 'Uitgave',
+    category: exp.category || 'Algemeen',
+    amount_excl: excl,
+    vat_rate: String(exp.vat_rate || '21'),
+    vat_amount: vat,
+    amount_incl: incl,
+    receipt_path: exp.receipt_file_path || exp.receipt_path || null,
+    payment_method: exp.payment_method || 'BANK',
+    is_deductible: exp.is_deductible ?? true,
+  }
+}
 
 function dbToInvoice(row: any): Invoice {
   const lineItems = (row.line_items || []).map((li: any) => ({
@@ -43,9 +173,6 @@ function dbToInvoice(row: any): Invoice {
   } else if (row.clients && typeof row.clients === 'object') {
     clientObj = Array.isArray(row.clients) ? (row.clients[0] || undefined) : row.clients
   }
-  if (!clientObj && row.client_id) {
-    clientObj = demoStore.getClients().find(c => c.id === row.client_id)
-  }
 
   return {
     id: row.id,
@@ -67,6 +194,7 @@ function dbToInvoice(row: any): Invoice {
     payment_reference: row.reference || row.payment_reference || '',
     notes: row.notes || '',
     pdf_path: row.pdf_path || undefined,
+    payment_link: row.payment_link || undefined,
     sent_at: row.sent_at || undefined,
     paid_at: row.paid_at || undefined,
     line_items: lineItems,
@@ -115,8 +243,8 @@ const DEFAULT_KEY = 'sb_publishable_lxxsKIS_pObg-cS-pXQrxw_vHqy2dG3'
 
 function getCredentials(): { url: string; key: string } {
   // 1. Environment variables (if overridden)
-  const envUrl = (import.meta.env.VITE_SUPABASE_URL as string) || ''
-  const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || ''
+  const envUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL as string) || ''
+  const envKey = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string) || ''
   if (envUrl && envKey && envUrl.startsWith('https://') && !envUrl.includes('placeholder')) {
     return { url: envUrl.trim().replace(/\/+$/, ''), key: envKey.trim() }
   }
@@ -209,13 +337,26 @@ export const supabaseDb = {
       // Replace all line items
       await supabase.from('invoice_line_items').delete().eq('invoice_id', invoiceId)
     } else {
-      const { data, error } = await supabase
+      let insertRes = await supabase
         .from('invoices')
         .insert(dbPayload)
         .select()
         .single()
-      if (error) throw error
-      invoiceId = data.id
+
+      if (insertRes.error) {
+        // If unique constraint violation on invoice_number, retry with unique sequence
+        if (insertRes.error.code === '23505' || insertRes.error.message?.includes('duplicate key') || insertRes.error.message?.includes('unique')) {
+          const uniqueNum = `${dbPayload.invoice_number}-${Math.floor(100 + Math.random() * 900)}`
+          insertRes = await supabase
+            .from('invoices')
+            .insert({ ...dbPayload, invoice_number: uniqueNum })
+            .select()
+            .single()
+        }
+      }
+
+      if (insertRes.error) throw insertRes.error
+      invoiceId = insertRes.data.id
     }
 
     if (lineItems && lineItems.length > 0) {
@@ -248,11 +389,7 @@ export const supabaseDb = {
       }
     }
 
-    const saved = await supabaseDb.getInvoice(invoiceId)
-    if (saved) {
-      demoStore.saveInvoice(saved)
-    }
-    return saved
+    return await supabaseDb.getInvoice(invoiceId)
   },
 
   deleteInvoice: async (id: string) => {
@@ -267,8 +404,8 @@ export const supabaseDb = {
       if (error) throw error
     } catch (err) {
       console.warn('Supabase deleteInvoice warning:', err)
+      throw err
     }
-    demoStore.deleteInvoice(id)
     return true
   },
 
@@ -282,7 +419,6 @@ export const supabaseDb = {
         console.warn('Supabase clearAllInvoices warning:', err)
       }
     }
-    demoStore.clearAllInvoices()
     return true
   },
 
@@ -304,9 +440,26 @@ export const supabaseDb = {
 
   saveClient: async (clientData: any) => {
     if (!isSupabaseConfigured()) return null
-    const { id, created_at, updated_at, ...fields } = clientData
+    const { id, created_at, updated_at, ...rawFields } = clientData
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-    if (id && typeof id === 'string' && id.length > 20) {
+    const fields: any = {
+      name: rawFields.name || '',
+      contact_person: rawFields.contact_person || null,
+      email: rawFields.email || null,
+      phone: rawFields.phone || null,
+      vat_number: rawFields.vat_number || null,
+      kvk_number: rawFields.kvk_number || null,
+      billing_address_street: rawFields.billing_address_street || null,
+      billing_address_city: rawFields.billing_address_city || null,
+      billing_address_postcode: rawFields.billing_address_postcode || null,
+      country_code: rawFields.country_code || rawFields.billing_address_country || 'NL',
+      default_payment_term_days: Number(rawFields.default_payment_term_days) || 14,
+      notes: rawFields.notes || null,
+      is_active: rawFields.is_active ?? true,
+    }
+
+    if (id && typeof id === 'string' && isUuid.test(id)) {
       const { data, error } = await supabase
         .from('clients')
         .update(fields)
@@ -314,7 +467,6 @@ export const supabaseDb = {
         .select()
         .single()
       if (error) throw error
-      demoStore.saveClient(data)
       return data
     } else {
       const { data, error } = await supabase
@@ -323,7 +475,6 @@ export const supabaseDb = {
         .select()
         .single()
       if (error) throw error
-      demoStore.saveClient(data)
       return data
     }
   },
@@ -332,7 +483,6 @@ export const supabaseDb = {
     if (!isSupabaseConfigured()) return null
     const { error } = await supabase.from('clients').delete().eq('id', id)
     if (error) throw error
-    demoStore.deleteClient(id)
     return true
   },
 
@@ -344,30 +494,33 @@ export const supabaseDb = {
       .select('*')
       .order('date', { ascending: false })
     if (error) throw error
-    return data
+    if (!data) return []
+    return data.map(dbToExpense)
   },
 
   saveExpense: async (expenseData: any) => {
     if (!isSupabaseConfigured()) return null
-    const { id, ...fields } = expenseData
+    const dbPayload = expenseToDb(expenseData)
+    const id = expenseData.id
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-    if (id && id.length > 20) {
+    if (id && typeof id === 'string' && isUuid.test(id)) {
       const { data, error } = await supabase
         .from('expenses')
-        .update(fields)
+        .update(dbPayload)
         .eq('id', id)
         .select()
         .single()
       if (error) throw error
-      return data
+      return dbToExpense(data)
     } else {
       const { data, error } = await supabase
         .from('expenses')
-        .insert(fields)
+        .insert(dbPayload)
         .select()
         .single()
       if (error) throw error
-      return data
+      return dbToExpense(data)
     }
   },
 
@@ -379,38 +532,96 @@ export const supabaseDb = {
   },
 
   // ── Business Settings ──────────────────────────────────────────────────────
-  getSettings: async () => {
+  getSettings: async (): Promise<BusinessSettings | null> => {
     if (!isSupabaseConfigured()) return null
-    const { data, error } = await supabase
-      .from('business_settings')
-      .select('*')
-      .limit(1)
-      .maybeSingle()
-    if (error) throw error
-    return data
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const userMetadata = session?.user?.user_metadata || {}
+
+      const { data, error } = await supabase
+        .from('business_settings')
+        .select('*')
+        .limit(1)
+        .maybeSingle()
+
+      if (error) {
+        console.warn('Supabase getSettings query warning:', error)
+      }
+
+      if (!data && !session?.user) {
+        return null
+      }
+
+      return dbToSettings(data, userMetadata)
+    } catch (err) {
+      console.warn('Supabase getSettings error:', err)
+      return null
+    }
   },
 
-  saveSettings: async (settingsData: any) => {
+  saveSettings: async (settingsData: Partial<BusinessSettings>): Promise<BusinessSettings | null> => {
     if (!isSupabaseConfigured()) return null
-    const current = await supabaseDb.getSettings()
 
-    if (current && current.id) {
-      const { data, error } = await supabase
+    // 1. Get current user session
+    const { data: { session } } = await supabase.auth.getSession()
+    const userMetadata = session?.user?.user_metadata || {}
+
+    // 2. Synchronize user metadata across all devices via Supabase Auth
+    try {
+      await supabase.auth.updateUser({
+        data: {
+          company_name: settingsData.company_name || userMetadata.company_name,
+          trade_name: settingsData.trade_name || settingsData.company_name || userMetadata.trade_name,
+          payment_link: settingsData.payment_link !== undefined ? settingsData.payment_link : userMetadata.payment_link,
+          invoice_notes_default: settingsData.invoice_notes_default !== undefined ? settingsData.invoice_notes_default : userMetadata.invoice_notes_default,
+          is_onboarded: true,
+        },
+      })
+    } catch (authErr) {
+      console.warn('Could not update user metadata:', authErr)
+    }
+
+    // 3. Map to safe database columns (strictly valid PostgreSQL table columns)
+    const dbPayload = settingsToDb(settingsData)
+
+    try {
+      const current = await supabase
         .from('business_settings')
-        .update(settingsData)
-        .eq('id', current.id)
-        .select()
-        .single()
-      if (error) throw error
-      return data
-    } else {
-      const { data, error } = await supabase
-        .from('business_settings')
-        .insert(settingsData)
-        .select()
-        .single()
-      if (error) throw error
-      return data
+        .select('id')
+        .limit(1)
+        .maybeSingle()
+
+      let savedRow: any = null
+
+      if (current.data && current.data.id) {
+        const { data, error } = await supabase
+          .from('business_settings')
+          .update(dbPayload)
+          .eq('id', current.data.id)
+          .select()
+          .single()
+        if (error) throw error
+        savedRow = data
+      } else {
+        const { data, error } = await supabase
+          .from('business_settings')
+          .insert(dbPayload)
+          .select()
+          .single()
+        if (error) throw error
+        savedRow = data
+      }
+
+      return dbToSettings(savedRow, {
+        ...userMetadata,
+        ...settingsData,
+      })
+    } catch (dbErr) {
+      console.warn('Supabase saveSettings DB warning, returning metadata-synced settings:', dbErr)
+      return dbToSettings(null, {
+        ...userMetadata,
+        ...settingsData,
+      })
     }
   },
 

@@ -38,20 +38,66 @@ export const fmt = {
   dateInput: (s: string) => (typeof s === 'string' ? s.slice(0, 10) : ''),
 }
 
+export function isDemoMode(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return localStorage.getItem('alibirds_demo_active') === 'true'
+  } catch {
+    return false
+  }
+}
+
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
 export const dashboardApi = {
   kpis: async () => {
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      try {
+        const invoices = (await supabaseDb.getInvoices()) || []
+        const expenses = (await supabaseDb.getExpenses()) || []
+
+        const outstanding = invoices
+          .filter(i => i.status === 'SENT')
+          .reduce((s, i) => s + ((i.total_incl ?? i.total_incl_vat ?? 0) - (i.amount_paid || 0)), 0)
+
+        const overdue = invoices
+          .filter(i => i.status === 'OVERDUE')
+          .reduce((s, i) => s + ((i.total_incl ?? i.total_incl_vat ?? 0) - (i.amount_paid || 0)), 0)
+
+        const vatLiability = invoices
+          .filter(i => ['SENT', 'PAID'].includes(i.status))
+          .reduce((s, i) => s + (i.total_vat ?? i.total_vat_amount ?? 0), 0) -
+          expenses.reduce((s, e) => s + (e.vat_amount || 0), 0)
+
+        const paidThisMonth = invoices
+          .filter(i => i.status === 'PAID')
+          .reduce((s, i) => s + (i.amount_paid || i.total_incl || i.total_incl_vat || 0), 0)
+
+        const expensesTotal = expenses.reduce((s, e) => s + (e.amount_incl_vat || 0), 0)
+
+        return {
+          outstanding_revenue: Math.round(outstanding * 100) / 100,
+          overdue_amount: Math.round(overdue * 100) / 100,
+          projected_vat_liability: Math.max(0, Math.round(vatLiability * 100) / 100),
+          total_invoices_this_year: invoices.length,
+          paid_this_month: Math.round(paidThisMonth * 100) / 100,
+          expenses_this_quarter: Math.round(expensesTotal * 100) / 100,
+        }
+      } catch (err) {
+        console.warn('Could not calculate live Supabase KPIs:', err)
+      }
+    }
+
     try {
       const res = await api.get('/dashboard/kpis')
       if (res.data && typeof res.data === 'object' && typeof res.data.outstanding_revenue === 'number') {
         return res.data
       }
-      return demoStore.getKPIs()
-    } catch (err) {
-      console.info('Using local demo data for KPIs')
-      return demoStore.getKPIs()
+    } catch {
+      // ignore
     }
+
+    return demoStore.getKPIs()
   },
 }
 
@@ -59,47 +105,33 @@ export const dashboardApi = {
 
 export const invoicesApi = {
   list: async (params?: any) => {
-    const localInvoices = demoStore.getInvoices()
-    let supaInvoices: Invoice[] = []
-
-    if (isSupabaseConfigured()) {
+    if (isSupabaseConfigured() && !isDemoMode()) {
       try {
-        const res = await supabaseDb.getInvoices()
-        if (Array.isArray(res)) {
-          supaInvoices = res
+        const supaInvoices = await supabaseDb.getInvoices()
+        if (Array.isArray(supaInvoices)) {
+          let list = [...supaInvoices]
+          list.sort((a, b) => new Date(b.issue_date || b.created_at || '').getTime() - new Date(a.issue_date || a.created_at || '').getTime())
+          if (params?.status) {
+            list = list.filter((i: any) => i.status === params.status)
+          }
+          return list
         }
       } catch (err) {
-        console.warn('Supabase getInvoices error, falling back to local store:', err)
+        console.warn('Supabase getInvoices error:', err)
       }
     }
 
-    // Merge deduplicating by id and invoice_number
-    const map = new Map<string, Invoice>()
-    for (const inv of localInvoices) {
-      if (inv.id) map.set(inv.id, inv)
-      if (inv.invoice_number) map.set(inv.invoice_number, inv)
-    }
-    for (const inv of supaInvoices) {
-      if (inv.id) map.set(inv.id, inv)
-      if (inv.invoice_number) map.set(inv.invoice_number, inv)
-    }
-
-    let list = Array.from(new Set(map.values()))
-    list.sort((a, b) => new Date(b.issue_date || b.created_at || '').getTime() - new Date(a.issue_date || a.created_at || '').getTime())
-
+    let list = demoStore.getInvoices()
     if (params?.status) {
       list = list.filter((i: any) => i.status === params.status)
     }
     return list
   },
   get: async (id: string) => {
-    if (isSupabaseConfigured()) {
+    if (isSupabaseConfigured() && !isDemoMode()) {
       try {
         const supaInv = await supabaseDb.getInvoice(id)
-        if (supaInv) {
-          demoStore.saveInvoice(supaInv)
-          return supaInv
-        }
+        if (supaInv) return supaInv
       } catch (err) {
         console.warn('Supabase getInvoice error:', err)
       }
@@ -120,65 +152,42 @@ export const invoicesApi = {
     throw new Error('Factuur niet gevonden')
   },
   create: async (data: any) => {
-    // 1. Immediately persist to demoStore to guarantee zero data loss
-    const localCreated = demoStore.saveInvoice(data)
-
-    // 2. Attempt to save to Supabase
-    if (isSupabaseConfigured()) {
-      try {
-        const supaCreated = await supabaseDb.saveInvoice({ ...data, id: localCreated.id }, data.line_items)
-        if (supaCreated) {
-          demoStore.saveInvoice(supaCreated)
-          return supaCreated
-        }
-      } catch (err) {
-        console.warn('Supabase saveInvoice warning:', err)
-      }
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      const supaCreated = await supabaseDb.saveInvoice(data, data.line_items)
+      if (supaCreated) return supaCreated
     }
 
     try {
       const res = await api.post('/invoices', data)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
     } catch {
-      // fallback to local
+      // fallback
     }
 
-    return localCreated
+    return demoStore.saveInvoice(data)
   },
   update: async (id: string, data: any) => {
-    const localUpdated = demoStore.saveInvoice({ ...data, id })
-
-    if (isSupabaseConfigured()) {
-      try {
-        const supaUpdated = await supabaseDb.saveInvoice({ ...data, id }, data.line_items)
-        if (supaUpdated) {
-          demoStore.saveInvoice(supaUpdated)
-          return supaUpdated
-        }
-      } catch (err) {
-        console.warn('Supabase updateInvoice warning:', err)
-      }
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      const supaUpdated = await supabaseDb.saveInvoice({ ...data, id }, data.line_items)
+      if (supaUpdated) return supaUpdated
     }
 
     try {
       const res = await api.put(`/invoices/${id}`, data)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
     } catch {
-      // fallback to local
+      // fallback
     }
 
-    return localUpdated
+    return demoStore.saveInvoice({ ...data, id })
   },
   delete: async (id: string) => {
-    demoStore.deleteInvoice(id)
-    if (isSupabaseConfigured()) {
-      try {
-        await supabaseDb.deleteInvoice(id)
-      } catch (err) {
-        console.warn('Supabase deleteInvoice error:', err)
-      }
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      await supabaseDb.deleteInvoice(id)
+      return { success: true }
     }
 
+    demoStore.deleteInvoice(id)
     try {
       await api.delete(`/invoices/${id}`)
     } catch {
@@ -191,15 +200,12 @@ export const invoicesApi = {
     return invoicesApi.delete(id)
   },
   clearAll: async () => {
-    demoStore.clearAllInvoices()
-    if (isSupabaseConfigured()) {
-      try {
-        await supabaseDb.clearAllInvoices()
-      } catch (err) {
-        console.warn('Supabase clearAllInvoices error:', err)
-      }
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      await supabaseDb.clearAllInvoices()
+      return { success: true }
     }
 
+    demoStore.clearAllInvoices()
     try {
       await api.post('/invoices/clear-all')
     } catch {
@@ -209,6 +215,11 @@ export const invoicesApi = {
     return { success: true }
   },
   send: async (id: string) => {
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      await supabaseDb.saveInvoice({ id, status: 'SENT', sent_at: new Date().toISOString() })
+      return { success: true, message: 'Factuur gemarkeerd als verzonden' }
+    }
+
     try {
       const res = await api.post(`/invoices/${id}/send`)
       return res.data
@@ -246,7 +257,7 @@ export const invoicesApi = {
 
 export const clientsApi = {
   list: async (search?: string) => {
-    if (isSupabaseConfigured()) {
+    if (isSupabaseConfigured() && !isDemoMode()) {
       try {
         const supaClients = await supabaseDb.getClients()
         if (Array.isArray(supaClients)) {
@@ -265,23 +276,19 @@ export const clientsApi = {
     try {
       const res = await api.get('/clients', { params: { search } })
       if (Array.isArray(res.data)) return res.data
-      let list = demoStore.getClients()
-      if (search) {
-        const q = search.toLowerCase()
-        list = list.filter(c => c.name.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q))
-      }
-      return list
-    } catch (err) {
-      let list = demoStore.getClients()
-      if (search) {
-        const q = search.toLowerCase()
-        list = list.filter(c => c.name.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q))
-      }
-      return list
+    } catch {
+      // ignore
     }
+
+    let list = demoStore.getClients()
+    if (search) {
+      const q = search.toLowerCase()
+      list = list.filter(c => c.name.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q))
+    }
+    return list
   },
   get: async (id: string) => {
-    if (isSupabaseConfigured()) {
+    if (isSupabaseConfigured() && !isDemoMode()) {
       try {
         const clients = await supabaseDb.getClients()
         const found = clients?.find((c: any) => c.id === id)
@@ -294,55 +301,46 @@ export const clientsApi = {
     try {
       const res = await api.get(`/clients/${id}`)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
-      return demoStore.getClients().find(c => c.id === id)
-    } catch (err) {
-      return demoStore.getClients().find(c => c.id === id)
+    } catch {
+      // ignore
     }
+
+    return demoStore.getClients().find(c => c.id === id)
   },
   create: async (data: any) => {
-    if (isSupabaseConfigured()) {
-      try {
-        const supaSaved = await supabaseDb.saveClient(data)
-        if (supaSaved) return supaSaved
-      } catch (err) {
-        console.warn('Supabase saveClient error:', err)
-      }
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      const supaSaved = await supabaseDb.saveClient(data)
+      if (supaSaved) return supaSaved
     }
 
     try {
       const res = await api.post('/clients', data)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
-      return demoStore.saveClient(data)
-    } catch (err) {
-      return demoStore.saveClient(data)
+    } catch {
+      // ignore
     }
+
+    return demoStore.saveClient(data)
   },
   update: async (id: string, data: any) => {
-    if (isSupabaseConfigured()) {
-      try {
-        const supaSaved = await supabaseDb.saveClient({ ...data, id })
-        if (supaSaved) return supaSaved
-      } catch (err) {
-        console.warn('Supabase updateClient error:', err)
-      }
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      const supaSaved = await supabaseDb.saveClient({ ...data, id })
+      if (supaSaved) return supaSaved
     }
 
     try {
       const res = await api.put(`/clients/${id}`, data)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
-      return demoStore.saveClient({ ...data, id })
-    } catch (err) {
-      return demoStore.saveClient({ ...data, id })
+    } catch {
+      // ignore
     }
+
+    return demoStore.saveClient({ ...data, id })
   },
   remove: async (id: string) => {
-    if (isSupabaseConfigured()) {
-      try {
-        await supabaseDb.deleteClient(id)
-        return { success: true }
-      } catch (err) {
-        console.warn('Supabase deleteClient error:', err)
-      }
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      await supabaseDb.deleteClient(id)
+      return { success: true }
     }
 
     try {
@@ -492,7 +490,7 @@ export const taxApi = {
 
 export const expensesApi = {
   list: async (params?: any) => {
-    if (isSupabaseConfigured()) {
+    if (isSupabaseConfigured() && !isDemoMode()) {
       try {
         const supaExpenses = await supabaseDb.getExpenses()
         if (Array.isArray(supaExpenses)) return supaExpenses
@@ -504,37 +502,31 @@ export const expensesApi = {
     try {
       const res = await api.get('/expenses', { params })
       if (Array.isArray(res.data)) return res.data
-      return demoStore.getExpenses()
-    } catch (err) {
-      return demoStore.getExpenses()
+    } catch {
+      // ignore
     }
+
+    return demoStore.getExpenses()
   },
   create: async (data: any) => {
-    if (isSupabaseConfigured()) {
-      try {
-        const supaSaved = await supabaseDb.saveExpense(data)
-        if (supaSaved) return supaSaved
-      } catch (err) {
-        console.warn('Supabase saveExpense error:', err)
-      }
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      const supaSaved = await supabaseDb.saveExpense(data)
+      if (supaSaved) return supaSaved
     }
 
     try {
       const res = await api.post('/expenses', data)
       if (res.data && typeof res.data === 'object' && res.data.id) return res.data
-      return demoStore.saveExpense(data)
-    } catch (err) {
-      return demoStore.saveExpense(data)
+    } catch {
+      // ignore
     }
+
+    return demoStore.saveExpense(data)
   },
   delete: async (id: string) => {
-    if (isSupabaseConfigured()) {
-      try {
-        await supabaseDb.deleteExpense(id)
-        return { success: true }
-      } catch (err) {
-        console.warn('Supabase deleteExpense error:', err)
-      }
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      await supabaseDb.deleteExpense(id)
+      return { success: true }
     }
 
     try {
@@ -560,10 +552,10 @@ export const expensesApi = {
 
 export const settingsApi = {
   get: async () => {
-    if (isSupabaseConfigured()) {
+    if (isSupabaseConfigured() && !isDemoMode()) {
       try {
         const supaSettings = await supabaseDb.getSettings()
-        if (supaSettings && supaSettings.company_name) return supaSettings
+        if (supaSettings) return supaSettings
       } catch (err) {
         console.warn('Supabase getSettings error:', err)
       }
@@ -572,28 +564,26 @@ export const settingsApi = {
     try {
       const res = await api.get('/settings')
       if (res.data && typeof res.data === 'object' && res.data.company_name) return res.data
-      return demoStore.getSettings()
-    } catch (err) {
-      return demoStore.getSettings()
+    } catch {
+      // ignore
     }
+
+    return demoStore.getSettings()
   },
   update: async (data: any) => {
-    if (isSupabaseConfigured()) {
-      try {
-        const supaSaved = await supabaseDb.saveSettings(data)
-        if (supaSaved) return supaSaved
-      } catch (err) {
-        console.warn('Supabase saveSettings error:', err)
-      }
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      const supaSaved = await supabaseDb.saveSettings(data)
+      if (supaSaved) return supaSaved
     }
 
     try {
       const res = await api.put('/settings', data)
       if (res.data && typeof res.data === 'object' && res.data.company_name) return res.data
-      return demoStore.saveSettings(data)
-    } catch (err) {
-      return demoStore.saveSettings(data)
+    } catch {
+      // ignore
     }
+
+    return demoStore.saveSettings(data)
   },
 }
 

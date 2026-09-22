@@ -106,7 +106,7 @@ export function prepareInvoiceEmail(
   const dueDate = invoice.due_date ? fmt.date(invoice.due_date) : 'in overleg'
 
   const subject = `Factuur ${invoice.invoice_number} — ${companyName}`
-  const payLink = paymentLinkOverride || getDefaultPaymentLink()
+  const payLink = (paymentLinkOverride || invoice.payment_link || settings?.payment_link || getDefaultPaymentLink() || '').trim()
 
   // ── Nice & Short Plain Text Message (For Gmail, Outlook, Mailto, WhatsApp) ──
   let plainBody = `Beste ${clientName},

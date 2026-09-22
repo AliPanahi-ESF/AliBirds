@@ -48,6 +48,8 @@ CREATE TABLE business_settings (
     default_payment_term_days INT DEFAULT 14,
     next_invoice_sequence INT DEFAULT 1,
     default_vat_rate VARCHAR(20) DEFAULT '21',
+    invoice_notes_default TEXT,
+    payment_link TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     CONSTRAINT business_settings_user_id_unique UNIQUE (user_id)
@@ -88,6 +90,7 @@ CREATE TABLE invoices (
     reference TEXT,
     notes TEXT,
     payment_terms TEXT,
+    payment_link TEXT,
     pdf_path TEXT,
     subtotal_excl NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     total_vat NUMERIC(12, 2) NOT NULL DEFAULT 0.00,

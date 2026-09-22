@@ -33,32 +33,44 @@ export default function SettingsPage() {
   const { register, handleSubmit, reset } = useForm<Partial<BusinessSettings>>()
 
   useEffect(() => {
-    if (settings) reset(settings)
+    if (settings) {
+      reset(settings)
+      if (settings.payment_link) {
+        setDefaultPayLink(settings.payment_link)
+      }
+    }
   }, [settings, reset])
 
   useEffect(() => {
     const rKey = getResendKey()
     if (rKey) setResendApiKey(rKey)
     setResendSender(getResendSender())
-    setDefaultPayLink(getDefaultPaymentLink())
+    const localPayLink = getDefaultPaymentLink()
+    if (localPayLink && !defaultPayLink) setDefaultPayLink(localPayLink)
   }, [])
 
   const saveMutation = useMutation({
     mutationFn: (data: Partial<BusinessSettings>) => settingsApi.update(data),
-    onSuccess: () => {
+    onSuccess: (saved) => {
       toast.success('Bedrijfsgegevens succesvol opgeslagen!')
+      if (saved?.payment_link) {
+        setDefaultPayLink(saved.payment_link)
+        saveDefaultPaymentLink(saved.payment_link)
+      }
       qc.invalidateQueries({ queryKey: ['settings'] })
     },
     onError: () => toast.error('Opslaan mislukt'),
   })
 
-  const handleSaveResend = () => {
-    if (!resendApiKey.trim()) {
-      toast.error('Voer een geldige Resend API sleutel in.')
-      return
-    }
+  const handleSaveResend = async () => {
     saveResendConfig(resendApiKey, resendSender)
     saveDefaultPaymentLink(defaultPayLink)
+    try {
+      await settingsApi.update({ payment_link: defaultPayLink.trim() })
+      qc.invalidateQueries({ queryKey: ['settings'] })
+    } catch {
+      // ignore
+    }
     toast.success('E-mail- en betaalinstellingen opgeslagen!')
   }
 
@@ -215,6 +227,17 @@ export default function SettingsPage() {
               <label className="label">Standaard factuurnota</label>
               <textarea className="textarea text-xs sm:text-sm" rows={2} placeholder="Tekst die standaard onderaan elke factuur verschijnt..."
                 {...register('invoice_notes_default')} />
+            </div>
+            <div>
+              <label className="label">Directe Betaallink (iDEAL / Bunq / Tikkie / Stripe)</label>
+              <input
+                className="input text-xs sm:text-sm font-mono"
+                placeholder="https://bunq.me/uwbedrijf of https://tikkie.me/..."
+                {...register('payment_link')}
+              />
+              <p className="text-[11px] text-slate-400 mt-1">
+                Wordt gesynchroniseerd over al uw apparaten en automatisch toegevoegd aan factuur-e-mails.
+              </p>
             </div>
           </div>
         </form>

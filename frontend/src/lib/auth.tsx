@@ -144,9 +144,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+function cleanupDemoStorage() {
+  try {
+    localStorage.removeItem('alibirds_invoices')
+    localStorage.removeItem('alibirds_clients')
+    localStorage.removeItem('alibirds_expenses')
+    localStorage.removeItem('alibirds_settings')
+    localStorage.removeItem('alibirds_bank')
+  } catch {
+    // ignore
+  }
+}
+
     // Get session on first render
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
+        cleanupDemoStorage()
         const baseUser = supabaseUserToAppUser(session.user)
         const syncedUser = await syncOnboardingIfCompleted(baseUser, session.user)
         setUser(syncedUser)
@@ -159,6 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Subscribe to future auth events (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
+        cleanupDemoStorage()
         const baseUser = supabaseUserToAppUser(session.user)
         const syncedUser = await syncOnboardingIfCompleted(baseUser, session.user)
         setUser(syncedUser)
@@ -185,6 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string): Promise<User> => {
     localStorage.removeItem(DEMO_ACTIVE_KEY)
     if (isSupabaseConfigured()) {
+      cleanupDemoStorage()
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw new Error(error.message)
       const baseUser = supabaseUserToAppUser(data.user)
@@ -224,6 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const registerUser = useCallback(async (name: string, email: string, password: string): Promise<User> => {
     localStorage.removeItem(DEMO_ACTIVE_KEY)
+    cleanupDemoStorage()
     if (isSupabaseConfigured()) {
       const redirectUrl = `${window.location.origin}/`
       const { data, error } = await supabase.auth.signUp({
@@ -263,13 +279,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Save business profile to Supabase (or local fallback)
     await settingsApi.update(companyData)
-    demoStore.saveSettings(companyData)
 
     // Update Supabase user metadata with company name & is_onboarded flag
     if (isSupabaseConfigured()) {
       await supabase.auth.updateUser({
         data: {
           company_name: companyData.company_name,
+          trade_name: companyData.trade_name,
+          payment_link: companyData.payment_link,
+          invoice_notes_default: companyData.invoice_notes_default,
           is_onboarded: true,
         },
       })

@@ -69,6 +69,7 @@ export interface Invoice {
   sent_at?: string
   paid_at?: string
   line_items: LineItem[]
+  payment_link?: string
   created_at: string
   updated_at: string
 }
@@ -151,6 +152,7 @@ export interface BusinessSettings {
   logo_url?: string
   accent_color: string
   font_family: string
+  payment_link?: string
   created_at: string
   updated_at: string
 }

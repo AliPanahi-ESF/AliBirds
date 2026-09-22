@@ -58,12 +58,12 @@ export default function SendInvoiceModal({
     if (isOpen) {
       setRecipientEmail(resolvedClient?.email || '')
       setSaveToProfile(!resolvedClient?.email)
-      const existingPayLink = getDefaultPaymentLink() || (settings as any)?.payment_link || ''
+      const existingPayLink = invoice.payment_link || settings?.payment_link || getDefaultPaymentLink() || ''
       setPaymentLink(existingPayLink)
       setResendError(null)
       setCopied(false)
     }
-  }, [isOpen, resolvedClient, settings])
+  }, [isOpen, resolvedClient, settings, invoice])
 
   if (!isOpen) return null
 
@@ -83,6 +83,12 @@ export default function SendInvoiceModal({
   const handleSavePreferences = async (email: string) => {
     if (savePayLinkAsDefault && paymentLink.trim()) {
       saveDefaultPaymentLink(paymentLink.trim())
+      try {
+        await settingsApi.update({ payment_link: paymentLink.trim() })
+        qc.invalidateQueries({ queryKey: ['settings'] })
+      } catch {
+        // ignore
+      }
     }
     if (saveToProfile && resolvedClient?.id && email.includes('@')) {
       try {
