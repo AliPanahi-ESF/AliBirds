@@ -259,5 +259,7 @@ CREATE POLICY "Users manage own recurring_schedules"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
-
-
+-- ── Safe Schema Upgrades for Existing Deployments ─────────────────────────────
+-- Run these in Supabase SQL Editor if upgrading an older database instance:
+ALTER TABLE business_settings ADD COLUMN IF NOT EXISTS payment_link TEXT;
+ALTER TABLE business_settings ADD COLUMN IF NOT EXISTS invoice_notes_default TEXT;

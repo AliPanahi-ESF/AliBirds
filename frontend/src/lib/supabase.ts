@@ -13,20 +13,23 @@ export function dbToSettings(row: any, userMetadata?: any): BusinessSettings {
       id: '',
       company_name: userMetadata?.company_name || '',
       trade_name: userMetadata?.trade_name || userMetadata?.company_name || '',
-      kvk_number: '',
-      btw_id: '',
-      iban: '',
-      bic: '',
-      address_street: '',
-      address_city: '',
-      address_postcode: '',
-      address_country: 'NL',
-      default_payment_term_days: 14,
-      invoice_prefix: '2026-',
-      next_invoice_sequence: 1,
+      kvk_number: userMetadata?.kvk_number || '',
+      btw_id: userMetadata?.btw_id || '',
+      iban: userMetadata?.iban || '',
+      bic: userMetadata?.bic || '',
+      address_street: userMetadata?.address_street || '',
+      address_city: userMetadata?.address_city || '',
+      address_postcode: userMetadata?.address_postcode || '',
+      address_country: userMetadata?.address_country || 'NL',
+      phone: userMetadata?.phone || '',
+      email: userMetadata?.email || '',
+      website: userMetadata?.website || '',
+      default_payment_term_days: Number(userMetadata?.default_payment_term_days) || 14,
+      invoice_prefix: userMetadata?.invoice_prefix || '2026-',
+      next_invoice_sequence: Number(userMetadata?.next_invoice_sequence) || 1,
       invoice_notes_default: userMetadata?.invoice_notes_default || 'Graag betalen binnen de gestelde termijn o.v.v. het factuurnummer.',
-      accent_color: '#4f46e5',
-      font_family: 'Inter',
+      accent_color: userMetadata?.accent_color || '#4f46e5',
+      font_family: userMetadata?.font_family || 'Inter',
       payment_link: userMetadata?.payment_link || '',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -37,23 +40,23 @@ export function dbToSettings(row: any, userMetadata?: any): BusinessSettings {
     id: row.id || '',
     company_name: row.company_name || userMetadata?.company_name || '',
     trade_name: row.trading_name || row.trade_name || userMetadata?.trade_name || row.company_name || '',
-    kvk_number: row.kvk_number || '',
-    btw_id: row.vat_number || row.btw_id || '',
-    iban: row.iban || '',
-    bic: row.bic || '',
-    address_street: row.address_street || '',
-    address_city: row.address_city || '',
-    address_postcode: row.address_postcode || '',
-    address_country: row.country_code || row.address_country || 'NL',
-    phone: row.phone || '',
-    email: row.email || '',
-    website: row.website || '',
-    logo_url: row.logo_base64 || row.logo_url || undefined,
-    accent_color: row.accent_color || '#4f46e5',
-    font_family: row.font_family || 'Inter',
-    invoice_prefix: row.invoice_prefix || '2026-',
-    default_payment_term_days: Number(row.default_payment_term_days) || 14,
-    next_invoice_sequence: Number(row.next_invoice_sequence) || 1,
+    kvk_number: row.kvk_number || userMetadata?.kvk_number || '',
+    btw_id: row.vat_number || row.btw_id || userMetadata?.btw_id || '',
+    iban: row.iban || userMetadata?.iban || '',
+    bic: row.bic || userMetadata?.bic || '',
+    address_street: row.address_street || userMetadata?.address_street || '',
+    address_city: row.address_city || userMetadata?.address_city || '',
+    address_postcode: row.address_postcode || userMetadata?.address_postcode || '',
+    address_country: row.country_code || row.address_country || userMetadata?.address_country || 'NL',
+    phone: row.phone || userMetadata?.phone || '',
+    email: row.email || userMetadata?.email || '',
+    website: row.website || userMetadata?.website || '',
+    logo_url: row.logo_base64 || row.logo_url || userMetadata?.logo_url || undefined,
+    accent_color: row.accent_color || userMetadata?.accent_color || '#4f46e5',
+    font_family: row.font_family || userMetadata?.font_family || 'Inter',
+    invoice_prefix: row.invoice_prefix || userMetadata?.invoice_prefix || '2026-',
+    default_payment_term_days: Number(row.default_payment_term_days) || Number(userMetadata?.default_payment_term_days) || 14,
+    next_invoice_sequence: Number(row.next_invoice_sequence) || Number(userMetadata?.next_invoice_sequence) || 1,
     invoice_notes_default: row.invoice_notes_default || userMetadata?.invoice_notes_default || 'Graag betalen binnen de gestelde termijn o.v.v. het factuurnummer.',
     payment_link: row.payment_link || userMetadata?.payment_link || '',
     created_at: row.created_at || new Date().toISOString(),
@@ -64,25 +67,28 @@ export function dbToSettings(row: any, userMetadata?: any): BusinessSettings {
 export function settingsToDb(settings: any) {
   const result: any = {}
 
-  if (settings.company_name !== undefined) result.company_name = settings.company_name
+  if (settings.company_name !== undefined) result.company_name = settings.company_name?.trim() || ''
   if (settings.trade_name !== undefined || settings.trading_name !== undefined) {
-    result.trading_name = settings.trade_name || settings.trading_name || null
+    result.trading_name = (settings.trade_name || settings.trading_name || '').trim() || null
   }
-  if (settings.kvk_number !== undefined) result.kvk_number = settings.kvk_number
+  if (settings.kvk_number !== undefined) {
+    result.kvk_number = String(settings.kvk_number || '').replace(/\s+/g, '').slice(0, 8)
+  }
   if (settings.btw_id !== undefined || settings.vat_number !== undefined) {
-    result.vat_number = settings.btw_id || settings.vat_number || null
+    result.vat_number = String(settings.btw_id || settings.vat_number || '').trim().replace(/\s+/g, '') || null
   }
-  if (settings.iban !== undefined) result.iban = settings.iban
-  if (settings.bic !== undefined) result.bic = settings.bic
-  if (settings.address_street !== undefined) result.address_street = settings.address_street
-  if (settings.address_city !== undefined) result.address_city = settings.address_city
-  if (settings.address_postcode !== undefined) result.address_postcode = settings.address_postcode
+  if (settings.iban !== undefined) result.iban = String(settings.iban || '').trim().replace(/\s+/g, '')
+  if (settings.bic !== undefined) result.bic = String(settings.bic || '').trim().replace(/\s+/g, '') || null
+  if (settings.address_street !== undefined) result.address_street = settings.address_street?.trim() || ''
+  if (settings.address_city !== undefined) result.address_city = settings.address_city?.trim() || ''
+  if (settings.address_postcode !== undefined) result.address_postcode = settings.address_postcode?.trim() || ''
   if (settings.address_country !== undefined || settings.country_code !== undefined) {
-    result.country_code = settings.address_country || settings.country_code || 'NL'
+    const cc = (settings.address_country || settings.country_code || 'NL').trim()
+    result.country_code = cc ? cc.slice(0, 2).toUpperCase() : 'NL'
   }
-  if (settings.email !== undefined) result.email = settings.email
-  if (settings.phone !== undefined) result.phone = settings.phone
-  if (settings.website !== undefined) result.website = settings.website
+  if (settings.email !== undefined) result.email = settings.email?.trim() || null
+  if (settings.phone !== undefined) result.phone = settings.phone?.trim() || null
+  if (settings.website !== undefined) result.website = settings.website?.trim() || null
   if (settings.logo_url !== undefined || settings.logo_base64 !== undefined) {
     result.logo_base64 = settings.logo_url || settings.logo_base64 || null
   }
@@ -94,10 +100,7 @@ export function settingsToDb(settings: any) {
   if (settings.next_invoice_sequence !== undefined) {
     result.next_invoice_sequence = Number(settings.next_invoice_sequence) || 1
   }
-  if (settings.default_vat_rate !== undefined) result.default_vat_rate = settings.default_vat_rate
-  if (settings.invoice_notes_default !== undefined) result.invoice_notes_default = settings.invoice_notes_default
-  if (settings.payment_link !== undefined) result.payment_link = settings.payment_link || null
-  if (settings.font_family !== undefined) result.font_family = settings.font_family
+  if (settings.default_vat_rate !== undefined) result.default_vat_rate = String(settings.default_vat_rate)
 
   return result
 }
@@ -289,6 +292,45 @@ export const supabase = createClient(safeUrl, safeKey, {
     detectSessionInUrl: true,
   },
 })
+
+async function executeSettingsDbSave(payload: Record<string, any>, currentId?: string) {
+  const attemptPayload = { ...payload }
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      if (currentId) {
+        const { data, error } = await supabase
+          .from('business_settings')
+          .update(attemptPayload)
+          .eq('id', currentId)
+          .select()
+          .single()
+        if (error) throw error
+        return data
+      } else {
+        const { data, error } = await supabase
+          .from('business_settings')
+          .insert(attemptPayload)
+          .select()
+          .single()
+        if (error) throw error
+        return data
+      }
+    } catch (err: any) {
+      const errMsg = err?.message || ''
+      const match = errMsg.match(/column [^.]*\.?([a-zA-Z0-9_]+) does not exist/i) ||
+                    errMsg.match(/Could not find the '([a-zA-Z0-9_]+)' column/i) ||
+                    errMsg.match(/column "([a-zA-Z0-9_]+)" does not exist/i)
+
+      if (match && match[1] && attemptPayload[match[1]] !== undefined) {
+        console.warn(`[AliBirds] Column '${match[1]}' does not exist in business_settings. Stripping and retrying...`)
+        delete attemptPayload[match[1]]
+        continue
+      }
+      throw err
+    }
+  }
+}
 
 /**
  * Supabase Data Access Object
@@ -542,6 +584,12 @@ export const supabaseDb = {
       const { data: { session } } = await supabase.auth.getSession()
       const userMetadata = session?.user?.user_metadata || {}
 
+      let cached: any = null
+      try {
+        const raw = localStorage.getItem('alibirds_settings_cache')
+        if (raw) cached = JSON.parse(raw)
+      } catch {}
+
       const { data, error } = await supabase
         .from('business_settings')
         .select('*')
@@ -552,11 +600,22 @@ export const supabaseDb = {
         console.warn('Supabase getSettings query warning:', error)
       }
 
-      if (!data && !session?.user) {
+      if (!data && !session?.user && !cached) {
         return null
       }
 
-      return dbToSettings(data, userMetadata)
+      const mergedMeta = {
+        ...cached,
+        ...userMetadata,
+      }
+
+      const settings = dbToSettings(data, mergedMeta)
+
+      try {
+        localStorage.setItem('alibirds_settings_cache', JSON.stringify(settings))
+      } catch {}
+
+      return settings
     } catch (err) {
       console.warn('Supabase getSettings error:', err)
       return null
@@ -570,14 +629,26 @@ export const supabaseDb = {
     const { data: { session } } = await supabase.auth.getSession()
     const userMetadata = session?.user?.user_metadata || {}
 
-    // 2. Synchronize user metadata across all devices via Supabase Auth
+    // 2. Synchronize across all devices via Supabase Auth user_metadata
     try {
       await supabase.auth.updateUser({
         data: {
-          company_name: settingsData.company_name || userMetadata.company_name,
-          trade_name: settingsData.trade_name || settingsData.company_name || userMetadata.trade_name,
+          company_name: settingsData.company_name ?? userMetadata.company_name,
+          trade_name: settingsData.trade_name ?? settingsData.company_name ?? userMetadata.trade_name,
+          phone: settingsData.phone ?? userMetadata.phone,
+          email: settingsData.email ?? userMetadata.email,
+          website: settingsData.website ?? userMetadata.website,
+          kvk_number: settingsData.kvk_number ?? userMetadata.kvk_number,
+          btw_id: settingsData.btw_id ?? userMetadata.btw_id,
+          iban: settingsData.iban ?? userMetadata.iban,
+          bic: settingsData.bic ?? userMetadata.bic,
+          address_street: settingsData.address_street ?? userMetadata.address_street,
+          address_city: settingsData.address_city ?? userMetadata.address_city,
+          address_postcode: settingsData.address_postcode ?? userMetadata.address_postcode,
+          address_country: settingsData.address_country ?? userMetadata.address_country,
           payment_link: settingsData.payment_link !== undefined ? settingsData.payment_link : userMetadata.payment_link,
           invoice_notes_default: settingsData.invoice_notes_default !== undefined ? settingsData.invoice_notes_default : userMetadata.invoice_notes_default,
+          font_family: settingsData.font_family || userMetadata.font_family || 'Inter',
           is_onboarded: true,
         },
       })
@@ -585,7 +656,14 @@ export const supabaseDb = {
       console.warn('Could not update user metadata:', authErr)
     }
 
-    // 3. Map to safe database columns (strictly valid PostgreSQL table columns)
+    // 3. Cache locally immediately so UI never loses changes
+    try {
+      const prev = localStorage.getItem('alibirds_settings_cache')
+      const prevObj = prev ? JSON.parse(prev) : {}
+      localStorage.setItem('alibirds_settings_cache', JSON.stringify({ ...prevObj, ...settingsData }))
+    } catch {}
+
+    // 4. Map to safe database columns (strictly valid PostgreSQL table columns)
     const dbPayload = settingsToDb(settingsData)
 
     try {
@@ -595,37 +673,25 @@ export const supabaseDb = {
         .limit(1)
         .maybeSingle()
 
-      let savedRow: any = null
-
-      if (current.data && current.data.id) {
-        const { data, error } = await supabase
-          .from('business_settings')
-          .update(dbPayload)
-          .eq('id', current.data.id)
-          .select()
-          .single()
-        if (error) throw error
-        savedRow = data
-      } else {
-        const { data, error } = await supabase
-          .from('business_settings')
-          .insert(dbPayload)
-          .select()
-          .single()
-        if (error) throw error
-        savedRow = data
+      if (!current?.data?.id && session?.user?.id) {
+        dbPayload.user_id = session.user.id
       }
 
-      return dbToSettings(savedRow, {
+      const savedRow = await executeSettingsDbSave(dbPayload, current?.data?.id)
+
+      const mergedSettings = dbToSettings(savedRow, {
         ...userMetadata,
         ...settingsData,
       })
-    } catch (dbErr) {
-      console.warn('Supabase saveSettings DB warning, returning metadata-synced settings:', dbErr)
-      return dbToSettings(null, {
-        ...userMetadata,
-        ...settingsData,
-      })
+
+      try {
+        localStorage.setItem('alibirds_settings_cache', JSON.stringify(mergedSettings))
+      } catch {}
+
+      return mergedSettings
+    } catch (dbErr: any) {
+      console.error('Supabase saveSettings DB error:', dbErr)
+      throw new Error(dbErr?.message || 'Opslaan van bedrijfsgegevens in database mislukt.')
     }
   },
 

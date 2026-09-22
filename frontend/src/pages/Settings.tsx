@@ -30,16 +30,16 @@ export default function SettingsPage() {
     queryKey: ['settings'],
     queryFn: settingsApi.get,
   })
-  const { register, handleSubmit, reset } = useForm<Partial<BusinessSettings>>()
+  const { register, handleSubmit, reset, formState: { isDirty } } = useForm<Partial<BusinessSettings>>()
 
   useEffect(() => {
-    if (settings) {
+    if (settings && !isDirty) {
       reset(settings)
       if (settings.payment_link) {
         setDefaultPayLink(settings.payment_link)
       }
     }
-  }, [settings, reset])
+  }, [settings, reset, isDirty])
 
   useEffect(() => {
     const rKey = getResendKey()
@@ -53,6 +53,9 @@ export default function SettingsPage() {
     mutationFn: (data: Partial<BusinessSettings>) => settingsApi.update(data),
     onSuccess: (saved) => {
       toast.success('Bedrijfsgegevens succesvol opgeslagen!')
+      if (saved) {
+        reset(saved)
+      }
       if (saved?.company_name) {
         updateUser({ company_name: saved.company_name })
       }
@@ -60,9 +63,13 @@ export default function SettingsPage() {
         setDefaultPayLink(saved.payment_link)
         saveDefaultPaymentLink(saved.payment_link)
       }
+      qc.setQueryData(['settings'], saved)
       qc.invalidateQueries({ queryKey: ['settings'] })
     },
-    onError: () => toast.error('Opslaan mislukt'),
+    onError: (err: any) => {
+      console.error('Settings save error:', err)
+      toast.error(err?.message || 'Opslaan mislukt. Probeer het opnieuw.')
+    },
   })
 
   const handleSaveResend = async () => {
