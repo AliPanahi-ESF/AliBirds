@@ -21,6 +21,18 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 const ONBOARDING_KEY = 'alibirds_onboarding_status' // tracks per-uid whether onboarding is done
 const DEMO_ACTIVE_KEY = 'alibirds_demo_active'
 
+function cleanupDemoStorage() {
+  try {
+    localStorage.removeItem('alibirds_invoices')
+    localStorage.removeItem('alibirds_clients')
+    localStorage.removeItem('alibirds_expenses')
+    localStorage.removeItem('alibirds_settings')
+    localStorage.removeItem('alibirds_bank')
+  } catch {
+    // ignore
+  }
+}
+
 function getOnboardingStatus(uid: string): boolean {
   try {
     const raw = localStorage.getItem(ONBOARDING_KEY)
@@ -143,18 +155,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // ignore
       }
     }
-
-function cleanupDemoStorage() {
-  try {
-    localStorage.removeItem('alibirds_invoices')
-    localStorage.removeItem('alibirds_clients')
-    localStorage.removeItem('alibirds_expenses')
-    localStorage.removeItem('alibirds_settings')
-    localStorage.removeItem('alibirds_bank')
-  } catch {
-    // ignore
-  }
-}
 
     // Get session on first render
     supabase.auth.getSession().then(async ({ data: { session } }) => {
