@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import {
   Save, Settings as SettingsIcon, Mail, Building2,
-  CheckCircle2, ExternalLink, User as UserIcon, LogOut, ShieldCheck
+  CheckCircle2, ExternalLink, User as UserIcon, LogOut, ShieldCheck, Send
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { settingsApi } from '@/lib/api'
@@ -12,7 +12,7 @@ import { clsx } from 'clsx'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import {
   getResendKey, saveResendConfig, getResendSender, isResendConfigured,
-  getDefaultPaymentLink, saveDefaultPaymentLink
+  getDefaultPaymentLink, saveDefaultPaymentLink, sendTestEmail
 } from '@/lib/email'
 import { useAuth } from '@/lib/auth'
 
@@ -25,6 +25,8 @@ export default function SettingsPage() {
   const [resendApiKey, setResendApiKey] = useState('')
   const [resendSender, setResendSender] = useState('')
   const [defaultPayLink, setDefaultPayLink] = useState('')
+  const [isTestingEmail, setIsTestingEmail] = useState(false)
+  const [testEmailTarget, setTestEmailTarget] = useState('')
 
   const { data: settings, isLoading } = useQuery<BusinessSettings>({
     queryKey: ['settings'],
@@ -47,7 +49,8 @@ export default function SettingsPage() {
     setResendSender(getResendSender())
     const localPayLink = getDefaultPaymentLink()
     if (localPayLink && !defaultPayLink) setDefaultPayLink(localPayLink)
-  }, [])
+    if (user?.email && !testEmailTarget) setTestEmailTarget(user.email)
+  }, [user])
 
   const saveMutation = useMutation({
     mutationFn: (data: Partial<BusinessSettings>) => settingsApi.update(data),
@@ -82,6 +85,31 @@ export default function SettingsPage() {
       // ignore
     }
     toast.success('E-mail- en betaalinstellingen opgeslagen!')
+  }
+
+  const handleSendTest = async () => {
+    const target = testEmailTarget.trim() || user?.email || ''
+    if (!target || !target.includes('@')) {
+      toast.error('Vul een geldig e-mailadres in om een testmail te ontvangen.')
+      return
+    }
+
+    saveResendConfig(resendApiKey, resendSender)
+    saveDefaultPaymentLink(defaultPayLink)
+
+    setIsTestingEmail(true)
+    try {
+      const res = await sendTestEmail(target)
+      if (res.ok) {
+        toast.success(res.message)
+      } else {
+        toast.error(res.message, { duration: 6000 })
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Verzenden van test e-mail mislukt.')
+    } finally {
+      setIsTestingEmail(false)
+    }
   }
 
   if (isLoading) return <div className="text-slate-500 text-xs py-8">Instellingen laden...</div>
@@ -346,6 +374,9 @@ export default function SettingsPage() {
                   value={resendApiKey}
                   onChange={e => setResendApiKey(e.target.value)}
                 />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Uw geheime API-sleutel van Resend. Wordt veilig lokaal opgeslagen en gebruikt voor in-app verzending.
+                </p>
               </div>
 
               <div>
@@ -357,6 +388,9 @@ export default function SettingsPage() {
                   value={resendSender}
                   onChange={e => setResendSender(e.target.value)}
                 />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Gebruik <code className="text-brand-300">onboarding@resend.dev</code> voor gratis tests naar uw eigen account, of voeg uw eigen domein toe in Resend om naar alle klanten te sturen.
+                </p>
               </div>
 
               <div>
@@ -391,6 +425,61 @@ export default function SettingsPage() {
                 >
                   Gratis Resend sleutel ophalen <ExternalLink size={12} />
                 </a>
+              </div>
+            </div>
+
+            {/* Test Email Verification Box */}
+            <div className="mt-4 pt-4 border-t border-slate-800 space-y-3">
+              <div>
+                <h4 className="text-xs font-bold text-slate-200">Verbinding testen</h4>
+                <p className="text-[11px] text-slate-400">
+                  Stuur direct een test e-mail om te verifiëren dat direct verzenden in de app werkt.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="email"
+                  className="input text-xs sm:text-sm font-mono flex-1"
+                  placeholder={user?.email || 'uw-email@domein.nl'}
+                  value={testEmailTarget}
+                  onChange={e => setTestEmailTarget(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={handleSendTest}
+                  disabled={isTestingEmail || !resendApiKey}
+                  className="btn-secondary text-xs sm:text-sm py-2 px-4 whitespace-nowrap flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  title={!resendApiKey ? 'Vul eerst uw Resend API Key in hierboven' : undefined}
+                >
+                  <Send size={13} />
+                  <span>{isTestingEmail ? 'Verzenden...' : 'Stuur testmail'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Step-by-Step Setup Guide */}
+            <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-xs">
+              <h4 className="font-semibold text-slate-300">Hoe werkt direct verzenden in de app?</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+                  <div className="font-bold text-brand-400">1. Gratis account</div>
+                  <p className="text-slate-400 text-[11px] leading-relaxed">
+                    Meld u gratis aan op <a href="https://resend.com" target="_blank" rel="noreferrer" className="text-brand-300 underline">resend.com</a>. U krijgt 3.000 gratis e-mails per maand.
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+                  <div className="font-bold text-brand-400">2. API Key invoeren</div>
+                  <p className="text-slate-400 text-[11px] leading-relaxed">
+                    Kopieer uw API Key (<code className="text-brand-300 font-mono">re_...</code>) en plak deze hierboven in het veld.
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+                  <div className="font-bold text-brand-400">3. Direct versturen</div>
+                  <p className="text-slate-400 text-[11px] leading-relaxed">
+                    U kunt nu facturen direct vanuit AliBirds verzenden met PDF en iDEAL-betaallink, of blijven kiezen voor Gmail/Outlook.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

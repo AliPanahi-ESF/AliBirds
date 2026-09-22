@@ -12,23 +12,41 @@ import { Invoice, BusinessSettings } from './types'
 import { fmt } from './api'
 import { generateInvoicePdfBase64 } from './pdfGenerator'
 
+const STORAGE_KEY_API_KEY = 'alibirds_resend_api_key'
 const STORAGE_KEY_SENDER = 'alibirds_resend_sender'
 const STORAGE_KEY_PAYLINK = 'alibirds_default_payment_link'
 
 const DEFAULT_RESEND_SENDER = 'onboarding@resend.dev'
 
-// Note: The Resend API key is NOT stored or sent from the frontend.
-// It lives exclusively in the Netlify environment variable RESEND_API_KEY,
-// accessed server-side by the /api/send-email serverless function.
 export function getResendKey(): string {
-  // Returns empty — the key is handled server-side only
-  return ''
+  try {
+    const localKey = localStorage.getItem(STORAGE_KEY_API_KEY)
+    if (localKey && localKey.trim()) return localKey.trim()
+    const envKey = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_RESEND_API_KEY) || ''
+    return envKey.trim()
+  } catch {
+    return ''
+  }
 }
 
-export function saveResendConfig(_apiKey: string, senderEmail?: string): void {
-  // API key is no longer stored in the browser — it's a server-side secret
-  if (senderEmail) {
-    localStorage.setItem(STORAGE_KEY_SENDER, senderEmail.trim())
+export function saveResendConfig(apiKey?: string, senderEmail?: string): void {
+  try {
+    if (apiKey !== undefined) {
+      if (apiKey.trim()) {
+        localStorage.setItem(STORAGE_KEY_API_KEY, apiKey.trim())
+      } else {
+        localStorage.removeItem(STORAGE_KEY_API_KEY)
+      }
+    }
+    if (senderEmail !== undefined) {
+      if (senderEmail.trim()) {
+        localStorage.setItem(STORAGE_KEY_SENDER, senderEmail.trim())
+      } else {
+        localStorage.removeItem(STORAGE_KEY_SENDER)
+      }
+    }
+  } catch {
+    // ignore
   }
 }
 
@@ -64,7 +82,7 @@ export function saveDefaultPaymentLink(link: string): void {
 }
 
 export function isResendConfigured(): boolean {
-  return true
+  return Boolean(getResendKey())
 }
 
 export interface PreparedInvoiceEmail {
@@ -277,7 +295,7 @@ export async function sendInvoiceViaResend(
         subject,
         html: htmlBody,
         attachments,
-        // apiKey intentionally omitted — the server uses its own env-var secret
+        apiKey: apiKey || undefined,
       },
       {
         timeout: 12000,
@@ -353,5 +371,59 @@ export async function sendInvoiceViaResend(
       ok: false,
       message: errorMsg || 'Fout bij verzenden via Resend.',
     }
+  }
+}
+
+/**
+ * Send a verification test email to verify Resend configuration.
+ */
+export async function sendTestEmail(toEmail: string): Promise<SendResult> {
+  const apiKey = getResendKey()
+  const sender = getResendSender()
+
+  if (!toEmail || !toEmail.includes('@')) {
+    return { ok: false, message: 'Vul een geldig e-mailadres in om een testmail te ontvangen.' }
+  }
+
+  try {
+    const res = await axios.post(
+      '/api/send-email',
+      {
+        to: toEmail,
+        from: sender,
+        subject: 'AliBirds E-mail Test Succesvol ✅',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff; color: #1e293b;">
+            <div style="background: #4f46e5; width: 40px; height: 40px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px; color: white; font-weight: bold; font-size: 20px; text-align: center; line-height: 40px;">
+              A
+            </div>
+            <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">E-mailverbinding succesvol geconfigureerd!</h2>
+            <p style="color: #334155; font-size: 14px; line-height: 1.6;">
+              Gefeliciteerd! Uw e-mailservice is correct ingesteld. U kunt nu facturen met PDF-bijlage en directe iDEAL-betaallink rechtstreeks vanuit de applicatie verzenden naar uw klanten.
+            </p>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin: 20px 0; font-size: 13px; color: #475569;">
+              <strong>Afzender:</strong> ${sender}<br/>
+              <strong>Testontvanger:</strong> ${toEmail}
+            </div>
+            <p style="color: #94a3b8; font-size: 12px; margin-top: 24px; border-top: 1px solid #f1f5f9; padding-top: 12px;">
+              Verzonden via AliBirds Facturatie Cloud
+            </p>
+          </div>
+        `,
+        apiKey: apiKey || undefined,
+      },
+      {
+        timeout: 12000,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    )
+
+    if (res.data?.ok) {
+      return { ok: true, message: `Test e-mail succesvol verzonden naar ${toEmail}!` }
+    }
+    return { ok: false, message: res.data?.message || 'Test e-mail kon niet worden verzonden.' }
+  } catch (err: any) {
+    const errorMsg = err.response?.data?.message || err.message || 'Verzenden van test e-mail mislukt.'
+    return { ok: false, message: errorMsg }
   }
 }

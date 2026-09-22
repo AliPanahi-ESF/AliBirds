@@ -42,22 +42,24 @@ export default async (req: Request) => {
   try {
     // FIXED: Parse the request body — previously missing, causing a ReferenceError crash on every call
     const body = await req.json()
-    // Note: 'apiKey' is intentionally NOT accepted from the client for security reasons.
-    const { to, from, subject, html, attachments } = body
+    const { to, from, subject, html, attachments, apiKey } = body
 
     if (!to || (Array.isArray(to) ? to.length === 0 : !to)) {
-      return new Response(JSON.stringify({ ok: false, message: 'No recipient email address provided.' }), {
+      return new Response(JSON.stringify({ ok: false, message: 'Geen e-mailadres voor ontvanger opgegeven.' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
       })
     }
 
-    // API key comes exclusively from server environment — never from the client
-    const resendKey = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY
+    // API key: Netlify server environment variable has priority; falls back to key saved in App Settings
+    const resendKey = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || (typeof apiKey === 'string' && apiKey.trim() ? apiKey.trim() : null)
     if (!resendKey) {
-      console.error('RESEND_API_KEY environment variable is not configured in Netlify.')
-      return new Response(JSON.stringify({ ok: false, message: 'Email service is not configured. Please contact support.' }), {
-        status: 503,
+      console.error('RESEND_API_KEY is niet geconfigureerd op de server en ontbreekt in het verzoek.')
+      return new Response(JSON.stringify({
+        ok: false,
+        message: 'E-mailservice is nog niet geconfigureerd. Voer uw Resend API-sleutel in bij Instellingen > E-mail of voeg RESEND_API_KEY toe in Netlify.'
+      }), {
+        status: 400,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
       })
     }

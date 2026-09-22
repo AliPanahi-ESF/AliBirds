@@ -15,6 +15,7 @@ import {
   sendInvoiceViaResend,
   getDefaultPaymentLink,
   saveDefaultPaymentLink,
+  isResendConfigured,
 } from '@/lib/email'
 import { downloadInvoicePdf } from '@/lib/pdfGenerator'
 import { useQueryClient } from '@tanstack/react-query'
@@ -360,10 +361,64 @@ export default function SendInvoiceModal({
           </div>
         )}
 
-        {/* 1-Click Sending Options */}
+        {/* 1. Direct In-App Sending Option */}
+        <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-700/80 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center">
+                <Send size={13} />
+              </div>
+              <span className="text-xs font-bold text-slate-100">Direct in de app verzenden</span>
+            </div>
+            {isResendConfigured() ? (
+              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-medium">
+                <Sparkles size={10} /> Klaar voor verzending
+              </span>
+            ) : (
+              <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-medium">
+                Sleutel vereist
+              </span>
+            )}
+          </div>
+
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            Verstuur de factuur direct vanuit AliBirds inclusief officiële A4 PDF-bijlage en klikbare iDEAL-betaalknop.
+          </p>
+
+          <button
+            type="button"
+            onClick={handleSendViaResend}
+            disabled={isSendingResend || !recipientEmail}
+            className="w-full btn-primary py-2.5 text-xs sm:text-sm flex items-center justify-center gap-2 font-semibold shadow-md shadow-brand-600/20 disabled:opacity-50"
+          >
+            <Send size={14} />
+            <span>
+              {isSendingResend
+                ? 'Factuur met PDF wordt verzonden...'
+                : isResendConfigured()
+                ? 'Verzend nu direct via AliBirds (inclusief PDF)'
+                : 'Direct verzenden (Resend sleutel vereist)'}
+            </span>
+          </button>
+
+          {!isResendConfigured() && (
+            <div className="text-[11px] text-slate-400 pt-0.5 flex items-center justify-between">
+              <span>Nog geen Resend API-sleutel? (3.000 gratis mails/mnd)</span>
+              <a
+                href="/settings"
+                target="_blank"
+                className="text-brand-400 hover:underline font-medium flex items-center gap-1"
+              >
+                Instellen in 1 minuut <ExternalLink size={10} />
+              </a>
+            </div>
+          )}
+        </div>
+
+        {/* 2. External 1-Click Sending Options */}
         <div className="space-y-2 pt-1">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            Verzenden vanaf uw eigen e-mail (1-Klik met betaallink)
+            Of open in uw vertrouwde e-mailprogramma
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -423,26 +478,6 @@ export default function SendInvoiceModal({
               <span>{copied ? 'Gekopieerd!' : 'Kopieer e-mailtekst'}</span>
             </button>
           </div>
-        </div>
-
-        {/* Direct Cloud Resend Option with PDF Attachment */}
-        <div className="pt-2 border-t border-slate-800/80 space-y-2">
-          <div className="flex items-center justify-between text-[11px] text-slate-400">
-            <span>Geautomatiseerde cloud-verzending</span>
-            <span className="text-[10px] text-emerald-400 flex items-center gap-1">
-              <Sparkles size={11} /> Resend + PDF bijlage
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleSendViaResend}
-            disabled={isSendingResend || !recipientEmail}
-            className="w-full btn-primary py-2.5 text-xs sm:text-sm flex items-center justify-center gap-2 font-semibold shadow-lg shadow-brand-500/10 disabled:opacity-50"
-          >
-            <Send size={14} />
-            <span>{isSendingResend ? 'Verzenden met PDF-bijlage...' : 'Verzenden via Resend Cloud (inclusief PDF-bijlage)'}</span>
-          </button>
         </div>
 
         {/* Collapsible Short Email Preview */}
