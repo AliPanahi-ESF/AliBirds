@@ -292,6 +292,7 @@ export async function sendInvoiceViaResend(
       {
         to: recipient,
         from: fromAddress,
+        replyTo: settings?.email || undefined,
         subject,
         html: htmlBody,
         attachments,

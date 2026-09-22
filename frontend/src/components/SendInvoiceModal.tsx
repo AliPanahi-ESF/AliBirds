@@ -347,16 +347,31 @@ export default function SendInvoiceModal({
 
         {/* Resend Error Banner if test restriction occurs */}
         {resendError && (
-          <div className="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl space-y-1 text-xs">
+          <div className="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl space-y-2 text-xs">
             <div className="flex items-center gap-2 text-amber-400 font-semibold">
               <AlertCircle size={14} className="shrink-0" />
-              <span>Resend melding</span>
+              <span>E-mailmelding</span>
             </div>
             <p className="text-slate-300 text-[11px] leading-relaxed">
               {resendError}
             </p>
-            <div className="text-[11px] text-amber-300/90 pt-0.5">
-              👉 <strong>Tip:</strong> Gebruik hieronder <strong>Gmail</strong> of <strong>Outlook</strong> om de factuur direct vanaf uw eigen adres te versturen!
+            <div className="flex items-center gap-2 pt-0.5 flex-wrap">
+              <button
+                type="button"
+                onClick={handleOpenGmail}
+                className="px-2.5 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              >
+                <Mail size={13} />
+                <span>Open direct in Gmail</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenOutlook}
+                className="px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              >
+                <Mail size={13} />
+                <span>Open direct in Outlook</span>
+              </button>
             </div>
           </div>
         )}

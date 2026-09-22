@@ -42,7 +42,7 @@ export default async (req: Request) => {
   try {
     // FIXED: Parse the request body — previously missing, causing a ReferenceError crash on every call
     const body = await req.json()
-    const { to, from, subject, html, attachments, apiKey } = body
+    const { to, from, subject, html, attachments, apiKey, replyTo } = body
 
     if (!to || (Array.isArray(to) ? to.length === 0 : !to)) {
       return new Response(JSON.stringify({ ok: false, message: 'Geen e-mailadres voor ontvanger opgegeven.' }), {
@@ -71,6 +71,10 @@ export default async (req: Request) => {
       to: Array.isArray(to) ? to : [to],
       subject: subject || 'Factuur van AliBirds',
       html: html || '<p>Hierbij ontvangt u uw factuur.</p>',
+    }
+
+    if (replyTo) {
+      emailPayload.reply_to = replyTo
     }
 
     if (attachments && Array.isArray(attachments) && attachments.length > 0) {
