@@ -541,7 +541,7 @@ export const demoStore = {
     const incl = Math.round((excl + vatAmount) * 100) / 100
 
     const newExp: Expense = {
-      id: `exp-${Date.now()}`,
+      id: exp.id || `exp-${Date.now()}`,
       vendor_name: exp.vendor_name || 'Leverancier',
       expense_date: exp.expense_date || new Date().toISOString().slice(0, 10),
       category: exp.category || 'OTHER',
@@ -550,6 +550,10 @@ export const demoStore = {
       vat_amount: vatAmount,
       amount_incl_vat: incl,
       description: exp.description || '',
+      receipt_url: exp.receipt_url || undefined,
+      receipt_filename: exp.receipt_filename || undefined,
+      ocr_status: exp.ocr_status || (exp.receipt_url ? 'PROCESSED' : undefined),
+      ocr_raw_json: exp.ocr_raw_json || undefined,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }

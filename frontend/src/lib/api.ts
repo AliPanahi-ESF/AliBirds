@@ -3,6 +3,7 @@ import axios from 'axios'
 import { demoStore } from './demoData'
 import { isSupabaseConfigured, supabaseDb, supabase } from './supabase'
 import { parseMT940, autoMatchTransactions } from './mt940'
+import { scanReceiptFile } from './ocrScanner'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -701,6 +702,9 @@ export const expensesApi = {
     } catch (err) {
       return { success: true }
     }
+  },
+  scanReceipt: async (file: File) => {
+    return scanReceiptFile(file)
   },
 }
 

@@ -136,9 +136,28 @@ export interface Expense {
   vat_amount: number
   amount_incl_vat: number
   receipt_file_path?: string
+  receipt_url?: string
+  receipt_filename?: string
+  ocr_status?: 'PENDING' | 'PROCESSED' | 'FAILED'
+  ocr_raw_json?: any
   notes?: string
   created_at: string
   updated_at: string
+}
+
+export interface OCRParsedResult {
+  vendor_name?: string
+  expense_date?: string
+  amount_excl_vat?: number
+  vat_rate?: string
+  vat_amount?: number
+  amount_incl_vat?: number
+  category?: string
+  description?: string
+  receipt_url?: string
+  receipt_filename?: string
+  confidence?: number
+  raw_text?: string
 }
 
 export interface BtwRubric {

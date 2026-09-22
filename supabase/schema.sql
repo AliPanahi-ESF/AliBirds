@@ -131,6 +131,10 @@ CREATE TABLE expenses (
     vat_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     amount_incl NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     receipt_path TEXT,
+    receipt_url TEXT,
+    receipt_filename TEXT,
+    ocr_status VARCHAR(32) DEFAULT 'PENDING', -- PENDING, PROCESSED, FAILED
+    ocr_raw_json JSONB,
     payment_method VARCHAR(50) DEFAULT 'BANK',
     is_deductible BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -307,3 +311,7 @@ CREATE POLICY "Public can sign quotations"
 -- Run these in Supabase SQL Editor if upgrading an older database instance:
 ALTER TABLE business_settings ADD COLUMN IF NOT EXISTS payment_link TEXT;
 ALTER TABLE business_settings ADD COLUMN IF NOT EXISTS invoice_notes_default TEXT;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS receipt_url TEXT;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS receipt_filename TEXT;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS ocr_status TEXT DEFAULT 'PENDING';
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS ocr_raw_json JSONB;
