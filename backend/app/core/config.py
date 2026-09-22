@@ -18,11 +18,12 @@ class Settings(BaseSettings):
     )
 
     # ── App ────────────────────────────────────────────────────────────────────
-    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173,https://localhost:3000"
+    SECRET_KEY: str = "change-me"
+    ALLOWED_ORIGINS: str = "http://localhost:3000"
 
     @property
     def cors_origins(self) -> List[str]:
-        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
 
     # ── Database ───────────────────────────────────────────────────────────────
     DATABASE_URL: str = "sqlite+aiosqlite:///./storage/alibirds.db"

@@ -14,7 +14,7 @@ from app.db.database import init_db
 from app.tasks.scheduler import start_scheduler, stop_scheduler
 
 from app.api import (
-    invoices, clients, bank, tax, expenses, app_settings, recurring, dashboard
+    invoices, clients, bank, tax, expenses, app_settings, recurring, dashboard, auth
 )
 
 
@@ -51,6 +51,7 @@ app.mount("/storage", StaticFiles(directory="storage"), name="storage")
 
 # ─── API Routers ──────────────────────────────────────────────────────────────
 
+app.include_router(auth.router,             prefix="/api", tags=["Auth"])
 app.include_router(dashboard.router,     prefix="/api", tags=["Dashboard"])
 app.include_router(invoices.router,      prefix="/api", tags=["Invoices"])
 app.include_router(clients.router,       prefix="/api", tags=["Clients"])

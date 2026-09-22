@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Building2, MapPin, CreditCard, CheckCircle, ArrowRight, ArrowLeft,
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/lib/auth'
+import { settingsApi } from '@/lib/api'
 import { clsx } from 'clsx'
 
 export default function OnboardingPage() {
@@ -14,6 +15,7 @@ export default function OnboardingPage() {
 
   const [step, setStep] = useState(1)
   const [submitting, setSubmitting] = useState(false)
+  const [existingSettingsFound, setExistingSettingsFound] = useState(false)
 
   // Onboarding Form State matching Dutch legal requirements
   const [companyName, setCompanyName] = useState(user?.company_name || '')
@@ -31,6 +33,33 @@ export default function OnboardingPage() {
   const [paymentTermDays, setPaymentTermDays] = useState(14)
   const [invoicePrefix, setInvoicePrefix] = useState('2026-')
   const [accentColor, setAccentColor] = useState('#4f46e5')
+
+  useEffect(() => {
+    const loadExistingSettings = async () => {
+      try {
+        const s = await settingsApi.get()
+        if (s && s.company_name && s.company_name.trim().length > 0) {
+          setCompanyName(s.company_name)
+          if (s.trade_name) setTradeName(s.trade_name)
+          if (s.kvk_number) setKvkNumber(s.kvk_number)
+          if (s.btw_id) setBtwId(s.btw_id)
+          if (s.address_street) setAddressStreet(s.address_street)
+          if (s.address_postcode) setAddressPostcode(s.address_postcode)
+          if (s.address_city) setAddressCity(s.address_city)
+          if (s.address_country) setAddressCountry(s.address_country)
+          if (s.iban) setIban(s.iban)
+          if (s.bic) setBic(s.bic)
+          if (s.default_payment_term_days) setPaymentTermDays(s.default_payment_term_days)
+          if (s.invoice_prefix) setInvoicePrefix(s.invoice_prefix)
+          if (s.accent_color) setAccentColor(s.accent_color)
+          setExistingSettingsFound(true)
+        }
+      } catch (err) {
+        console.warn('Could not load existing settings:', err)
+      }
+    }
+    loadExistingSettings()
+  }, [])
 
   const handleNextStep = () => {
     if (step === 1) {
@@ -88,6 +117,33 @@ export default function OnboardingPage() {
     }
   }
 
+  const handleUseExisting = async () => {
+    setSubmitting(true)
+    try {
+      await completeOnboarding({
+        company_name: companyName,
+        trade_name: tradeName || companyName,
+        kvk_number: kvkNumber.trim(),
+        btw_id: btwId.toUpperCase().trim(),
+        address_street: addressStreet.trim(),
+        address_postcode: addressPostcode.toUpperCase().trim(),
+        address_city: addressCity.trim(),
+        address_country: addressCountry,
+        iban: iban.toUpperCase().trim(),
+        bic: bic.toUpperCase().trim(),
+        default_payment_term_days: Number(paymentTermDays) || 14,
+        invoice_prefix: invoicePrefix.trim(),
+        accent_color: accentColor,
+      })
+      toast.success('Bestaande bedrijfsgegevens gekoppeld! Welkom terug.', { duration: 3500 })
+      navigate('/')
+    } catch (err: any) {
+      toast.error(err.message || 'Kon gegevens niet overnemen.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const steps = [
     { num: 1, title: 'Bedrijf & KvK', icon: Building2 },
     { num: 2, title: 'Vestigingsadres', icon: MapPin },
@@ -114,6 +170,38 @@ export default function OnboardingPage() {
             Stel in een paar stappen uw officiële Nederlandse bedrijfsgegevens in voor Belastingdienst-conforme facturatie.
           </p>
         </div>
+
+        {/* Existing settings notification banner */}
+        {existingSettingsFound && (
+          <div className="p-4 rounded-2xl border border-brand-500/40 bg-gradient-to-r from-brand-950/80 to-slate-900/80 backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl shadow-brand-950/40 animate-fade-in">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-brand-500/20 text-brand-400 border border-brand-500/30 shrink-0 mt-0.5">
+                <Building2 size={20} />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Bestaand Profiel Gevonden</span>
+                  <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded">KvK {kvkNumber || 'Ingevuld'}</span>
+                </div>
+                <h3 className="text-sm font-semibold text-slate-100">
+                  {companyName}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Uw bedrijfsgegevens zijn al geladen uit de database. U hoeft niets opnieuw in te vullen.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleUseExisting}
+              disabled={submitting}
+              className="btn-primary text-xs sm:text-sm py-2 px-4 shrink-0 whitespace-nowrap shadow-lg shadow-brand-600/30 self-stretch sm:self-auto justify-center"
+            >
+              <span>Overnemen & Naar Dashboard</span>
+              <ArrowRight size={14} />
+            </button>
+          </div>
+        )}
 
         {/* Progress Stepper */}
         <div className="grid grid-cols-4 gap-2">

@@ -1,6 +1,6 @@
 import {
   Invoice, Client, Expense, BankTransaction, BusinessSettings,
-  DashboardKPIs, BtwAangifte, LineItem, CalcMode, VATRate, RecurringSchedule
+  DashboardKPIs, BtwAangifte, LineItem, CalcMode, VATRate
 } from './types'
 
 const STORAGE_KEYS = {
@@ -9,7 +9,6 @@ const STORAGE_KEYS = {
   EXPENSES: 'alibirds_expenses',
   BANK: 'alibirds_bank',
   SETTINGS: 'alibirds_settings',
-  RECURRING: 'alibirds_recurring',
 }
 
 export const INITIAL_SETTINGS: BusinessSettings = {
@@ -331,27 +330,6 @@ export const INITIAL_BANK: BankTransaction[] = [
   },
 ]
 
-export const INITIAL_RECURRING: RecurringSchedule[] = [
-  {
-    id: 'rec-1',
-    name: 'Maandelijks onderhoud & hosting',
-    client_id: 'client-1',
-    frequency: 'MONTHLY',
-    start_date: '2026-01-01',
-    next_run_date: '2026-10-01',
-    payment_term_days: 14,
-    auto_send_email: false,
-    is_active: true,
-    notes_template: 'Maandelijkse vaste vergoeding voor softwareonderhoud en hosting.',
-    line_items_template: [
-      { description: 'Onderhoud, updates & SLA support', quantity: 1, unit_price: 350.00, vat_rate: '21' },
-      { description: 'Cloud hosting & back-up faciliteiten', quantity: 1, unit_price: 49.00, vat_rate: '21' },
-    ],
-    created_at: '2026-01-01T10:00:00Z',
-    updated_at: '2026-01-01T10:00:00Z',
-  },
-]
-
 // ── Local Storage Helper ───────────────────────────────────────────────────
 
 function getStored<T>(key: string, fallback: T): T {
@@ -440,7 +418,7 @@ export const demoStore = {
   saveInvoice: (invoiceData: any): Invoice => {
     const list = demoStore.getInvoices()
     const clients = demoStore.getClients()
-    const client = invoiceData.client || clients.find(c => c.id === invoiceData.client_id)
+    const client = clients.find(c => c.id === invoiceData.client_id)
 
     // Recalculate totals
     const calc = demoStore.calculateVat({
@@ -455,30 +433,23 @@ export const demoStore = {
       quantity: Number(it.quantity) || 1,
       unit_price: Number(it.unit_price) || 0,
       vat_rate: it.vat_rate || '21',
-      vat_amount: Number(it.vat_amount) || 0,
-      line_total_excl: Number(it.line_total_excl) || 0,
-      line_total_incl: Number(it.line_total_incl) || 0,
+      vat_amount: it.vat_amount || 0,
+      line_total_excl: it.line_total_excl || 0,
+      line_total_incl: it.line_total_incl || 0,
       sort_order: index + 1,
     }))
 
-    const subtotalExcl = Number(calc.subtotal_excl ?? invoiceData.subtotal_excl ?? invoiceData.subtotal_excl_vat ?? 0)
-    const totalVat = Number(calc.total_vat ?? invoiceData.total_vat ?? invoiceData.total_vat_amount ?? 0)
-    const totalIncl = Number(calc.total_incl ?? invoiceData.total_incl ?? invoiceData.total_incl_vat ?? (subtotalExcl + totalVat))
-
     if (invoiceData.id) {
-      const idx = list.findIndex(i => i.id === invoiceData.id || i.invoice_number === invoiceData.invoice_number)
+      const idx = list.findIndex(i => i.id === invoiceData.id)
       if (idx >= 0) {
         list[idx] = {
           ...list[idx],
           ...invoiceData,
-          client: client || list[idx].client,
-          line_items: line_items.length > 0 ? line_items : list[idx].line_items,
-          subtotal_excl_vat: subtotalExcl,
-          subtotal_excl: subtotalExcl,
-          total_vat_amount: totalVat,
-          total_vat: totalVat,
-          total_incl_vat: totalIncl,
-          total_incl: totalIncl,
+          client,
+          line_items,
+          subtotal_excl_vat: calc.subtotal_excl,
+          total_vat_amount: calc.total_vat,
+          total_incl_vat: calc.total_incl,
           updated_at: new Date().toISOString(),
         }
         setStored(STORAGE_KEYS.INVOICES, list)
@@ -488,14 +459,12 @@ export const demoStore = {
 
     const settings = demoStore.getSettings()
     const seq = settings.next_invoice_sequence || 1
-    const invoiceNum = invoiceData.invoice_number || `${settings.invoice_prefix}${String(seq).padStart(4, '0')}`
-    if (!invoiceData.invoice_number) {
-      demoStore.saveSettings({ next_invoice_sequence: seq + 1 })
-    }
+    const invoiceNum = `${settings.invoice_prefix}${String(seq).padStart(4, '0')}`
+    demoStore.saveSettings({ next_invoice_sequence: seq + 1 })
 
     const newInv: Invoice = {
-      id: invoiceData.id || `inv-${Date.now()}`,
-      invoice_number: invoiceNum,
+      id: `inv-${Date.now()}`,
+      invoice_number: invoiceData.invoice_number || invoiceNum,
       client_id: invoiceData.client_id,
       client,
       issue_date: invoiceData.issue_date || new Date().toISOString().slice(0, 10),
@@ -503,14 +472,11 @@ export const demoStore = {
       due_date: invoiceData.due_date || new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
       status: invoiceData.status || 'DRAFT',
       calculation_mode: invoiceData.calculation_mode || 'EXCLUSIVE',
-      subtotal_excl_vat: subtotalExcl,
-      subtotal_excl: subtotalExcl,
-      total_vat_amount: totalVat,
-      total_vat: totalVat,
-      total_incl_vat: totalIncl,
-      total_incl: totalIncl,
-      amount_paid: Number(invoiceData.amount_paid || 0),
-      payment_reference: invoiceData.payment_reference || `RF${Math.floor(10 + Math.random() * 89)} ${invoiceNum.replace('-', ' ')}`,
+      subtotal_excl_vat: calc.subtotal_excl,
+      total_vat_amount: calc.total_vat,
+      total_incl_vat: calc.total_incl,
+      amount_paid: 0,
+      payment_reference: `RF${Math.floor(10 + Math.random() * 89)} ${invoiceNum.replace('-', ' ')}`,
       notes: invoiceData.notes || settings.invoice_notes_default,
       line_items,
       created_at: new Date().toISOString(),
@@ -523,9 +489,6 @@ export const demoStore = {
   deleteInvoice: (id: string): void => {
     const list = demoStore.getInvoices().filter(i => i.id !== id)
     setStored(STORAGE_KEYS.INVOICES, list)
-  },
-  clearAllInvoices: (): void => {
-    setStored(STORAGE_KEYS.INVOICES, [])
   },
 
   getExpenses: (): Expense[] => getStored(STORAGE_KEYS.EXPENSES, INITIAL_EXPENSES),
@@ -561,45 +524,6 @@ export const demoStore = {
   },
 
   getBankTransactions: (): BankTransaction[] => getStored(STORAGE_KEYS.BANK, INITIAL_BANK),
-  saveBankTransactions: (txs: any[]): void => {
-    const list = demoStore.getBankTransactions()
-    const normalized: BankTransaction[] = txs.map(t => {
-      const isDebit = t.type === 'DEBIT' || t.transaction_type === 'DEBIT'
-      const date = t.transaction_date || t.value_date || new Date().toISOString().slice(0, 10)
-      const name = t.counterpart_name || t.contra_account_name || ''
-      const iban = t.counterpart_iban || t.contra_account_iban || ''
-      const ref = t.remittance_reference || t.raw_reference || t.description || ''
-
-      return {
-        id: t.id || `tx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        transaction_date: date,
-        value_date: date,
-        type: isDebit ? 'DEBIT' : 'CREDIT',
-        transaction_type: isDebit ? 'DEBIT' : 'CREDIT',
-        amount: Number(t.amount),
-        currency: t.currency || 'EUR',
-        counterpart_name: name,
-        contra_account_name: name,
-        counterpart_iban: iban,
-        contra_account_iban: iban,
-        remittance_reference: ref,
-        raw_reference: ref,
-        description: t.description || ref,
-        reconciliation_status: t.reconciliation_status || 'UNMATCHED',
-        matched_invoice_id: t.matched_invoice_id,
-        raw_hash: t.raw_hash,
-        imported_at: t.imported_at || new Date().toISOString(),
-      }
-    })
-    // Append or update by raw_hash or id
-    const hashSet = new Set(list.map(t => t.raw_hash || t.id))
-    const newItems = normalized.filter(t => !hashSet.has(t.raw_hash || t.id))
-    const combined = [...newItems, ...list]
-    setStored(STORAGE_KEYS.BANK, combined)
-  },
-  clearBankTransactions: (): void => {
-    setStored(STORAGE_KEYS.BANK, [])
-  },
   matchBankTransaction: (bankId: string, invoiceId: string): void => {
     const list = demoStore.getBankTransactions()
     const tx = list.find(t => t.id === bankId)
@@ -747,115 +671,6 @@ export const demoStore = {
       },
       voorbelasting,
       te_betalen: teBetalen,
-    }
-  },
-
-  // ── Recurring Schedules ──────────────────────────────────────────────────
-  getRecurringSchedules: (): RecurringSchedule[] => {
-    const list = getStored(STORAGE_KEYS.RECURRING, INITIAL_RECURRING)
-    const clients = demoStore.getClients()
-    return list.map(rec => ({
-      ...rec,
-      client: clients.find(c => c.id === rec.client_id),
-    }))
-  },
-
-  saveRecurringSchedule: (scheduleData: Partial<RecurringSchedule>): RecurringSchedule => {
-    const list = getStored(STORAGE_KEYS.RECURRING, INITIAL_RECURRING)
-    const clients = demoStore.getClients()
-    const client = clients.find(c => c.id === scheduleData.client_id)
-
-    if (scheduleData.id) {
-      const idx = list.findIndex(s => s.id === scheduleData.id)
-      if (idx >= 0) {
-        list[idx] = {
-          ...list[idx],
-          ...scheduleData,
-          client: client || list[idx].client,
-          updated_at: new Date().toISOString(),
-        } as RecurringSchedule
-        setStored(STORAGE_KEYS.RECURRING, list)
-        return list[idx]
-      }
-    }
-
-    const today = new Date().toISOString().slice(0, 10)
-    const newSchedule: RecurringSchedule = {
-      id: `rec-${Date.now()}`,
-      name: scheduleData.name || 'Herhaalschema',
-      client_id: scheduleData.client_id || '',
-      client,
-      frequency: scheduleData.frequency || 'MONTHLY',
-      start_date: scheduleData.start_date || today,
-      next_run_date: scheduleData.next_run_date || today,
-      payment_term_days: Number(scheduleData.payment_term_days) || 14,
-      auto_send_email: Boolean(scheduleData.auto_send_email),
-      is_active: scheduleData.is_active ?? true,
-      notes_template: scheduleData.notes_template || '',
-      calculation_mode: scheduleData.calculation_mode || 'EXCLUSIVE',
-      line_items_template: scheduleData.line_items_template || [],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-    list.unshift(newSchedule)
-    setStored(STORAGE_KEYS.RECURRING, list)
-    return newSchedule
-  },
-
-  deleteRecurringSchedule: (id: string): void => {
-    const list = getStored(STORAGE_KEYS.RECURRING, INITIAL_RECURRING).filter(s => s.id !== id)
-    setStored(STORAGE_KEYS.RECURRING, list)
-  },
-
-  triggerRecurringSchedule: (id: string): { success: boolean; invoice_number: string; invoice_id: string } => {
-    const schedules = demoStore.getRecurringSchedules()
-    const sched = schedules.find(s => s.id === id)
-    if (!sched) throw new Error('Schema niet gevonden')
-
-    const clients = demoStore.getClients()
-    const client = clients.find(c => c.id === sched.client_id) || sched.client
-
-    const today = new Date().toISOString().slice(0, 10)
-    const termDays = sched.payment_term_days || 14
-    const dueDate = new Date(Date.now() + termDays * 864e5).toISOString().slice(0, 10)
-
-    const items = (sched.line_items_template && sched.line_items_template.length > 0)
-      ? sched.line_items_template
-      : [{ description: sched.name, quantity: 1, unit_price: 150, vat_rate: '21' }]
-
-    // Generate a real invoice in the database / demoStore
-    const createdInvoice = demoStore.saveInvoice({
-      client_id: sched.client_id,
-      client,
-      issue_date: today,
-      due_date: dueDate,
-      calculation_mode: sched.calculation_mode || 'EXCLUSIVE',
-      status: sched.auto_send_email ? 'SENT' : 'DRAFT',
-      notes: sched.notes_template || `Gegenereerd uit herhaalschema "${sched.name}"`,
-      line_items: items,
-    })
-
-    // Advance next_run_date
-    const nextDate = new Date(sched.next_run_date || today)
-    if (sched.frequency === 'WEEKLY') {
-      nextDate.setDate(nextDate.getDate() + 7)
-    } else if (sched.frequency === 'QUARTERLY') {
-      nextDate.setMonth(nextDate.getMonth() + 3)
-    } else if (sched.frequency === 'YEARLY') {
-      nextDate.setFullYear(nextDate.getFullYear() + 1)
-    } else {
-      nextDate.setMonth(nextDate.getMonth() + 1)
-    }
-
-    demoStore.saveRecurringSchedule({
-      id: sched.id,
-      next_run_date: nextDate.toISOString().slice(0, 10),
-    })
-
-    return {
-      success: true,
-      invoice_number: createdInvoice.invoice_number,
-      invoice_id: createdInvoice.id,
     }
   },
 }

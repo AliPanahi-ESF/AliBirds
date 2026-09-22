@@ -1,62 +1,21 @@
 import React from 'react'
 import { Printer, Download, X, Building2, CheckCircle2, Calendar, CreditCard } from 'lucide-react'
-import { Invoice, BusinessSettings, Client } from '@/lib/types'
-import { fmt, clientsApi } from '@/lib/api'
-import { useQuery } from '@tanstack/react-query'
+import { Invoice, BusinessSettings } from '@/lib/types'
+import { fmt } from '@/lib/api'
 
 interface InvoicePrintModalProps {
   invoice: Invoice
-  client?: Client
   settings?: BusinessSettings
   onClose: () => void
 }
 
-export default function InvoicePrintModal({ invoice, client: propClient, settings, onClose }: InvoicePrintModalProps) {
+export default function InvoicePrintModal({ invoice, settings, onClose }: InvoicePrintModalProps) {
   const handlePrint = () => {
     window.print()
   }
 
-  const { data: allClients = [] } = useQuery<Client[]>({
-    queryKey: ['clients'],
-    queryFn: () => clientsApi.list(),
-  })
-
-  // 1. Resolve client with maximum fallback coverage:
-  // - Explicitly provided propClient (e.g. live editor selection)
-  // - Embedded invoice.client (unwrapping array if returned as [client])
-  // - Lookup by invoice.client_id in loaded clients
-  const embeddedClient = Array.isArray(invoice.client) ? invoice.client[0] : invoice.client
-  const client: Client | undefined =
-    propClient ||
-    (embeddedClient && embeddedClient.name ? embeddedClient : undefined) ||
-    allClients.find(c => c.id === invoice.client_id) ||
-    embeddedClient
-
+  const client = invoice.client
   const accentColor = settings?.accent_color || '#4f46e5'
-
-  // Pricing display mode (excluding or including VAT)
-  const [priceMode, setPriceMode] = React.useState<'EXCLUSIVE' | 'INCLUSIVE'>(
-    invoice.calculation_mode === 'INCLUSIVE' ? 'INCLUSIVE' : 'EXCLUSIVE'
-  )
-
-  // Safe totals calculation with multiple fallbacks
-  const subtotalExcl = Number(
-    invoice.subtotal_excl ??
-    invoice.subtotal_excl_vat ??
-    invoice.line_items?.reduce((s, it) => s + (Number(it.line_total_excl) || 0), 0) ??
-    0
-  )
-  const totalVat = Number(
-    invoice.total_vat ??
-    invoice.total_vat_amount ??
-    invoice.line_items?.reduce((s, it) => s + (Number(it.vat_amount) || 0), 0) ??
-    0
-  )
-  const totalIncl = Number(
-    invoice.total_incl ??
-    invoice.total_incl_vat ??
-    (subtotalExcl + totalVat)
-  )
 
   // Calculate VAT breakdown per tariff
   const vatBreakdown: Record<string, { base: number; vat: number }> = {}
@@ -65,8 +24,8 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
     if (!vatBreakdown[rate]) {
       vatBreakdown[rate] = { base: 0, vat: 0 }
     }
-    vatBreakdown[rate].base += (Number(it.line_total_excl) || 0)
-    vatBreakdown[rate].vat += (Number(it.vat_amount) || 0)
+    vatBreakdown[rate].base += it.line_total_excl
+    vatBreakdown[rate].vat += it.vat_amount
   })
 
   return (
@@ -74,42 +33,14 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
       <div className="relative w-full max-w-4xl bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden print:shadow-none print:rounded-none print:w-full print:max-w-none">
         
         {/* Top Action Bar (Hidden when printing) */}
-        <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between px-4 sm:px-6 py-3 bg-slate-900 text-white border-b border-slate-800 print:hidden gap-3">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3.5 bg-slate-900 text-white border-b border-slate-800 print:hidden">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-sm">Factuur Preview & PDF Export</span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
               {invoice.invoice_number}
             </span>
           </div>
-
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Price display mode toggle */}
-            <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-lg border border-slate-700">
-              <span className="text-[11px] text-slate-400 pl-1 font-medium">Prijzen:</span>
-              <button
-                type="button"
-                onClick={() => setPriceMode('EXCLUSIVE')}
-                className={`px-2 py-0.5 rounded text-xs font-semibold transition-colors ${
-                  priceMode === 'EXCLUSIVE'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Excl. btw
-              </button>
-              <button
-                type="button"
-                onClick={() => setPriceMode('INCLUSIVE')}
-                className={`px-2 py-0.5 rounded text-xs font-semibold transition-colors ${
-                  priceMode === 'INCLUSIVE'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Incl. btw
-              </button>
-            </div>
-
+          <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md active:scale-95 transition-all"
@@ -174,28 +105,13 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
             {/* Client address */}
             <div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Factuur voor:</div>
-              <div className="font-bold text-slate-900 text-sm sm:text-base">
-                {client?.name || 'Geen klant geselecteerd'}
-              </div>
-              {client?.contact_person && (
-                <div className="text-xs text-slate-600 font-medium">t.a.v. {client.contact_person}</div>
-              )}
+              <div className="font-bold text-slate-900 text-sm">{client?.name || 'Klantnaam'}</div>
+              {client?.contact_person && <div className="text-xs text-slate-600">t.a.v. {client.contact_person}</div>}
               <div className="text-xs text-slate-500 mt-1 space-y-0.5">
-                {client?.billing_address_street && <div>{client.billing_address_street}</div>}
-                {(client?.billing_address_postcode || client?.billing_address_city) && (
-                  <div>{client.billing_address_postcode} {client.billing_address_city}</div>
-                )}
-                {client?.country_code && <div>{client.country_code}</div>}
-                {client?.vat_number && (
-                  <div className="pt-0.5 text-slate-700">
-                    Btw-id: <span className="font-mono font-medium">{client.vat_number}</span>
-                  </div>
-                )}
-                {client?.kvk_number && (
-                  <div className="text-slate-700">
-                    KvK: <span className="font-mono font-medium">{client.kvk_number}</span>
-                  </div>
-                )}
+                <div>{client?.billing_address_street}</div>
+                <div>{client?.billing_address_postcode} {client?.billing_address_city}</div>
+                <div>{client?.country_code}</div>
+                {client?.vat_number && <div className="pt-1">Btw-id: <span className="font-mono">{client.vat_number}</span></div>}
               </div>
             </div>
 
@@ -216,53 +132,27 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
                 <tr className="border-b-2 border-slate-200 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                   <th className="py-2.5">Omschrijving</th>
                   <th className="py-2.5 text-center">Aantal</th>
-                  <th className="py-2.5 text-right">
-                    Prijs p/st {priceMode === 'INCLUSIVE' ? '(incl. btw)' : '(excl. btw)'}
-                  </th>
+                  <th className="py-2.5 text-right">Prijs p/st</th>
                   <th className="py-2.5 text-center">Btw</th>
-                  <th className="py-2.5 text-right">
-                    Totaal {priceMode === 'INCLUSIVE' ? '(incl. btw)' : '(excl. btw)'}
-                  </th>
+                  <th className="py-2.5 text-right">Totaal</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
-                {invoice.line_items?.map((item, idx) => {
-                  const qty = Number(item.quantity) || 1
-                  const excl = Number(item.line_total_excl) || 0
-                  const vat = Number(item.vat_amount) || 0
-                  const incl = Number(item.line_total_incl || (excl + vat)) || excl
-                  const unitPrice = Number(item.unit_price) || 0
-                  const unitPriceIncl = qty > 0 ? (incl / qty) : unitPrice
-                  const unitPriceExcl = qty > 0 ? (excl / qty) : unitPrice
-
-                  return (
-                    <tr key={idx} className="hover:bg-slate-50/50">
-                      <td className="py-3 font-medium text-slate-800">{item.description}</td>
-                      <td className="py-3 text-center text-slate-600">{item.quantity}</td>
-                      <td className="py-3 text-right font-mono text-slate-600">
-                        {fmt.currency(priceMode === 'INCLUSIVE' ? unitPriceIncl : unitPriceExcl)}
-                      </td>
-                      <td className="py-3 text-center">
-                        <span className="px-1.5 py-0.5 rounded bg-slate-100 font-mono text-[10px] font-bold text-slate-700">
-                          {item.vat_rate === 'REVERSE_CHARGE' ? 'Verlegd' : `${item.vat_rate}%`}
-                        </span>
-                      </td>
-                      <td className="py-3 text-right font-mono font-semibold text-slate-900">
-                        {fmt.currency(priceMode === 'INCLUSIVE' ? incl : excl)}
-                        {priceMode === 'INCLUSIVE' && vat > 0 && (
-                          <div className="text-[10px] font-normal text-slate-400">
-                            excl. {fmt.currency(excl)}
-                          </div>
-                        )}
-                        {priceMode === 'EXCLUSIVE' && vat > 0 && (
-                          <div className="text-[10px] font-normal text-slate-400">
-                            incl. {fmt.currency(incl)}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
+                {invoice.line_items?.map((item, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50/50">
+                    <td className="py-3 font-medium text-slate-800">{item.description}</td>
+                    <td className="py-3 text-center text-slate-600">{item.quantity}</td>
+                    <td className="py-3 text-right font-mono text-slate-600">{fmt.currency(item.unit_price)}</td>
+                    <td className="py-3 text-center">
+                      <span className="px-1.5 py-0.5 rounded bg-slate-100 font-mono text-[10px] font-bold text-slate-700">
+                        {item.vat_rate === 'REVERSE_CHARGE' ? 'Verlegd' : `${item.vat_rate}%`}
+                      </span>
+                    </td>
+                    <td className="py-3 text-right font-mono font-semibold text-slate-900">
+                      {fmt.currency(item.line_total_excl)}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -306,16 +196,16 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
             <div className="w-full sm:w-5/12 bg-slate-50 rounded-xl p-4 border border-slate-200 text-xs sm:text-sm space-y-2">
               <div className="flex justify-between text-slate-600">
                 <span>Subtotaal (excl. btw):</span>
-                <span className="font-mono font-medium">{fmt.currency(subtotalExcl)}</span>
+                <span className="font-mono font-medium">{fmt.currency(invoice.subtotal_excl)}</span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Totale btw:</span>
-                <span className="font-mono font-medium">{fmt.currency(totalVat)}</span>
+                <span className="font-mono font-medium">{fmt.currency(invoice.total_vat)}</span>
               </div>
               <div className="pt-2 border-t border-slate-200 flex justify-between text-base sm:text-lg font-black text-slate-900">
                 <span>Totaal te betalen:</span>
                 <span className="font-mono" style={{ color: accentColor }}>
-                  {fmt.currency(totalIncl)}
+                  {fmt.currency(invoice.total_incl)}
                 </span>
               </div>
             </div>
@@ -325,7 +215,7 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
           <div className="mt-6 pt-6 border-t border-slate-200 bg-slate-50/70 p-4 rounded-xl text-xs text-slate-600">
             <div className="font-bold text-slate-800 mb-1">Betalingsvoorwaarden</div>
             <div>
-              Wij verzoeken u vriendelijk het totaalbedrag van <span className="font-bold text-slate-800">{fmt.currency(totalIncl)}</span> binnen {settings?.default_payment_term_days || 14} dagen (vóór {fmt.date(invoice.due_date)}) over te maken naar rekeningnummer:
+              Wij verzoeken u vriendelijk het totaalbedrag van <span className="font-bold text-slate-800">{fmt.currency(invoice.total_incl)}</span> binnen {settings?.default_payment_term_days || 14} dagen (vóór {fmt.date(invoice.due_date)}) over te maken naar rekeningnummer:
             </div>
             <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 font-mono font-semibold text-slate-800">
               <div>IBAN: <span>{settings?.iban || 'NL00BANK0123456789'}</span></div>

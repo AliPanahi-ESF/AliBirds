@@ -233,3 +233,31 @@ class DashboardKPIs(BaseModel):
     total_invoices_this_year: int
     paid_this_month: Decimal
     expenses_this_quarter: Decimal
+
+
+# ─── Auth / User ─────────────────────────────────────────────────────────────
+
+class UserRegister(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserOut(OrmBase):
+    id: str
+    email: str
+    name: str
+    company_name: Optional[str] = ""
+    is_onboarded: bool
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+

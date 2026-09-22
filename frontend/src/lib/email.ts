@@ -9,19 +9,11 @@ import { fmt } from './api'
 const STORAGE_KEY_RESEND = 'alibirds_resend_api_key'
 const STORAGE_KEY_SENDER = 'alibirds_resend_sender'
 
-// Default built-in Resend API credentials (base64 encoded to protect git push)
-const DEFAULT_RESEND_KEY = typeof atob !== 'undefined' ? atob('cmVfUnpMWHI1NmNfRUhnYmhiRk5UMlFpR0JUeEVKVHIyTmZ3') : ''
-const DEFAULT_RESEND_SENDER = 'onboarding@resend.dev'
-
-export function getResendKey(): string {
+export function getResendKey(): string | null {
   try {
-    return (
-      import.meta.env.VITE_RESEND_API_KEY ||
-      localStorage.getItem(STORAGE_KEY_RESEND) ||
-      DEFAULT_RESEND_KEY
-    )
+    return localStorage.getItem(STORAGE_KEY_RESEND) || import.meta.env.VITE_RESEND_API_KEY || null
   } catch {
-    return DEFAULT_RESEND_KEY
+    return null
   }
 }
 
@@ -37,33 +29,28 @@ export function getResendSender(): string {
     return (
       localStorage.getItem(STORAGE_KEY_SENDER) ||
       import.meta.env.VITE_RESEND_FROM_EMAIL ||
-      DEFAULT_RESEND_SENDER
+      'facturen@resend.dev'
     )
   } catch {
-    return DEFAULT_RESEND_SENDER
+    return 'facturen@resend.dev'
   }
 }
 
 export function isResendConfigured(): boolean {
-  return true
+  const key = getResendKey()
+  return !!(key && key.startsWith('re_'))
 }
 
 /**
  * Generate Mailto link as a 100% reliable zero-configuration fallback
  */
-export function generateMailtoUrl(invoice: Invoice, settings?: BusinessSettings, recipientOverride?: string): string {
-  const recipient = recipientOverride || invoice.client?.email || ''
+export function generateMailtoUrl(invoice: Invoice, settings?: BusinessSettings): string {
+  const recipient = invoice.client?.email || ''
   const companyName = settings?.company_name || 'AliBirds Studio'
-  const totalAmount = Number(
-    invoice.total_incl ??
-    invoice.total_incl_vat ??
-    invoice.line_items?.reduce((s, it) => s + (Number(it.line_total_incl || it.line_total_excl) || 0), 0) ??
-    0
-  )
   const subject = encodeURIComponent(`Factuur ${invoice.invoice_number} — ${companyName}`)
   const body = encodeURIComponent(
     `Beste ${invoice.client?.contact_person || invoice.client?.name || 'relatie'},\n\n` +
-    `Hierbij ontvangt u factuur ${invoice.invoice_number} ter hoogte van ${fmt.currency(totalAmount)}.\n\n` +
+    `Hierbij ontvangt u factuur ${invoice.invoice_number} ter hoogte van ${fmt.currency(invoice.total_incl)}.\n\n` +
     `Wij verzoeken u vriendelijk dit bedrag vóór ${fmt.date(invoice.due_date)} over te maken naar:\n` +
     `IBAN: ${settings?.iban || 'NL00BANK0123456789'}\n` +
     `BIC: ${settings?.bic || ''}\n` +
@@ -80,27 +67,20 @@ export function generateMailtoUrl(invoice: Invoice, settings?: BusinessSettings,
  */
 export async function sendInvoiceViaResend(
   invoice: Invoice,
-  settings?: BusinessSettings,
-  recipientOverride?: string
+  settings?: BusinessSettings
 ): Promise<{ ok: boolean; message: string }> {
   const apiKey = getResendKey()
   if (!apiKey) {
     return { ok: false, message: 'Geen Resend API sleutel geconfigureerd.' }
   }
 
-  const recipient = recipientOverride || invoice.client?.email
+  const recipient = invoice.client?.email
   if (!recipient) {
-    return { ok: false, message: 'Geen e-mailadres opgegeven voor deze ontvanger.' }
+    return { ok: false, message: 'Deze klant heeft geen e-mailadres geregistreerd.' }
   }
 
   const sender = getResendSender()
   const companyName = settings?.company_name || 'AliBirds Studio'
-  const totalAmount = Number(
-    invoice.total_incl ??
-    invoice.total_incl_vat ??
-    invoice.line_items?.reduce((s, it) => s + (Number(it.line_total_incl || it.line_total_excl) || 0), 0) ??
-    0
-  )
 
   const htmlBody = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; line-height: 1.6;">
@@ -129,7 +109,7 @@ export async function sendInvoiceViaResend(
             <tr style="border-top: 1px solid #cbd5e1;">
               <td style="padding-top: 8px; font-weight: bold;">Totaalbedrag incl. btw:</td>
               <td style="padding-top: 8px; text-align: right; font-weight: bold; font-size: 16px; color: ${settings?.accent_color || '#4f46e5'};">
-                ${fmt.currency(totalAmount)}
+                ${fmt.currency(invoice.total_incl)}
               </td>
             </tr>
           </table>
@@ -151,15 +131,11 @@ export async function sendInvoiceViaResend(
     </div>
   `
 
-  const fromAddress = sender.includes('<') && sender.includes('>')
-    ? sender
-    : `${companyName || 'AliBirds'} <${sender}>`
-
   try {
     const res = await axios.post(
       'https://api.resend.com/emails',
       {
-        from: fromAddress,
+        from: `${companyName} <${sender}>`,
         to: [recipient],
         subject: `Factuur ${invoice.invoice_number} van ${companyName}`,
         html: htmlBody,

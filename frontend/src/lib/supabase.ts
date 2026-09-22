@@ -1,635 +1,337 @@
 /**
- * AliBirds Supabase Client & Data Access Layer
- *
- * Credentials come from Netlify environment variables (set ONCE by the app owner).
- * Users never see or touch any API keys — they just log in with email + password.
+ * AliBirds Supabase Client & PostgREST Helper
+ * Provides direct connection to free Supabase PostgreSQL database without server dependencies.
  */
-import { createClient } from '@supabase/supabase-js'
-import { Invoice, CalcMode } from './types'
-
-function dbToInvoice(row: any): Invoice {
-  const lineItems = (row.line_items || []).map((li: any) => ({
-    id: li.id,
-    description: li.description || '',
-    quantity: Number(li.quantity) || 1,
-    unit_price: Number(li.unit_price) || 0,
-    vat_rate: String(li.vat_rate || '21'),
-    vat_amount: Number(li.vat_amount) || 0,
-    line_total_excl: Number(li.line_total_excl ?? li.total_excl_vat ?? 0),
-    line_total_incl: Number(li.line_total_incl ?? li.total_incl_vat ?? 0),
-    sort_order: li.position || 0,
-  }))
-
-  const subtotalExcl = Number(
-    row.subtotal_excl ??
-    row.subtotal_excl_vat ??
-    lineItems.reduce((s, it) => s + (Number(it.line_total_excl) || 0), 0)
-  )
-  const totalVat = Number(
-    row.total_vat ??
-    row.total_vat_amount ??
-    lineItems.reduce((s, it) => s + (Number(it.vat_amount) || 0), 0)
-  )
-  const totalIncl = Number(
-    row.total_incl ??
-    row.total_incl_vat ??
-    (subtotalExcl + totalVat)
-  )
-
-  // PostgREST embeds foreign tables as arrays [ { ... } ] or objects { ... }
-  let clientObj: any = undefined
-  if (row.client && typeof row.client === 'object') {
-    clientObj = Array.isArray(row.client) ? (row.client[0] || undefined) : row.client
-  } else if (row.clients && typeof row.clients === 'object') {
-    clientObj = Array.isArray(row.clients) ? (row.clients[0] || undefined) : row.clients
-  }
-  if (!clientObj && row.client_id) {
-    clientObj = demoStore.getClients().find(c => c.id === row.client_id)
-  }
-
-  return {
-    id: row.id,
-    invoice_number: row.invoice_number,
-    client_id: row.client_id || undefined,
-    client: clientObj,
-    issue_date: row.issue_date,
-    due_date: row.due_date,
-    delivery_date: row.delivery_date || undefined,
-    status: row.status || 'DRAFT',
-    calculation_mode: (row.calc_mode || row.calculation_mode || 'EXCLUSIVE') as CalcMode,
-    subtotal_excl_vat: subtotalExcl,
-    subtotal_excl: subtotalExcl,
-    total_vat_amount: totalVat,
-    total_vat: totalVat,
-    total_incl_vat: totalIncl,
-    total_incl: totalIncl,
-    amount_paid: Number(row.amount_paid ?? (row.status === 'PAID' ? totalIncl : 0)),
-    payment_reference: row.reference || row.payment_reference || '',
-    notes: row.notes || '',
-    pdf_path: row.pdf_path || undefined,
-    sent_at: row.sent_at || undefined,
-    paid_at: row.paid_at || undefined,
-    line_items: lineItems,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  }
-}
-
-function invoiceToDb(inv: any) {
-  const subtotalExcl = Number(inv.subtotal_excl ?? inv.subtotal_excl_vat ?? 0)
-  const totalVat = Number(inv.total_vat ?? inv.total_vat_amount ?? 0)
-  const totalIncl = Number(inv.total_incl ?? inv.total_incl_vat ?? (subtotalExcl + totalVat))
-
-  // Validate if client_id is a valid UUID before sending to PostgreSQL UUID column
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  const validClientId = (inv.client_id && typeof inv.client_id === 'string' && isUuid.test(inv.client_id))
-    ? inv.client_id
-    : null
-
-  return {
-    invoice_number: inv.invoice_number || `FACT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-    client_id: validClientId,
-    issue_date: inv.issue_date || new Date().toISOString().slice(0, 10),
-    due_date: inv.due_date || new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10),
-    delivery_date: inv.delivery_date || null,
-    calc_mode: inv.calc_mode || inv.calculation_mode || 'EXCLUSIVE',
-    status: inv.status || 'DRAFT',
-    reference: inv.reference || inv.payment_reference || null,
-    notes: inv.notes || null,
-    payment_terms: inv.payment_terms || null,
-    pdf_path: inv.pdf_path || null,
-    subtotal_excl: subtotalExcl,
-    total_vat: totalVat,
-    total_incl: totalIncl,
-    is_reverse_charge: inv.is_reverse_charge || inv.line_items?.some((i: any) => i.vat_rate === 'REVERSE_CHARGE') || false,
-    sent_at: inv.sent_at || (inv.status === 'SENT' ? new Date().toISOString() : null),
-    paid_at: inv.paid_at || (inv.status === 'PAID' ? (inv.issue_date ? new Date(inv.issue_date).toISOString() : new Date().toISOString()) : null),
-  }
-}
+import axios from 'axios'
 
 const STORAGE_KEY_CONFIG = 'alibirds_supabase_config'
+const STORAGE_KEY_SESSION_TOKEN = 'alibirds_supabase_session_token'
 
-// Built-in default production Supabase instance — zero setup required by end users
-const DEFAULT_URL = 'https://gnizaskjsgxwgdirzrrf.supabase.co'
-const DEFAULT_KEY = 'sb_publishable_lxxsKIS_pObg-cS-pXQrxw_vHqy2dG3'
-
-function getCredentials(): { url: string; key: string } {
-  // 1. Environment variables (if overridden)
-  const envUrl = (import.meta.env.VITE_SUPABASE_URL as string) || ''
-  const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || ''
-  if (envUrl && envKey && envUrl.startsWith('https://') && !envUrl.includes('placeholder')) {
-    return { url: envUrl.trim().replace(/\/+$/, ''), key: envKey.trim() }
-  }
-
-  // 2. Previously stored in browser localStorage (if overridden)
-  if (typeof window !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_CONFIG)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (parsed.url && parsed.anonKey && parsed.url.startsWith('https://')) {
-          return { url: parsed.url.trim().replace(/\/+$/, ''), key: parsed.anonKey.trim() }
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // 3. Default production instance
-  return { url: DEFAULT_URL, key: DEFAULT_KEY }
+export interface SupabaseConfig {
+  url: string
+  anonKey: string
 }
 
-const creds = getCredentials()
+export function getSupabaseSessionToken(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY_SESSION_TOKEN)
+  } catch {
+    return null
+  }
+}
+
+export function setSupabaseSessionToken(token: string | null): void {
+  try {
+    if (token) {
+      localStorage.setItem(STORAGE_KEY_SESSION_TOKEN, token)
+    } else {
+      localStorage.removeItem(STORAGE_KEY_SESSION_TOKEN)
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export function getSupabaseConfig(): SupabaseConfig | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_CONFIG)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed.url && parsed.anonKey) {
+        return parsed
+      }
+    }
+    const envUrl = import.meta.env.VITE_SUPABASE_URL
+    const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+    if (envUrl && envKey) {
+      return { url: envUrl, anonKey: envKey }
+    }
+  } catch {
+    // fallback
+  }
+  return null
+}
+
+export function saveSupabaseConfig(url: string, anonKey: string): void {
+  const cleanUrl = url.trim().replace(/\/+$/, '')
+  const cleanKey = anonKey.trim()
+  localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify({ url: cleanUrl, anonKey: cleanKey }))
+}
+
+export function clearSupabaseConfig(): void {
+  localStorage.removeItem(STORAGE_KEY_CONFIG)
+  setSupabaseSessionToken(null)
+}
 
 export function isSupabaseConfigured(): boolean {
-  return true
+  const cfg = getSupabaseConfig()
+  return !!(cfg && cfg.url && cfg.anonKey)
 }
 
-const safeUrl = creds.url
-const safeKey = creds.key
+/**
+ * Creates an Axios instance targeted at the Supabase PostgREST endpoint.
+ * Automatically injects the user's JWT access token if authenticated,
+ * ensuring Supabase Row Level Security (auth.uid() = user_id) works across devices.
+ */
+function getSupabaseHttp() {
+  const cfg = getSupabaseConfig()
+  if (!cfg) return null
 
-// Single shared client — auth session is persisted automatically by the SDK
-export const supabase = createClient(safeUrl, safeKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-})
+  const sessionToken = getSupabaseSessionToken()
+  const authHeader = sessionToken ? `Bearer ${sessionToken}` : `Bearer ${cfg.anonKey}`
+
+  return axios.create({
+    baseURL: `${cfg.url}/rest/v1`,
+    headers: {
+      apikey: cfg.anonKey,
+      Authorization: authHeader,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation',
+    },
+    timeout: 6000,
+  })
+}
+
+/**
+ * Test connectivity to Supabase
+ */
+export async function testSupabaseConnection(): Promise<{ ok: boolean; message: string }> {
+  const client = getSupabaseHttp()
+  if (!client) {
+    return { ok: false, message: 'Geen Supabase URL of Anon Key geconfigureerd.' }
+  }
+
+  try {
+    const res = await client.get('/business_settings?limit=1')
+    if (res.status === 200) {
+      return { ok: true, message: 'Verbinding met Supabase succesvol tot stand gebracht!' }
+    }
+    return { ok: false, message: `Onverwachte status: ${res.status}` }
+  } catch (err: any) {
+    return {
+      ok: false,
+      message: err.response?.data?.message || err.message || 'Kan geen verbinding maken met Supabase.',
+    }
+  }
+}
 
 /**
  * Supabase Data Access Object
- * All queries are automatically scoped to the logged-in user via RLS.
  */
 export const supabaseDb = {
-  // ── Clients ────────────────────────────────────────────────────────────────
+  // Clients
   getClients: async () => {
-    if (!isSupabaseConfigured()) return null
-    const { data, error } = await supabase
-      .from('clients')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (error) throw error
-    return data
+    const client = getSupabaseHttp()
+    if (!client) return null
+    const res = await client.get('/clients?order=created_at.desc')
+    return res.data
   },
-
-  saveClient: async (clientData: any) => {
-    if (!isSupabaseConfigured()) return null
-    const { id, ...fields } = clientData
-
-    if (id && id.length > 20) {
-      const { data, error } = await supabase
-        .from('clients')
-        .update(fields)
-        .eq('id', id)
-        .select()
-        .single()
-      if (error) throw error
-      return data
+  saveClient: async (data: any) => {
+    const client = getSupabaseHttp()
+    if (!client) return null
+    if (data.id && data.id.length > 20) {
+      const res = await client.patch(`/clients?id=eq.${data.id}`, data)
+      return res.data?.[0] || data
     } else {
-      const { data, error } = await supabase
-        .from('clients')
-        .insert(fields)
-        .select()
-        .single()
-      if (error) throw error
-      return data
+      const { id, ...createData } = data
+      const res = await client.post('/clients', createData)
+      return res.data?.[0] || data
     }
   },
-
   deleteClient: async (id: string) => {
-    if (!isSupabaseConfigured()) return null
-    const { error } = await supabase.from('clients').delete().eq('id', id)
-    if (error) throw error
+    const client = getSupabaseHttp()
+    if (!client) return null
+    await client.delete(`/clients?id=eq.${id}`)
     return true
   },
 
-  // ── Invoices ───────────────────────────────────────────────────────────────
+  // Invoices
   getInvoices: async () => {
-    if (!isSupabaseConfigured()) return null
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('*, client:clients(*), line_items:invoice_line_items(*)')
-      .order('issue_date', { ascending: false })
-    if (error) throw error
-    if (!data) return []
-    return data.map(dbToInvoice)
+    const client = getSupabaseHttp()
+    if (!client) return null
+    const res = await client.get('/invoices?select=*,client:clients(*),line_items:invoice_line_items(*)&order=issue_date.desc')
+    return res.data
   },
-
   getInvoice: async (id: string) => {
-    if (!isSupabaseConfigured()) return null
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('*, client:clients(*), line_items:invoice_line_items(*)')
-      .eq('id', id)
-      .maybeSingle()
-    if (error) throw error
-    if (!data) return null
-    return dbToInvoice(data)
+    const client = getSupabaseHttp()
+    if (!client) return null
+    const res = await client.get(`/invoices?id=eq.${id}&select=*,client:clients(*),line_items:invoice_line_items(*)`)
+    return res.data?.[0] || null
   },
-
   saveInvoice: async (invoiceData: any, items: any[] = []) => {
-    if (!isSupabaseConfigured()) return null
-    const dbPayload = invoiceToDb(invoiceData)
-    const lineItems = (items && items.length > 0) ? items : (invoiceData.line_items || [])
-    const id = invoiceData.id
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    const client = getSupabaseHttp()
+    if (!client) return null
 
-    let invoiceId: string
-
-    if (id && typeof id === 'string' && isUuid.test(id)) {
-      const { data, error } = await supabase
-        .from('invoices')
-        .update(dbPayload)
-        .eq('id', id)
-        .select()
-        .single()
-      if (error) throw error
-      invoiceId = data.id
-      // Replace all line items
-      await supabase.from('invoice_line_items').delete().eq('invoice_id', invoiceId)
-    } else {
-      const { data, error } = await supabase
-        .from('invoices')
-        .insert(dbPayload)
-        .select()
-        .single()
-      if (error) throw error
-      invoiceId = data.id
-    }
-
-    if (lineItems && lineItems.length > 0) {
-      const lineRows = lineItems.map((it: any, idx: number) => {
-        const qty = Number(it.quantity) || 1
-        const price = Number(it.unit_price) || 0
-        const rateNum = it.vat_rate === 'REVERSE_CHARGE' ? 0 : (Number(it.vat_rate) || 0)
-        const excl = Number(it.line_total_excl ?? it.total_excl_vat ?? (qty * price)) || 0
-        let vat = Number(it.vat_amount ?? it.total_vat ?? 0)
-        if (!vat && rateNum > 0 && excl > 0) {
-          vat = Math.round(excl * (rateNum / 100) * 100) / 100
-        }
-        const incl = Number(it.line_total_incl ?? it.total_incl_vat ?? (excl + vat)) || excl
-
-        return {
-          invoice_id: invoiceId,
-          position: idx,
-          description: it.description || `Item ${idx + 1}`,
-          quantity: qty,
-          unit_price: price || excl,
-          vat_rate: String(it.vat_rate || '21'),
-          vat_amount: vat,
-          line_total_excl: excl,
-          line_total_incl: incl,
-        }
-      })
-      const { error: liError } = await supabase.from('invoice_line_items').insert(lineRows)
-      if (liError) {
-        console.warn('Supabase invoice_line_items insert error:', liError)
-      }
-    }
-
-    const saved = await supabaseDb.getInvoice(invoiceId)
-    if (saved) {
-      demoStore.saveInvoice(saved)
-    }
-    return saved
-  },
-
-  deleteInvoice: async (id: string) => {
-    if (!isSupabaseConfigured()) return null
-    try {
-      // 1. Unlink bank transactions
-      await supabase.from('bank_transactions').update({ matched_invoice_id: null }).eq('matched_invoice_id', id)
-      // 2. Delete invoice line items first to prevent FK violation
-      await supabase.from('invoice_line_items').delete().eq('invoice_id', id)
-      // 3. Delete invoice
-      const { error } = await supabase.from('invoices').delete().eq('id', id)
-      if (error) throw error
-    } catch (err) {
-      console.warn('Supabase deleteInvoice warning:', err)
-    }
-    demoStore.deleteInvoice(id)
-    return true
-  },
-
-  clearAllInvoices: async () => {
-    if (isSupabaseConfigured()) {
-      try {
-        await supabase.from('bank_transactions').update({ matched_invoice_id: null }).neq('id', '00000000-0000-0000-0000-000000000000')
-        await supabase.from('invoice_line_items').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-        await supabase.from('invoices').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-      } catch (err) {
-        console.warn('Supabase clearAllInvoices warning:', err)
-      }
-    }
-    demoStore.clearAllInvoices()
-    return true
-  },
-
-  // ── Clients ────────────────────────────────────────────────────────────────
-  getClients: async () => {
-    if (!isSupabaseConfigured()) return null
-    try {
-      const { data, error } = await supabase
-        .from('clients')
-        .select('*')
-        .order('name', { ascending: true })
-      if (error) throw error
-      return data || []
-    } catch (err) {
-      console.warn('Supabase getClients error:', err)
-      return null
-    }
-  },
-
-  saveClient: async (clientData: any) => {
-    if (!isSupabaseConfigured()) return null
-    const { id, created_at, updated_at, ...fields } = clientData
-
-    if (id && typeof id === 'string' && id.length > 20) {
-      const { data, error } = await supabase
-        .from('clients')
-        .update(fields)
-        .eq('id', id)
-        .select()
-        .single()
-      if (error) throw error
-      demoStore.saveClient(data)
-      return data
-    } else {
-      const { data, error } = await supabase
-        .from('clients')
-        .insert(fields)
-        .select()
-        .single()
-      if (error) throw error
-      demoStore.saveClient(data)
-      return data
-    }
-  },
-
-  deleteClient: async (id: string) => {
-    if (!isSupabaseConfigured()) return null
-    const { error } = await supabase.from('clients').delete().eq('id', id)
-    if (error) throw error
-    demoStore.deleteClient(id)
-    return true
-  },
-
-  // ── Expenses ───────────────────────────────────────────────────────────────
-  getExpenses: async () => {
-    if (!isSupabaseConfigured()) return null
-    const { data, error } = await supabase
-      .from('expenses')
-      .select('*')
-      .order('date', { ascending: false })
-    if (error) throw error
-    return data
-  },
-
-  saveExpense: async (expenseData: any) => {
-    if (!isSupabaseConfigured()) return null
-    const { id, ...fields } = expenseData
+    let invoice = null
+    const { client: _c, line_items: _l, id, ...cleanInvoice } = invoiceData
 
     if (id && id.length > 20) {
-      const { data, error } = await supabase
-        .from('expenses')
-        .update(fields)
-        .eq('id', id)
-        .select()
-        .single()
-      if (error) throw error
-      return data
+      const res = await client.patch(`/invoices?id=eq.${id}`, cleanInvoice)
+      invoice = res.data?.[0]
+      // Replace line items
+      await client.delete(`/invoice_line_items?invoice_id=eq.${id}`)
     } else {
-      const { data, error } = await supabase
-        .from('expenses')
-        .insert(fields)
-        .select()
-        .single()
-      if (error) throw error
-      return data
+      const res = await client.post('/invoices', cleanInvoice)
+      invoice = res.data?.[0]
     }
+
+    if (invoice && items && items.length > 0) {
+      const lineRows = items.map((it, idx) => ({
+        invoice_id: invoice.id,
+        position: idx,
+        description: it.description,
+        quantity: it.quantity,
+        unit_price: it.unit_price,
+        vat_rate: it.vat_rate,
+        vat_amount: it.vat_amount,
+        line_total_excl: it.line_total_excl,
+        line_total_incl: it.line_total_incl,
+      }))
+      await client.post('/invoice_line_items', lineRows)
+    }
+
+    return invoice
   },
 
+  // Expenses
+  getExpenses: async () => {
+    const client = getSupabaseHttp()
+    if (!client) return null
+    const res = await client.get('/expenses?order=date.desc')
+    return res.data
+  },
+  saveExpense: async (data: any) => {
+    const client = getSupabaseHttp()
+    if (!client) return null
+    if (data.id && data.id.length > 20) {
+      const res = await client.patch(`/expenses?id=eq.${data.id}`, data)
+      return res.data?.[0] || data
+    } else {
+      const { id, ...createData } = data
+      const res = await client.post('/expenses', createData)
+      return res.data?.[0] || data
+    }
+  },
   deleteExpense: async (id: string) => {
-    if (!isSupabaseConfigured()) return null
-    const { error } = await supabase.from('expenses').delete().eq('id', id)
-    if (error) throw error
+    const client = getSupabaseHttp()
+    if (!client) return null
+    await client.delete(`/expenses?id=eq.${id}`)
     return true
   },
 
-  // ── Business Settings ──────────────────────────────────────────────────────
+  // Business Settings
   getSettings: async () => {
-    if (!isSupabaseConfigured()) return null
-    const { data, error } = await supabase
-      .from('business_settings')
-      .select('*')
-      .limit(1)
-      .maybeSingle()
-    if (error) throw error
-    return data
+    const client = getSupabaseHttp()
+    if (!client) return null
+    const res = await client.get('/business_settings?limit=1')
+    return res.data?.[0] || null
   },
-
   saveSettings: async (settingsData: any) => {
-    if (!isSupabaseConfigured()) return null
+    const client = getSupabaseHttp()
+    if (!client) return null
     const current = await supabaseDb.getSettings()
-
     if (current && current.id) {
-      const { data, error } = await supabase
-        .from('business_settings')
-        .update(settingsData)
-        .eq('id', current.id)
-        .select()
-        .single()
-      if (error) throw error
-      return data
+      const res = await client.patch(`/business_settings?id=eq.${current.id}`, settingsData)
+      return res.data?.[0] || settingsData
     } else {
-      const { data, error } = await supabase
-        .from('business_settings')
-        .insert(settingsData)
-        .select()
-        .single()
-      if (error) throw error
-      return data
-    }
-  },
-
-  // ── Bank Transactions (MT940) ──────────────────────────────────────────────
-  getBankTransactions: async () => {
-    if (!isSupabaseConfigured()) return null
-    const { data, error } = await supabase
-      .from('bank_transactions')
-      .select('*')
-      .order('value_date', { ascending: false })
-    if (error) throw error
-    if (!data) return []
-
-    return data.map(row => {
-      const isDebit = row.transaction_type === 'DEBIT'
-      const date = row.value_date || row.entry_date || ''
-      const name = row.contra_account_name || ''
-      const iban = row.contra_account_iban || ''
-      const ref = row.raw_reference || row.description || ''
-
-      return {
-        id: row.id,
-        transaction_date: date,
-        value_date: date,
-        type: (isDebit ? 'DEBIT' : 'CREDIT') as 'CREDIT' | 'DEBIT',
-        transaction_type: (isDebit ? 'DEBIT' : 'CREDIT') as 'CREDIT' | 'DEBIT',
-        amount: Number(row.amount),
-        currency: row.currency || 'EUR',
-        counterpart_name: name,
-        contra_account_name: name,
-        counterpart_iban: iban,
-        contra_account_iban: iban,
-        remittance_reference: ref,
-        raw_reference: ref,
-        description: row.description || ref,
-        reconciliation_status: row.reconciliation_status || 'UNMATCHED',
-        matched_invoice_id: row.matched_invoice_id,
-        match_score: row.match_score,
-        imported_at: row.created_at,
-      }
-    })
-  },
-
-  saveBankTransactions: async (transactions: any[]) => {
-    if (!isSupabaseConfigured()) return null
-    if (!transactions.length) return []
-
-    const dbRows = transactions.map(t => {
-      const isDebit = t.type === 'DEBIT' || t.transaction_type === 'DEBIT'
-      return {
-        value_date: t.transaction_date || t.value_date || new Date().toISOString().slice(0, 10),
-        transaction_type: isDebit ? 'DEBIT' : 'CREDIT',
-        amount: Number(t.amount),
-        currency: t.currency || 'EUR',
-        contra_account_iban: t.counterpart_iban || t.contra_account_iban || null,
-        contra_account_name: t.counterpart_name || t.contra_account_name || null,
-        description: t.description || t.remittance_reference || null,
-        raw_reference: t.remittance_reference || t.raw_reference || null,
-        reconciliation_status: t.reconciliation_status || 'UNMATCHED',
-        matched_invoice_id: t.matched_invoice_id || null,
-        raw_hash: t.raw_hash || null,
-      }
-    })
-
-    const { data, error } = await supabase
-      .from('bank_transactions')
-      .upsert(dbRows, { onConflict: 'user_id,raw_hash' })
-      .select()
-    if (error) {
-      console.warn('Supabase upsert bank_transactions error:', error)
-      const { data: insData } = await supabase.from('bank_transactions').insert(dbRows).select()
-      return insData || transactions
-    }
-    return data
-  },
-
-  matchBankTransaction: async (txId: string, invoiceId: string) => {
-    if (!isSupabaseConfigured()) return null
-    const { data, error } = await supabase
-      .from('bank_transactions')
-      .update({
-        matched_invoice_id: invoiceId,
-        reconciliation_status: 'MATCHED',
-      })
-      .eq('id', txId)
-      .select()
-      .single()
-    if (error) throw error
-    return data
-  },
-
-  unmatchBankTransaction: async (txId: string) => {
-    if (!isSupabaseConfigured()) return null
-    const { data, error } = await supabase
-      .from('bank_transactions')
-      .update({
-        matched_invoice_id: null,
-        reconciliation_status: 'UNMATCHED',
-        match_score: null,
-      })
-      .eq('id', txId)
-      .select()
-      .single()
-    if (error) throw error
-    return data
-  },
-
-  // ── Recurring Schedules ──────────────────────────────────────────────────
-  getRecurringSchedules: async () => {
-    if (!isSupabaseConfigured()) return null
-    try {
-      const { data, error } = await supabase
-        .from('recurring_schedules')
-        .select('*, client:clients(*)')
-        .order('next_run_date', { ascending: true })
-      if (error) throw error
-      if (!data) return []
-      return data.map(row => {
-        let client = undefined
-        if (row.client && typeof row.client === 'object') {
-          client = Array.isArray(row.client) ? (row.client[0] || undefined) : row.client
-        }
-        return {
-          ...row,
-          client,
-        }
-      })
-    } catch (err) {
-      console.warn('Supabase getRecurringSchedules notice:', err)
-      return null
-    }
-  },
-
-  saveRecurringSchedule: async (schedData: any) => {
-    if (!isSupabaseConfigured()) return null
-    const { id, client, created_at, updated_at, ...fields } = schedData
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-    const dbRow = {
-      ...fields,
-      client_id: (fields.client_id && isUuid.test(fields.client_id)) ? fields.client_id : null,
-      line_items_template: fields.line_items_template || [],
-    }
-
-    try {
-      if (id && typeof id === 'string' && isUuid.test(id)) {
-        const { data, error } = await supabase
-          .from('recurring_schedules')
-          .update(dbRow)
-          .eq('id', id)
-          .select()
-          .single()
-        if (error) throw error
-        return data
-      } else {
-        const { data, error } = await supabase
-          .from('recurring_schedules')
-          .insert(dbRow)
-          .select()
-          .single()
-        if (error) throw error
-        return data
-      }
-    } catch (err) {
-      console.warn('Supabase saveRecurringSchedule notice:', err)
-      return null
-    }
-  },
-
-  deleteRecurringSchedule: async (id: string) => {
-    if (!isSupabaseConfigured()) return null
-    try {
-      const { error } = await supabase.from('recurring_schedules').delete().eq('id', id)
-      if (error) throw error
-      return true
-    } catch (err) {
-      console.warn('Supabase deleteRecurringSchedule notice:', err)
-      return null
+      const res = await client.post('/business_settings', settingsData)
+      return res.data?.[0] || settingsData
     }
   },
 }
+
+/**
+ * Supabase Auth Operations
+ * Directly talks to Supabase GoTrue Auth API (/auth/v1) without needing external SDKs.
+ */
+export const supabaseAuth = {
+  signInWithPassword: async (email: string, password: string) => {
+    const cfg = getSupabaseConfig()
+    if (!cfg) throw new Error('Supabase is niet geconfigureerd.')
+
+    const res = await axios.post(
+      `${cfg.url}/auth/v1/token?grant_type=password`,
+      { email, password },
+      {
+        headers: {
+          apikey: cfg.anonKey,
+          'Content-Type': 'application/json',
+        },
+        timeout: 8000,
+      }
+    )
+    if (res.data?.access_token) {
+      setSupabaseSessionToken(res.data.access_token)
+    }
+    return res.data
+  },
+
+  signUp: async (name: string, email: string, password: string) => {
+    const cfg = getSupabaseConfig()
+    if (!cfg) throw new Error('Supabase is niet geconfigureerd.')
+
+    const res = await axios.post(
+      `${cfg.url}/auth/v1/signup`,
+      {
+        email,
+        password,
+        data: { name },
+      },
+      {
+        headers: {
+          apikey: cfg.anonKey,
+          'Content-Type': 'application/json',
+        },
+        timeout: 8000,
+      }
+    )
+    if (res.data?.access_token) {
+      setSupabaseSessionToken(res.data.access_token)
+    }
+    return res.data
+  },
+
+  getUser: async (token?: string) => {
+    const cfg = getSupabaseConfig()
+    if (!cfg) return null
+    const t = token || getSupabaseSessionToken()
+    if (!t) return null
+
+    try {
+      const res = await axios.get(`${cfg.url}/auth/v1/user`, {
+        headers: {
+          apikey: cfg.anonKey,
+          Authorization: `Bearer ${t}`,
+        },
+        timeout: 6000,
+      })
+      return res.data
+    } catch {
+      return null
+    }
+  },
+
+  signOut: async () => {
+    const cfg = getSupabaseConfig()
+    const token = getSupabaseSessionToken()
+    setSupabaseSessionToken(null)
+    if (cfg && token) {
+      try {
+        await axios.post(
+          `${cfg.url}/auth/v1/logout`,
+          {},
+          {
+            headers: {
+              apikey: cfg.anonKey,
+              Authorization: `Bearer ${token}`,
+            },
+            timeout: 4000,
+          }
+        )
+      } catch {
+        // ignore
+      }
+    }
+  },
+}
+

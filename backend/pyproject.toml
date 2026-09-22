@@ -35,7 +35,7 @@ dependencies = [
     "apscheduler>=3.10.0",
 
     # MT940 bank parsing
-    "mt940>=0.8.0",
+    "mt940>=4.30.0",
 
     # String matching for reconciliation
     "rapidfuzz>=3.9.0",
