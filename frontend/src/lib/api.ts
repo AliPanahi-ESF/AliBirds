@@ -254,6 +254,143 @@ export const invoicesApi = {
   },
 }
 
+// ── Quotations & Digital Signatures (Offertes) ──────────────────────────────
+
+export const quotationsApi = {
+  list: async (params?: { status?: string }) => {
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      try {
+        const supaQuotes = await supabaseDb.getQuotations()
+        if (Array.isArray(supaQuotes)) {
+          let list = [...supaQuotes]
+          if (params?.status) {
+            list = list.filter((q: any) => q.status === params.status)
+          }
+          return list
+        }
+      } catch (err) {
+        console.warn('Supabase getQuotations error:', err)
+      }
+    }
+
+    let list = demoStore.getQuotations()
+    if (params?.status) {
+      list = list.filter((q: any) => q.status === params.status)
+    }
+    return list
+  },
+
+  get: async (id: string) => {
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      try {
+        const supaQuote = await supabaseDb.getQuotation(id)
+        if (supaQuote) return supaQuote
+      } catch (err) {
+        console.warn('Supabase getQuotation error:', err)
+      }
+    }
+
+    const found = demoStore.getQuotation(id)
+    if (found) return found
+
+    try {
+      const res = await api.get(`/quotations/${id}`)
+      if (res.data && typeof res.data === 'object' && res.data.id) return res.data
+    } catch {
+      // ignore
+    }
+
+    throw new Error('Offerte niet gevonden')
+  },
+
+  create: async (data: any) => {
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      const supaCreated = await supabaseDb.saveQuotation(data)
+      if (supaCreated) return supaCreated
+    }
+
+    try {
+      const res = await api.post('/quotations', data)
+      if (res.data && typeof res.data === 'object' && res.data.id) return res.data
+    } catch {
+      // fallback
+    }
+
+    return demoStore.saveQuotation(data)
+  },
+
+  update: async (id: string, data: any) => {
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      const supaUpdated = await supabaseDb.saveQuotation({ ...data, id })
+      if (supaUpdated) return supaUpdated
+    }
+
+    try {
+      const res = await api.put(`/quotations/${id}`, data)
+      if (res.data && typeof res.data === 'object' && res.data.id) return res.data
+    } catch {
+      // fallback
+    }
+
+    return demoStore.saveQuotation({ ...data, id })
+  },
+
+  delete: async (id: string) => {
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      await supabaseDb.deleteQuotation(id)
+      return { success: true }
+    }
+
+    demoStore.deleteQuotation(id)
+    try {
+      await api.delete(`/quotations/${id}`)
+    } catch {
+      // ignore
+    }
+
+    return { success: true }
+  },
+
+  signPublicly: async (id: string, signatureDataUrl: string, signedByName: string) => {
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      const supaSigned = await supabaseDb.signQuotationPublicly(id, signatureDataUrl, signedByName)
+      if (supaSigned) return supaSigned
+    }
+
+    return demoStore.signQuotationPublicly(id, signatureDataUrl, signedByName)
+  },
+
+  convertToInvoice: async (id: string) => {
+    const quote = await quotationsApi.get(id)
+    if (!quote) throw new Error('Offerte niet gevonden')
+
+    const today = new Date().toISOString().slice(0, 10)
+    const due14 = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10)
+
+    const createdInvoice = await invoicesApi.create({
+      client_id: quote.client_id,
+      issue_date: today,
+      delivery_date: today,
+      due_date: due14,
+      calculation_mode: quote.calculation_mode || 'EXCLUSIVE',
+      status: 'DRAFT',
+      notes: `Gegenereerd uit geaccepteerde offerte ${quote.quotation_number}.\n${quote.notes || ''}`.trim(),
+      line_items: quote.line_items,
+    })
+
+    await quotationsApi.update(id, {
+      status: 'CONVERTED',
+      converted_invoice_id: createdInvoice.id,
+    })
+
+    return {
+      success: true,
+      invoice_id: createdInvoice.id,
+      invoice_number: createdInvoice.invoice_number,
+    }
+  },
+}
+
 // ── Clients ────────────────────────────────────────────────────────────────
 
 export const clientsApi = {

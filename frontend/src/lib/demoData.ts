@@ -1,6 +1,7 @@
 import {
   Invoice, Client, Expense, BankTransaction, BusinessSettings,
-  DashboardKPIs, BtwAangifte, LineItem, CalcMode, VATRate, RecurringSchedule
+  DashboardKPIs, BtwAangifte, LineItem, CalcMode, VATRate, RecurringSchedule,
+  Quotation
 } from './types'
 
 const STORAGE_KEYS = {
@@ -10,6 +11,7 @@ const STORAGE_KEYS = {
   BANK: 'alibirds_bank',
   SETTINGS: 'alibirds_settings',
   RECURRING: 'alibirds_recurring',
+  QUOTATIONS: 'alibirds_quotations',
 }
 
 export const INITIAL_SETTINGS: BusinessSettings = {
@@ -891,4 +893,225 @@ export const demoStore = {
       invoice_id: createdInvoice.id,
     }
   },
+
+  getQuotations: (): Quotation[] => {
+    return getStored(STORAGE_KEYS.QUOTATIONS, INITIAL_QUOTATIONS)
+  },
+  getQuotation: (id: string): Quotation | undefined => {
+    const list = demoStore.getQuotations()
+    return list.find(q => q.id === id)
+  },
+  saveQuotation: (quoteData: Partial<Quotation>): Quotation => {
+    const list = demoStore.getQuotations()
+    const clients = demoStore.getClients()
+    const client = clients.find(c => c.id === quoteData.client_id) || quoteData.client
+
+    if (quoteData.id) {
+      const idx = list.findIndex(q => q.id === quoteData.id)
+      if (idx >= 0) {
+        const updated: Quotation = {
+          ...list[idx],
+          ...quoteData,
+          client: client || list[idx].client,
+          updated_at: new Date().toISOString(),
+        } as Quotation
+        list[idx] = updated
+        setStored(STORAGE_KEYS.QUOTATIONS, list)
+        return updated
+      }
+    }
+
+    const nextSeq = list.length + 1
+    const pad = String(nextSeq).padStart(3, '0')
+    const quoteNum = quoteData.quotation_number || `OFF-2026-${pad}`
+
+    const newQuote: Quotation = {
+      id: `quote-${Date.now()}`,
+      quotation_number: quoteNum,
+      client_id: quoteData.client_id || '',
+      client,
+      issue_date: quoteData.issue_date || new Date().toISOString().slice(0, 10),
+      valid_until_date: quoteData.valid_until_date || new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10),
+      status: quoteData.status || 'DRAFT',
+      calculation_mode: quoteData.calculation_mode || 'EXCLUSIVE',
+      subtotal_excl: Number(quoteData.subtotal_excl) || 0,
+      total_vat: Number(quoteData.total_vat) || 0,
+      total_amount: Number(quoteData.total_amount) || 0,
+      notes: quoteData.notes || '',
+      disclaimer: quoteData.disclaimer || 'Deze offerte is 30 dagen geldig na dagtekening. Na akkoord start het project binnen 2 weken.',
+      line_items: quoteData.line_items || [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ...quoteData,
+    } as Quotation
+
+    list.unshift(newQuote)
+    setStored(STORAGE_KEYS.QUOTATIONS, list)
+    return newQuote
+  },
+  deleteQuotation: (id: string): void => {
+    const list = demoStore.getQuotations()
+    setStored(STORAGE_KEYS.QUOTATIONS, list.filter(q => q.id !== id))
+  },
+  signQuotationPublicly: (id: string, signatureDataUrl: string, signedByName: string): Quotation => {
+    const list = demoStore.getQuotations()
+    const quote = list.find(q => q.id === id)
+    if (!quote) throw new Error('Offerte niet gevonden')
+    quote.signature_data_url = signatureDataUrl
+    quote.signed_by_name = signedByName
+    quote.signed_at = new Date().toISOString()
+    quote.status = 'ACCEPTED'
+    quote.updated_at = new Date().toISOString()
+    setStored(STORAGE_KEYS.QUOTATIONS, list)
+    return quote
+  },
+  convertQuotationToInvoice: (id: string): { success: boolean; invoice_id: string; invoice_number: string } => {
+    const list = demoStore.getQuotations()
+    const quote = list.find(q => q.id === id)
+    if (!quote) throw new Error('Offerte niet gevonden')
+
+    const today = new Date().toISOString().slice(0, 10)
+    const due14 = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10)
+
+    const newInvoice = demoStore.saveInvoice({
+      client_id: quote.client_id,
+      client: quote.client,
+      issue_date: today,
+      delivery_date: today,
+      due_date: due14,
+      calculation_mode: quote.calculation_mode || 'EXCLUSIVE',
+      status: 'DRAFT',
+      notes: `Gegenereerd uit geaccepteerde offerte ${quote.quotation_number}.\n${quote.notes || ''}`.trim(),
+      line_items: quote.line_items,
+    })
+
+    quote.status = 'CONVERTED'
+    quote.converted_invoice_id = newInvoice.id
+    quote.updated_at = new Date().toISOString()
+    setStored(STORAGE_KEYS.QUOTATIONS, list)
+
+    return {
+      success: true,
+      invoice_id: newInvoice.id,
+      invoice_number: newInvoice.invoice_number,
+    }
+  },
 }
+
+export const INITIAL_QUOTATIONS: Quotation[] = [
+  {
+    id: 'quote-1',
+    quotation_number: 'OFF-2026-001',
+    client_id: 'client-1',
+    client: INITIAL_CLIENTS[0],
+    issue_date: '2026-09-01',
+    valid_until_date: '2026-10-01',
+    status: 'ACCEPTED',
+    calculation_mode: 'EXCLUSIVE',
+    subtotal_excl: 4500.00,
+    total_vat: 945.00,
+    total_amount: 5445.00,
+    notes: 'Offerte voor herinrichting bedrijfsnetwerk en implementatie cloudoplossing.',
+    disclaimer: 'Deze offerte is 30 dagen geldig na dagtekening. Na akkoord start het project binnen 2 weken.',
+    signed_by_name: 'Daan van Dijk',
+    signed_at: '2026-09-08T11:20:00Z',
+    signature_data_url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="60"><path d="M10 40 Q 50 10, 90 35 T 180 25" fill="none" stroke="%234f46e5" stroke-width="3"/></svg>',
+    line_items: [
+      {
+        id: 'qitem-1-1',
+        description: 'Cloud Infrastructure Setup & Security Hardening',
+        quantity: 30,
+        unit_price: 95.00,
+        vat_rate: '21',
+        vat_amount: 598.50,
+        line_total_excl: 2850.00,
+        line_total_incl: 3448.50,
+        sort_order: 1,
+      },
+      {
+        id: 'qitem-1-2',
+        description: 'Migratie bestaande databases naar PostgreSQL',
+        quantity: 15,
+        unit_price: 110.00,
+        vat_rate: '21',
+        vat_amount: 346.50,
+        line_total_excl: 1650.00,
+        line_total_incl: 1996.50,
+        sort_order: 2,
+      },
+    ],
+    created_at: '2026-09-01T10:00:00Z',
+    updated_at: '2026-09-08T11:20:00Z',
+  },
+  {
+    id: 'quote-2',
+    quotation_number: 'OFF-2026-002',
+    client_id: 'client-2',
+    client: INITIAL_CLIENTS[1],
+    issue_date: '2026-09-15',
+    valid_until_date: '2026-10-15',
+    status: 'SENT',
+    calculation_mode: 'EXCLUSIVE',
+    subtotal_excl: 2400.00,
+    total_vat: 504.00,
+    total_amount: 2904.00,
+    notes: 'Website UI/UX herontwerp met mobiele optimalisatie en PWA-ondersteuning.',
+    disclaimer: 'Prijzen zijn exclusief btw. Betaling in 2 termijnen (50% bij aanvang, 50% bij oplevering).',
+    line_items: [
+      {
+        id: 'qitem-2-1',
+        description: 'UI/UX Design in Figma (Desktop & Mobile)',
+        quantity: 20,
+        unit_price: 80.00,
+        vat_rate: '21',
+        vat_amount: 336.00,
+        line_total_excl: 1600.00,
+        line_total_incl: 1936.00,
+        sort_order: 1,
+      },
+      {
+        id: 'qitem-2-2',
+        description: 'Frontend implementatie met React & Tailwind',
+        quantity: 10,
+        unit_price: 80.00,
+        vat_rate: '21',
+        vat_amount: 168.00,
+        line_total_excl: 800.00,
+        line_total_incl: 968.00,
+        sort_order: 2,
+      },
+    ],
+    created_at: '2026-09-15T14:00:00Z',
+    updated_at: '2026-09-15T14:30:00Z',
+  },
+  {
+    id: 'quote-3',
+    quotation_number: 'OFF-2026-003',
+    client_id: 'client-3',
+    client: INITIAL_CLIENTS[2],
+    issue_date: '2026-09-20',
+    valid_until_date: '2026-10-20',
+    status: 'DRAFT',
+    calculation_mode: 'EXCLUSIVE',
+    subtotal_excl: 1850.00,
+    total_vat: 388.50,
+    total_amount: 2238.50,
+    notes: 'Kwartaalonderhoud en SLA monitoring voor webapplicaties.',
+    disclaimer: 'Geldig gedurende 30 dagen.',
+    line_items: [
+      {
+        id: 'qitem-3-1',
+        description: 'SLA Monitoring & Security Updates Q4 2026',
+        quantity: 1,
+        unit_price: 1850.00,
+        vat_rate: '21',
+        vat_amount: 388.50,
+        line_total_excl: 1850.00,
+        line_total_incl: 2238.50,
+        sort_order: 1,
+      },
+    ],
+    created_at: '2026-09-20T09:15:00Z',
+    updated_at: '2026-09-20T09:15:00Z',
+  },
+]

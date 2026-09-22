@@ -898,4 +898,127 @@ export const supabaseDb = {
       return null
     }
   },
+
+  getQuotations: async () => {
+    if (!isSupabaseConfigured()) return null
+    try {
+      const { data, error } = await supabase
+        .from('quotations')
+        .select(`
+          *,
+          client:clients(*)
+        `)
+        .order('created_at', { ascending: false })
+      if (error) {
+        if (error.code === '42P01') return null
+        throw error
+      }
+      return data
+    } catch (err) {
+      console.warn('Supabase getQuotations notice:', err)
+      return null
+    }
+  },
+
+  getQuotation: async (id: string) => {
+    if (!isSupabaseConfigured()) return null
+    try {
+      const { data, error } = await supabase
+        .from('quotations')
+        .select(`
+          *,
+          client:clients(*)
+        `)
+        .eq('id', id)
+        .single()
+      if (error) throw error
+      return data
+    } catch (err) {
+      console.warn('Supabase getQuotation notice:', err)
+      return null
+    }
+  },
+
+  saveQuotation: async (quoteData: any) => {
+    if (!isSupabaseConfigured()) return null
+    const { id, client, created_at, updated_at, ...fields } = quoteData
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+    const dbRow = {
+      ...fields,
+      client_id: (fields.client_id && isUuid.test(fields.client_id)) ? fields.client_id : null,
+      line_items: fields.line_items || [],
+      subtotal_excl: Number(fields.subtotal_excl) || 0,
+      total_vat: Number(fields.total_vat) || 0,
+      total_amount: Number(fields.total_amount) || 0,
+    }
+
+    try {
+      if (id && typeof id === 'string' && isUuid.test(id)) {
+        const { data, error } = await supabase
+          .from('quotations')
+          .update(dbRow)
+          .eq('id', id)
+          .select(`*, client:clients(*)`)
+          .single()
+        if (error) throw error
+        return data
+      } else {
+        let insertRes = await supabase
+          .from('quotations')
+          .insert(dbRow)
+          .select(`*, client:clients(*)`)
+          .single()
+
+        if (insertRes.error && insertRes.error.code === '23505') {
+          const uniqueNum = `${dbRow.quotation_number}-${Math.floor(100 + Math.random() * 900)}`
+          insertRes = await supabase
+            .from('quotations')
+            .insert({ ...dbRow, quotation_number: uniqueNum })
+            .select(`*, client:clients(*)`)
+            .single()
+        }
+
+        if (insertRes.error) throw insertRes.error
+        return insertRes.data
+      }
+    } catch (err) {
+      console.warn('Supabase saveQuotation error:', err)
+      return null
+    }
+  },
+
+  deleteQuotation: async (id: string) => {
+    if (!isSupabaseConfigured()) return null
+    try {
+      const { error } = await supabase.from('quotations').delete().eq('id', id)
+      if (error) throw error
+      return true
+    } catch (err) {
+      console.warn('Supabase deleteQuotation error:', err)
+      return null
+    }
+  },
+
+  signQuotationPublicly: async (id: string, signatureDataUrl: string, signedByName: string) => {
+    if (!isSupabaseConfigured()) return null
+    try {
+      const { data, error } = await supabase
+        .from('quotations')
+        .update({
+          signature_data_url: signatureDataUrl,
+          signed_by_name: signedByName,
+          signed_at: new Date().toISOString(),
+          status: 'ACCEPTED',
+        })
+        .eq('id', id)
+        .select(`*, client:clients(*)`)
+        .single()
+      if (error) throw error
+      return data
+    } catch (err) {
+      console.warn('Supabase signQuotationPublicly error:', err)
+      return null
+    }
+  },
 }

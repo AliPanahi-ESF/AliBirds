@@ -74,6 +74,31 @@ export interface Invoice {
   updated_at: string
 }
 
+export type QuotationStatus = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'CONVERTED'
+
+export interface Quotation {
+  id: string
+  quotation_number: string
+  client_id?: string
+  client?: Client
+  issue_date: string
+  valid_until_date: string
+  status: QuotationStatus
+  calculation_mode?: CalcMode
+  subtotal_excl: number
+  total_vat: number
+  total_amount: number
+  notes?: string
+  disclaimer?: string
+  signature_data_url?: string
+  signed_by_name?: string
+  signed_at?: string
+  converted_invoice_id?: string
+  line_items: LineItem[]
+  created_at: string
+  updated_at: string
+}
+
 export interface BankTransaction {
   id: string
   transaction_date: string

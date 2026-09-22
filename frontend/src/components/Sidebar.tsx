@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, FileText, Users, Building2,
+  LayoutDashboard, FileText, FileCheck, Users, Building2,
   RefreshCw, Receipt, Settings, TrendingUp,
   Bird, ChevronRight, X, LogOut
 } from 'lucide-react'
@@ -12,6 +12,7 @@ import { settingsApi } from '@/lib/api'
 export const NAV = [
   { to: '/',            icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/invoices',    icon: FileText,        label: 'Facturen' },
+  { to: '/quotations',  icon: FileCheck,       label: 'Offertes' },
   { to: '/clients',     icon: Users,           label: 'Klanten' },
   { to: '/bank',        icon: Building2,       label: 'Bankafschriften' },
   { to: '/tax',         icon: TrendingUp,      label: 'Btw-aangifte' },

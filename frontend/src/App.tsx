@@ -9,6 +9,9 @@ import BottomNav from '@/components/BottomNav'
 const Dashboard = lazy(() => import('@/pages/Dashboard'))
 const InvoiceList = lazy(() => import('@/pages/InvoiceList'))
 const InvoiceEditor = lazy(() => import('@/pages/InvoiceEditor'))
+const Quotations = lazy(() => import('@/pages/Quotations'))
+const QuotationEditor = lazy(() => import('@/pages/QuotationEditor'))
+const PublicQuoteReview = lazy(() => import('@/pages/PublicQuoteReview'))
 const Clients = lazy(() => import('@/pages/Clients'))
 const BankReconciliation = lazy(() => import('@/pages/BankReconciliation'))
 const TaxReturn = lazy(() => import('@/pages/TaxReturn'))
@@ -59,6 +62,21 @@ function AppContent() {
       }>
         <Routes>
           <Route path="*" element={<AuthPage initialMode="update-password" />} />
+        </Routes>
+      </Suspense>
+    )
+  }
+
+  // Public routes accessible without login (clients reviewing and signing quotations)
+  if (location.pathname.startsWith('/quote/review/')) {
+    return (
+      <Suspense fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-400">
+          <div className="w-9 h-9 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }>
+        <Routes>
+          <Route path="/quote/review/:id" element={<PublicQuoteReview />} />
         </Routes>
       </Suspense>
     )
@@ -115,6 +133,10 @@ function AppContent() {
               <Route path="/invoices" element={<InvoiceList />} />
               <Route path="/invoices/new" element={<InvoiceEditor />} />
               <Route path="/invoices/:id/edit" element={<InvoiceEditor />} />
+              <Route path="/quotations" element={<Quotations />} />
+              <Route path="/quotations/new" element={<QuotationEditor />} />
+              <Route path="/quotations/:id/edit" element={<QuotationEditor />} />
+              <Route path="/quote/review/:id" element={<PublicQuoteReview />} />
               <Route path="/clients" element={<Clients />} />
               <Route path="/bank" element={<BankReconciliation />} />
               <Route path="/tax" element={<TaxReturn />} />

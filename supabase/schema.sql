@@ -182,7 +182,32 @@ CREATE TABLE IF NOT EXISTS recurring_schedules (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 10. Enable Row Level Security (RLS) on all tables
+-- 10. Quotations & Digital Signatures Table (Offertebeheer)
+CREATE TABLE IF NOT EXISTS quotations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
+    client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+    quotation_number VARCHAR(64) NOT NULL,
+    issue_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    valid_until_date DATE NOT NULL DEFAULT (CURRENT_DATE + INTERVAL '30 days'),
+    calculation_mode VARCHAR(20) NOT NULL DEFAULT 'EXCLUSIVE', -- EXCLUSIVE or INCLUSIVE
+    status VARCHAR(32) NOT NULL DEFAULT 'DRAFT',              -- DRAFT, SENT, ACCEPTED, REJECTED, CONVERTED
+    subtotal_excl NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    total_vat NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    notes TEXT,
+    disclaimer TEXT,
+    signature_data_url TEXT,
+    signed_by_name VARCHAR(128),
+    signed_at TIMESTAMPTZ,
+    converted_invoice_id UUID REFERENCES invoices(id) ON DELETE SET NULL,
+    line_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT quotations_user_id_quotation_number_unique UNIQUE (user_id, quotation_number)
+);
+
+-- 11. Enable Row Level Security (RLS) on all tables
 ALTER TABLE business_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
@@ -190,8 +215,12 @@ ALTER TABLE invoice_line_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bank_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recurring_schedules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE quotations ENABLE ROW LEVEL SECURITY;
 
--- 10. Drop any old policies to prevent collision errors
+-- Drop old policies to prevent collision errors
+DROP POLICY IF EXISTS "Users manage own quotations" ON quotations;
+DROP POLICY IF EXISTS "Public can view quotations by ID" ON quotations;
+DROP POLICY IF EXISTS "Public can sign quotations" ON quotations;
 DROP POLICY IF EXISTS "Public or anon access to business_settings" ON business_settings;
 DROP POLICY IF EXISTS "Users manage own business_settings" ON business_settings;
 
@@ -258,6 +287,21 @@ CREATE POLICY "Users manage own recurring_schedules"
   ON recurring_schedules FOR ALL
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own quotations"
+  ON quotations FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- Public / anonymous client signing access (clients can view and sign the quote with the direct link)
+CREATE POLICY "Public can view quotations by ID"
+  ON quotations FOR SELECT
+  USING (true);
+
+CREATE POLICY "Public can sign quotations"
+  ON quotations FOR UPDATE
+  USING (status IN ('SENT', 'ACCEPTED'))
+  WITH CHECK (status IN ('SENT', 'ACCEPTED'));
 
 -- ── Safe Schema Upgrades for Existing Deployments ─────────────────────────────
 -- Run these in Supabase SQL Editor if upgrading an older database instance:
