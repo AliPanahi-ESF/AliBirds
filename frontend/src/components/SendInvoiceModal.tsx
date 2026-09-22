@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Invoice, BusinessSettings, Client } from '@/lib/types'
-import { fmt, clientsApi, invoicesApi } from '@/lib/api'
+import { fmt, clientsApi, invoicesApi, settingsApi } from '@/lib/api'
 import {
   prepareInvoiceEmail,
   generateGmailUrl,

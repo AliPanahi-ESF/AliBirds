@@ -95,6 +95,9 @@ export function settingsToDb(settings: any) {
     result.next_invoice_sequence = Number(settings.next_invoice_sequence) || 1
   }
   if (settings.default_vat_rate !== undefined) result.default_vat_rate = settings.default_vat_rate
+  if (settings.invoice_notes_default !== undefined) result.invoice_notes_default = settings.invoice_notes_default
+  if (settings.payment_link !== undefined) result.payment_link = settings.payment_link || null
+  if (settings.font_family !== undefined) result.font_family = settings.font_family
 
   return result
 }
@@ -237,12 +240,11 @@ function invoiceToDb(inv: any) {
 
 const STORAGE_KEY_CONFIG = 'alibirds_supabase_config'
 
-// Built-in default production Supabase instance — zero setup required by end users
-const DEFAULT_URL = 'https://gnizaskjsgxwgdirzrrf.supabase.co'
-const DEFAULT_KEY = 'sb_publishable_lxxsKIS_pObg-cS-pXQrxw_vHqy2dG3'
-
+// Supabase credentials must be set as environment variables (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)
+// For Netlify: set these in Site Settings → Environment Variables
+// For local dev: add to frontend/.env.local
 function getCredentials(): { url: string; key: string } {
-  // 1. Environment variables (if overridden)
+  // 1. Environment variables (primary source — always preferred)
   const envUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL as string) || ''
   const envKey = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string) || ''
   if (envUrl && envKey && envUrl.startsWith('https://') && !envUrl.includes('placeholder')) {
@@ -264,8 +266,10 @@ function getCredentials(): { url: string; key: string } {
     }
   }
 
-  // 3. Default production instance
-  return { url: DEFAULT_URL, key: DEFAULT_KEY }
+  // 3. No credentials found — return empty (Supabase client will fail to connect, which is preferable
+  //    to silently using someone else's credentials)
+  console.warn('Supabase credentials not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.')
+  return { url: '', key: '' }
 }
 
 const creds = getCredentials()

@@ -1,6 +1,12 @@
 # Environment & secrets
 .env
 *.env
+.env.*
+.env.netlify
+.env.production
+.env.local
+frontend/.env.local
+frontend/.env.production
 !.env.example
 
 # Python

@@ -80,10 +80,20 @@ export interface BankTransaction {
   value_date?: string
   amount: number
   currency: string
+  // 'type' and 'transaction_type' are both used — type is the canonical frontend field,
+  // transaction_type is the DB column name (CREDIT/DEBIT)
   type: TransactionType
+  transaction_type?: TransactionType
   counterpart_name?: string
   counterpart_iban?: string
+  // Aliases used by MT940 parser and bank reconciliation (match DB column names)
+  contra_account_name?: string
+  contra_account_iban?: string
   remittance_reference?: string
+  description?: string
+  raw_reference?: string
+  raw_hash?: string
+  match_score?: number
   reconciliation_status: ReconciliationStatus
   matched_invoice_id?: string
   imported_at: string

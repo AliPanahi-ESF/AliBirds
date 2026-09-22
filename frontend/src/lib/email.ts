@@ -12,28 +12,21 @@ import { Invoice, BusinessSettings } from './types'
 import { fmt } from './api'
 import { generateInvoicePdfBase64 } from './pdfGenerator'
 
-const STORAGE_KEY_RESEND = 'alibirds_resend_api_key'
 const STORAGE_KEY_SENDER = 'alibirds_resend_sender'
 const STORAGE_KEY_PAYLINK = 'alibirds_default_payment_link'
 
-// Default built-in Resend API credentials (base64 encoded)
-const DEFAULT_RESEND_KEY = typeof atob !== 'undefined' ? atob('cmVfUnpMWHI1NmNfRUhnYmhiRk5UMlFpR0JUeEVKVHIyTmZ3') : ''
 const DEFAULT_RESEND_SENDER = 'onboarding@resend.dev'
 
+// Note: The Resend API key is NOT stored or sent from the frontend.
+// It lives exclusively in the Netlify environment variable RESEND_API_KEY,
+// accessed server-side by the /api/send-email serverless function.
 export function getResendKey(): string {
-  try {
-    return (
-      import.meta.env.VITE_RESEND_API_KEY ||
-      localStorage.getItem(STORAGE_KEY_RESEND) ||
-      DEFAULT_RESEND_KEY
-    )
-  } catch {
-    return DEFAULT_RESEND_KEY
-  }
+  // Returns empty — the key is handled server-side only
+  return ''
 }
 
-export function saveResendConfig(apiKey: string, senderEmail?: string): void {
-  localStorage.setItem(STORAGE_KEY_RESEND, apiKey.trim())
+export function saveResendConfig(_apiKey: string, senderEmail?: string): void {
+  // API key is no longer stored in the browser — it's a server-side secret
   if (senderEmail) {
     localStorage.setItem(STORAGE_KEY_SENDER, senderEmail.trim())
   }
@@ -43,7 +36,6 @@ export function getResendSender(): string {
   try {
     return (
       localStorage.getItem(STORAGE_KEY_SENDER) ||
-      import.meta.env.VITE_RESEND_FROM_EMAIL ||
       DEFAULT_RESEND_SENDER
     )
   } catch {
@@ -173,7 +165,7 @@ Gelieve het bedrag vóór ${dueDate} te voldoen.`
         <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #64748b; line-height: 1.5;">
           Met vriendelijke groet,<br/>
           <strong style="color: #0f172a;">${companyName}</strong><br/>
-          ${settings?.kvk_number ? `KvK: ${settings.kvk_number} | ` : ''}${settings?.btw_id || settings?.vat_number ? `BTW: ${settings.btw_id || settings.vat_number}` : ''}
+          ${settings?.kvk_number ? `KvK: ${settings.kvk_number} | ` : ''}${settings?.btw_id ? `BTW: ${settings.btw_id}` : ''}
         </div>
       </div>
     </div>
@@ -275,6 +267,7 @@ export async function sendInvoiceViaResend(
   }
 
   // 1. Try serverless function endpoint first (handles server-side CORS & attachments cleanly)
+  // Note: apiKey is NOT sent to the serverless function — it reads from Netlify env vars server-side
   try {
     const res = await axios.post(
       '/api/send-email',
@@ -283,8 +276,8 @@ export async function sendInvoiceViaResend(
         from: fromAddress,
         subject,
         html: htmlBody,
-        apiKey,
         attachments,
+        // apiKey intentionally omitted — the server uses its own env-var secret
       },
       {
         timeout: 12000,

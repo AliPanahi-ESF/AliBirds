@@ -70,7 +70,7 @@ export default function InvoiceEditor() {
 
   const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ['clients'],
-    queryFn: clientsApi.list,
+    queryFn: () => clientsApi.list(),
   })
   const { data: existing } = useQuery<Invoice>({
     queryKey: ['invoice', id],
@@ -249,13 +249,15 @@ export default function InvoiceEditor() {
         description: it.description || `Item ${idx + 1}`,
         quantity: Number(it.quantity) || 1,
         unit_price: Number(it.unit_price) || 0,
-        vat_rate: String(it.vat_rate || '21'),
+        vat_rate: (it.vat_rate || '21') as import('@/lib/types').VATRate,
         vat_amount: vat,
         line_total_excl: excl,
         line_total_incl: incl,
         sort_order: idx + 1,
       }
     }),
+    created_at: existing?.created_at || today,
+    updated_at: existing?.updated_at || today,
   }
 
   const onSubmit = (data: FormData) => {

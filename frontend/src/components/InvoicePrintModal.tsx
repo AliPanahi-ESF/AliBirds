@@ -146,7 +146,7 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
               </div>
               <div className="text-slate-500 space-y-0.5 text-xs">
                 <div>{settings?.address_street || 'Keizersgracht 100'}</div>
-                <div>{settings?.address_postcode} {settings?.address_city}, {settings?.country_code || 'NL'}</div>
+                <div>{settings?.address_postcode} {settings?.address_city}, {settings?.address_country || 'NL'}</div>
                 {settings?.email && <div>E-mail: {settings.email}</div>}
               </div>
             </div>
@@ -203,7 +203,7 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
             <div className="sm:text-right text-xs text-slate-600 space-y-1">
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Bedrijfsgegevens:</div>
               <div>KvK-nummer: <span className="font-mono font-medium text-slate-800">{settings?.kvk_number || '12345678'}</span></div>
-              <div>Btw-identificatienummer: <span className="font-mono font-medium text-slate-800">{settings?.vat_number || 'NL123456789B01'}</span></div>
+              <div>Btw-identificatienummer: <span className="font-mono font-medium text-slate-800">{settings?.btw_id || 'NL123456789B01'}</span></div>
               <div>IBAN: <span className="font-mono font-medium text-slate-800">{settings?.iban || 'NL00BANK0123456789'}</span></div>
               {settings?.bic && <div>BIC: <span className="font-mono font-medium text-slate-800">{settings.bic}</span></div>}
             </div>
@@ -295,7 +295,7 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
                 </tbody>
               </table>
 
-              {invoice.is_reverse_charge && (
+              {(invoice as any).is_reverse_charge && (
                 <div className="mt-2 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 p-2 rounded">
                   <strong>Let op:</strong> Btw verlegd naar afnemer (Art. 194 Richtlijn 2006/112/EG).
                 </div>

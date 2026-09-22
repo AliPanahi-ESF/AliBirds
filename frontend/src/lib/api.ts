@@ -1,6 +1,7 @@
+/// <reference types="vite/client" />
 import axios from 'axios'
 import { demoStore } from './demoData'
-import { isSupabaseConfigured, supabaseDb } from './supabase'
+import { isSupabaseConfigured, supabaseDb, supabase } from './supabase'
 import { parseMT940, autoMatchTransactions } from './mt940'
 
 const api = axios.create({
@@ -15,7 +16,7 @@ api.interceptors.response.use(response => {
     typeof response.data === 'string' &&
     (response.data.trim().startsWith('<!DOCTYPE') ||
      response.data.includes('<html') ||
-     (response.headers['content-type'] && response.headers['content-type'].includes('text/html')))
+     (response.headers['content-type'] && typeof response.headers['content-type'] === 'string' && response.headers['content-type'].includes('text/html')))
   ) {
     throw new Error('API route returned HTML SPA fallback instead of JSON');
   }

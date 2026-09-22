@@ -1,43 +1,68 @@
 /**
  * Netlify Serverless Function: Send Email via Resend API
  * Solves browser CORS restrictions by executing server-side on Node.js.
+ *
+ * Security:
+ * - API key is loaded exclusively from Netlify environment variables (RESEND_API_KEY).
+ * - The client never sends or controls the API key.
+ * - CORS is restricted to known application origins.
  */
+
+const ALLOWED_ORIGINS = [
+  'https://alibirds.netlify.app',
+  'http://localhost:3000',
+  'http://localhost:5173',
+]
+
+function getCorsOrigin(req: Request): string {
+  const origin = req.headers.get('Origin') || ''
+  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+}
+
 export default async (req: Request) => {
+  const corsOrigin = getCorsOrigin(req)
+  const corsHeaders: Record<string, string> = {
+    'Access-Control-Allow-Origin': corsOrigin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Vary': 'Origin',
+  }
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
-    })
+    return new Response(null, { status: 204, headers: corsHeaders })
   }
 
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ ok: false, message: 'Method not allowed' }), {
       status: 405,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
     })
   }
 
   try {
-    const { to, from, subject, html, apiKey, attachments } = body
+    // FIXED: Parse the request body — previously missing, causing a ReferenceError crash on every call
+    const body = await req.json()
+    // Note: 'apiKey' is intentionally NOT accepted from the client for security reasons.
+    const { to, from, subject, html, attachments } = body
 
-    if (!to || !to.length) {
+    if (!to || (Array.isArray(to) ? to.length === 0 : !to)) {
       return new Response(JSON.stringify({ ok: false, message: 'No recipient email address provided.' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
       })
     }
 
-    // Use passed key or environment variable or built-in test key
-    const resendKey =
-      apiKey ||
-      process.env.VITE_RESEND_API_KEY ||
-      Buffer.from('cmVfUnpMWHI1NmNfRUhnYmhiRk5UMlFpR0JUeEVKVHIyTmZ3', 'base64').toString('utf-8')
+    // API key comes exclusively from server environment — never from the client
+    const resendKey = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY
+    if (!resendKey) {
+      console.error('RESEND_API_KEY environment variable is not configured in Netlify.')
+      return new Response(JSON.stringify({ ok: false, message: 'Email service is not configured. Please contact support.' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      })
+    }
 
-    const resendSender = from || process.env.VITE_RESEND_FROM_EMAIL || 'AliBirds <onboarding@resend.dev>'
+    const resendSender = from || process.env.RESEND_FROM_EMAIL || process.env.VITE_RESEND_FROM_EMAIL || 'AliBirds <onboarding@resend.dev>'
 
     const emailPayload: any = {
       from: resendSender,
@@ -75,10 +100,7 @@ export default async (req: Request) => {
         }),
         {
           status: resendRes.status,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-          },
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
         }
       )
     }
@@ -91,13 +113,11 @@ export default async (req: Request) => {
       }),
       {
         status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
       }
     )
   } catch (err: any) {
+    console.error('send-email function error:', err)
     return new Response(
       JSON.stringify({
         ok: false,
@@ -105,10 +125,7 @@ export default async (req: Request) => {
       }),
       {
         status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
       }
     )
   }
