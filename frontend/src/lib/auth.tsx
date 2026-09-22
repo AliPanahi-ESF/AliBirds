@@ -17,6 +17,10 @@ interface AuthContextType {
   user: User | null
   isLoading: boolean
   sessionInfo: SessionInfo
+  isRecoveryMode: boolean
+  setIsRecoveryMode: (val: boolean) => void
+  authError: string | null
+  clearAuthError: () => void
   login: (email: string, password: string) => Promise<User>
   registerUser: (name: string, email: string, password: string) => Promise<User>
   completeOnboarding: (companyData: Partial<BusinessSettings>) => Promise<void>
@@ -98,6 +102,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     lastChecked: null,
     expiresAt: null,
   })
+  const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return (
+        window.location.hash.includes('type=recovery') ||
+        window.location.search.includes('type=recovery') ||
+        window.location.pathname === '/reset-password'
+      )
+    }
+    return false
+  })
+  const [authError, setAuthError] = useState<string | null>(null)
+  const clearAuthError = useCallback(() => setAuthError(null), [])
 
   const updateSessionInfoFromSbSession = useCallback((sbSession: any) => {
     if (!sbSession) {
@@ -192,20 +208,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    // Check for Supabase Auth hash errors (e.g. #error=access_denied&error_code=otp_expired)
-    if (window.location.hash) {
+    // Check for Supabase Auth hash / search parameters (errors or recovery tokens)
+    if (window.location.hash || window.location.search) {
       try {
-        const hash = window.location.hash.replace(/^#/, '')
-        const params = new URLSearchParams(hash)
+        const raw = (window.location.hash || '').replace(/^#/, '') || (window.location.search || '').replace(/^\?/, '')
+        const params = new URLSearchParams(raw)
+        const type = params.get('type')
         const errorCode = params.get('error_code')
         const errorDesc = params.get('error_description')
+
+        if (type === 'recovery') {
+          setIsRecoveryMode(true)
+        }
 
         if (errorCode || errorDesc) {
           console.warn('Supabase auth URL error detected:', { errorCode, errorDesc })
           if (errorCode === 'otp_expired') {
+            setAuthError('otp_expired')
             toast.error(
-              'De bevestigingslink is verlopen of al geopend door uw e-mailfilter. U kunt direct inloggen met uw wachtwoord of een nieuwe link aanvragen.',
-              { duration: 8000 }
+              'De verificatielink is al geopend of verlopen door uw e-mailscanner. U kunt direct inloggen met uw wachtwoord of een nieuwe code aanvragen.',
+              { duration: 8000, id: 'otp-expired' }
             )
           } else {
             toast.error(`Aanmeldingsfout: ${decodeURIComponent(errorDesc || errorCode || '')}`, { duration: 6000 })
@@ -233,10 +255,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false)
     })
 
-    // Subscribe to future auth events (login, logout, token refresh)
+    // Subscribe to future auth events (login, logout, token refresh, password recovery)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT') {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecoveryMode(true)
+      } else if (event === 'SIGNED_OUT') {
         setUser(null)
+        setIsRecoveryMode(false)
         updateSessionInfoFromSbSession(null)
       } else if (session?.user) {
         cleanupDemoStorage()
@@ -547,6 +572,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(DEMO_ACTIVE_KEY)
     localStorage.removeItem('alibirds_local_session')
     broadcastSync({ type: 'LOGOUT', timestamp: Date.now() })
+    setIsRecoveryMode(false)
+    setAuthError(null)
     try {
       if (isSupabaseConfigured()) {
         await supabase.auth.signOut()
@@ -566,6 +593,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         isLoading,
         sessionInfo,
+        isRecoveryMode,
+        setIsRecoveryMode,
+        authError,
+        clearAuthError,
         login,
         registerUser,
         completeOnboarding,

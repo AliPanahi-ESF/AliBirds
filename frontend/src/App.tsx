@@ -34,7 +34,7 @@ function PageFallback() {
 }
 
 function AppContent() {
-  const { user, isLoading } = useAuth()
+  const { user, isLoading, isRecoveryMode } = useAuth()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -46,6 +46,21 @@ function AppContent() {
           <span className="text-sm font-medium text-slate-300">AliBirds laden...</span>
         </div>
       </div>
+    )
+  }
+
+  // Password Recovery Mode: Render AuthPage with update-password form
+  if (isRecoveryMode) {
+    return (
+      <Suspense fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-400">
+          <div className="w-9 h-9 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }>
+        <Routes>
+          <Route path="*" element={<AuthPage initialMode="update-password" />} />
+        </Routes>
+      </Suspense>
     )
   }
 
