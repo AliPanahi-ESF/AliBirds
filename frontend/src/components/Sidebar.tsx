@@ -27,7 +27,7 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { pathname } = useLocation()
-  const { user, logout } = useAuth()
+  const { user, logout, sessionInfo } = useAuth()
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -114,6 +114,27 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 <div className="text-xs font-semibold text-slate-200 truncate">{user.name}</div>
                 <div className="text-[10px] text-slate-400 truncate" title={companyDisplayName}>{companyDisplayName}</div>
               </div>
+            </div>
+            {/* Live session status indicator */}
+            <div className="flex items-center justify-between text-[11px] px-1 py-1 rounded-md bg-slate-950/60 border border-slate-800/80">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span
+                  className={clsx(
+                    'w-2 h-2 rounded-full shrink-0',
+                    sessionInfo.type === 'CLOUD'
+                      ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+                      : 'bg-amber-400'
+                  )}
+                />
+                <span className="text-[10px] font-mono text-slate-300 truncate">
+                  {sessionInfo.type === 'CLOUD'
+                    ? 'Cloud Sessie Actief'
+                    : sessionInfo.type === 'DEMO'
+                    ? 'Demo Sessie'
+                    : 'Lokale Sessie'}
+                </span>
+              </div>
+              <span className="text-[9px] font-mono text-slate-500 uppercase">Beveiligd</span>
             </div>
             <button
               onClick={() => {

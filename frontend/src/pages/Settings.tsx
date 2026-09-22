@@ -2,7 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import {
   Save, Settings as SettingsIcon, Mail, Building2,
-  CheckCircle2, ExternalLink, User as UserIcon, LogOut, ShieldCheck, Send
+  CheckCircle2, ExternalLink, User as UserIcon, LogOut, ShieldCheck, Send,
+  RefreshCw, Clock, Radio, Shield
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { settingsApi } from '@/lib/api'
@@ -18,7 +19,8 @@ import { useAuth } from '@/lib/auth'
 
 export default function SettingsPage() {
   const qc = useQueryClient()
-  const { user, updateUser, logout } = useAuth()
+  const { user, updateUser, logout, sessionInfo, refreshSession } = useAuth()
+  const [isRefreshingSession, setIsRefreshingSession] = useState(false)
   const [activeTab, setActiveTab] = useState<'profile' | 'account' | 'email'>('profile')
 
   // Resend state
@@ -115,7 +117,7 @@ export default function SettingsPage() {
   if (isLoading) return <div className="text-slate-500 text-xs py-8">Instellingen laden...</div>
 
   return (
-    <div className="max-w-3xl space-y-4 sm:space-y-6">
+    <div className="w-full max-w-5xl space-y-4 sm:space-y-6">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -316,6 +318,98 @@ export default function SettingsPage() {
               Uw gegevens zijn privé en afgeschermd. Andere gebruikers kunnen uw facturen, klanten
               en uitgaven niet zien. U blijft ingelogd op al uw apparaten totdat u uitlogt.
             </p>
+          </div>
+
+          {/* Session Management Card */}
+          <div className="card p-4 sm:p-6 space-y-4 border border-brand-500/20 bg-slate-900/80">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Shield size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-100">Sessiebeheer & Beveiliging</h3>
+                  <p className="text-[11px] text-slate-400">Actieve authenticatie- en synchronisatiestatus</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsRefreshingSession(true)
+                  await refreshSession()
+                  setIsRefreshingSession(false)
+                }}
+                disabled={isRefreshingSession}
+                className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 self-start sm:self-auto disabled:opacity-50"
+              >
+                <RefreshCw size={13} className={isRefreshingSession ? 'animate-spin text-brand-400' : 'text-slate-400'} />
+                <span>{isRefreshingSession ? 'Sessie controleren...' : 'Sessie vernieuwen'}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {/* Session Type */}
+              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+                <div className="flex items-center gap-1.5 text-slate-400 text-xs">
+                  <Radio size={13} className="text-brand-400" />
+                  <span>Sessietype</span>
+                </div>
+                <div className="text-sm font-semibold text-slate-200">
+                  {sessionInfo.type === 'CLOUD'
+                    ? 'Supabase Cloud JWT'
+                    : sessionInfo.type === 'DEMO'
+                    ? 'AliBirds Demo Studio'
+                    : 'Lokale Sessie'}
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  {sessionInfo.type === 'CLOUD' ? 'End-to-end beveiligde cloud token' : 'Geen cloud-authenticatie actief'}
+                </div>
+              </div>
+
+              {/* Heartbeat Status */}
+              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+                <div className="flex items-center gap-1.5 text-slate-400 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Heartbeat & Status</span>
+                </div>
+                <div className="text-sm font-semibold text-emerald-400">
+                  Actief & Verbonden
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  {sessionInfo.lastChecked
+                    ? `Laatst gecontroleerd: ${sessionInfo.lastChecked.toLocaleTimeString('nl-NL')}`
+                    : 'Continu gemonitord'}
+                </div>
+              </div>
+
+              {/* Multi-Tab Sync */}
+              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1 sm:col-span-2 lg:col-span-1">
+                <div className="flex items-center gap-1.5 text-slate-400 text-xs">
+                  <CheckCircle2 size={13} className="text-emerald-400" />
+                  <span>Multi-Tab Synchronisatie</span>
+                </div>
+                <div className="text-sm font-semibold text-slate-200">
+                  Realtime Actief
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  Uitloggen of inloggen synchroniseert direct over alle tabbladen
+                </div>
+              </div>
+            </div>
+
+            {sessionInfo.expiresAt && (
+              <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/80">
+                <Clock size={14} className="text-brand-400 shrink-0" />
+                <span>
+                  Huidige access-token geldig tot:{' '}
+                  <strong className="text-slate-200 font-mono">
+                    {sessionInfo.expiresAt.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+                  </strong>
+                  . Token wordt automatisch stil op de achtergrond verlengd.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Logout card */}

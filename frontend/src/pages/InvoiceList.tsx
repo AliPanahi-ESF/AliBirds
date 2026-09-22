@@ -83,7 +83,7 @@ export default function InvoiceList() {
   )
 
   return (
-    <div className="space-y-4 sm:space-y-5 max-w-6xl">
+    <div className="space-y-4 sm:space-y-5 w-full">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

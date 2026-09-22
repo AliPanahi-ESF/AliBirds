@@ -128,7 +128,7 @@ export default function Expenses() {
   const totalVat = expenses.reduce((s, e) => s + Number(e.vat_amount), 0)
 
   return (
-    <div className="space-y-4 sm:space-y-5 max-w-5xl">
+    <div className="space-y-4 sm:space-y-5 w-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>

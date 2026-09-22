@@ -296,7 +296,7 @@ export default function InvoiceEditor() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6 max-w-6xl">
+    <div className="space-y-4 sm:space-y-6 w-full max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">

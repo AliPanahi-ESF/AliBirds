@@ -93,7 +93,7 @@ function AppContent() {
 
       {/* Main Content Area */}
       <main className="flex-1 md:ml-[260px] min-h-[calc(100vh-3.5rem)] md:min-h-screen pb-20 md:pb-8">
-        <div className="p-3.5 sm:p-5 md:p-8 max-w-7xl mx-auto w-full animate-fade-in">
+        <div className="p-3.5 sm:p-5 md:p-8 max-w-[1800px] mx-auto w-full animate-fade-in">
           <Suspense fallback={<PageFallback />}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
