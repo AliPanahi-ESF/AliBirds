@@ -27,6 +27,7 @@ export default function OnboardingPage() {
   const [addressPostcode, setAddressPostcode] = useState('')
   const [addressCity, setAddressCity] = useState('')
   const [addressCountry, setAddressCountry] = useState('NL')
+  const [phone, setPhone] = useState('')
 
   const [iban, setIban] = useState('')
   const [bic, setBic] = useState('')
@@ -46,6 +47,7 @@ export default function OnboardingPage() {
       if (existing.address_postcode) setAddressPostcode(existing.address_postcode)
       if (existing.address_city) setAddressCity(existing.address_city)
       if (existing.address_country) setAddressCountry(existing.address_country)
+      if (existing.phone) setPhone(existing.phone)
       if (existing.iban) setIban(existing.iban)
       if (existing.bic) setBic(existing.bic)
       if (existing.default_payment_term_days) setPaymentTermDays(existing.default_payment_term_days)
@@ -99,6 +101,7 @@ export default function OnboardingPage() {
         address_postcode: addressPostcode.toUpperCase().trim(),
         address_city: addressCity.trim(),
         address_country: addressCountry,
+        phone: phone.trim() || undefined,
         iban: iban.toUpperCase().trim(),
         bic: bic.toUpperCase().trim(),
         default_payment_term_days: Number(paymentTermDays) || 14,
@@ -127,6 +130,7 @@ export default function OnboardingPage() {
         address_postcode: addressPostcode.toUpperCase().trim(),
         address_city: addressCity.trim(),
         address_country: addressCountry,
+        phone: phone.trim() || undefined,
         iban: iban.toUpperCase().trim(),
         bic: bic.toUpperCase().trim(),
         default_payment_term_days: Number(paymentTermDays) || 14,
@@ -347,17 +351,29 @@ export default function OnboardingPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="label">Land</label>
-                  <select
-                    value={addressCountry}
-                    onChange={e => setAddressCountry(e.target.value)}
-                    className="select text-xs sm:text-sm"
-                  >
-                    <option value="NL">Nederland</option>
-                    <option value="BE">België</option>
-                    <option value="DE">Duitsland</option>
-                  </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="label">Telefoonnummer (optioneel)</label>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={e => setPhone(e.target.value)}
+                      placeholder="+31 6 12345678"
+                      className="input text-xs sm:text-sm font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Land</label>
+                    <select
+                      value={addressCountry}
+                      onChange={e => setAddressCountry(e.target.value)}
+                      className="select text-xs sm:text-sm"
+                    >
+                      <option value="NL">Nederland</option>
+                      <option value="BE">België</option>
+                      <option value="DE">Duitsland</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>

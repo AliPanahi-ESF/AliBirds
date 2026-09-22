@@ -18,7 +18,7 @@ import { useAuth } from '@/lib/auth'
 
 export default function SettingsPage() {
   const qc = useQueryClient()
-  const { user, logout } = useAuth()
+  const { user, updateUser, logout } = useAuth()
   const [activeTab, setActiveTab] = useState<'profile' | 'account' | 'email'>('profile')
 
   // Resend state
@@ -53,6 +53,9 @@ export default function SettingsPage() {
     mutationFn: (data: Partial<BusinessSettings>) => settingsApi.update(data),
     onSuccess: (saved) => {
       toast.success('Bedrijfsgegevens succesvol opgeslagen!')
+      if (saved?.company_name) {
+        updateUser({ company_name: saved.company_name })
+      }
       if (saved?.payment_link) {
         setDefaultPayLink(saved.payment_link)
         saveDefaultPaymentLink(saved.payment_link)
@@ -179,21 +182,25 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
               <div className="sm:col-span-2">
                 <label className="label">Straat + huisnummer</label>
-                <input className="input text-xs sm:text-sm" {...register('address_street')} />
+                <input className="input text-xs sm:text-sm" placeholder="bijv. Keizersgracht 421" {...register('address_street')} />
               </div>
               <div>
                 <label className="label">Postcode</label>
-                <input className="input text-xs sm:text-sm" {...register('address_postcode')} />
+                <input className="input text-xs sm:text-sm" placeholder="1016 EK" {...register('address_postcode')} />
               </div>
               <div>
                 <label className="label">Plaats</label>
-                <input className="input text-xs sm:text-sm" {...register('address_city')} />
+                <input className="input text-xs sm:text-sm" placeholder="Amsterdam" {...register('address_city')} />
+              </div>
+              <div>
+                <label className="label">Telefoonnummer</label>
+                <input type="tel" className="input text-xs sm:text-sm font-mono" placeholder="+31 6 12345678" {...register('phone')} />
               </div>
               <div>
                 <label className="label">E-mail</label>
-                <input type="email" className="input text-xs sm:text-sm" {...register('email')} />
+                <input type="email" className="input text-xs sm:text-sm" placeholder="info@uwbedrijf.nl" {...register('email')} />
               </div>
-              <div>
+              <div className="sm:col-span-3">
                 <label className="label">Website</label>
                 <input className="input text-xs sm:text-sm" placeholder="https://..." {...register('website')} />
               </div>

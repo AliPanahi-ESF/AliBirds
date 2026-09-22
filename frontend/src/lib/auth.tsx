@@ -12,6 +12,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<User>
   registerUser: (name: string, email: string, password: string) => Promise<User>
   completeOnboarding: (companyData: Partial<BusinessSettings>) => Promise<void>
+  updateUser: (data: Partial<User>) => void
   loginDemo: () => void
   logout: () => Promise<void>
 }
@@ -76,19 +77,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Helper to ensure onboarding state is synchronized with DB
   const syncOnboardingIfCompleted = async (initialUser: User, sbUser: any): Promise<User> => {
-    if (initialUser.is_onboarded) return initialUser
     try {
       const settings = await settingsApi.get()
-      if (settings && (settings.company_name || settings.kvk_number)) {
-        setOnboardingStatus(sbUser.id, true)
+      if (settings) {
+        const resolvedCompanyName = settings.company_name || initialUser.company_name
+        const isOnboarded = Boolean(settings.company_name || settings.kvk_number || initialUser.is_onboarded)
+        if (isOnboarded) {
+          setOnboardingStatus(sbUser.id, true)
+        }
         const updated = {
           ...initialUser,
-          company_name: settings.company_name || initialUser.company_name,
-          is_onboarded: true,
+          company_name: resolvedCompanyName,
+          is_onboarded: isOnboarded,
         }
-        supabase.auth.updateUser({
-          data: { is_onboarded: true, company_name: updated.company_name },
-        }).catch(() => {})
+        if (resolvedCompanyName && resolvedCompanyName !== sbUser.user_metadata?.company_name) {
+          supabase.auth.updateUser({
+            data: { is_onboarded: isOnboarded, company_name: resolvedCompanyName },
+          }).catch(() => {})
+        }
         return updated
       }
     } catch {
@@ -304,6 +310,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(updatedUser)
   }, [user])
 
+  const updateUser = useCallback((data: Partial<User>) => {
+    setUser(prev => {
+      if (!prev) return null
+      return { ...prev, ...data }
+    })
+    try {
+      const local = localStorage.getItem('alibirds_local_session')
+      if (local) {
+        const parsed = JSON.parse(local)
+        localStorage.setItem('alibirds_local_session', JSON.stringify({ ...parsed, ...data }))
+      }
+    } catch {
+      // ignore
+    }
+    if (isSupabaseConfigured()) {
+      const metadataUpdates: Record<string, any> = {}
+      if (data.company_name !== undefined) metadataUpdates.company_name = data.company_name
+      if (data.name !== undefined) metadataUpdates.full_name = data.name
+      if (Object.keys(metadataUpdates).length > 0) {
+        supabase.auth.updateUser({ data: metadataUpdates }).catch(() => {})
+      }
+    }
+  }, [])
+
   const logout = useCallback(async (): Promise<void> => {
     localStorage.removeItem(DEMO_ACTIVE_KEY)
     localStorage.removeItem('alibirds_local_session')
@@ -320,7 +350,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, registerUser, completeOnboarding, loginDemo, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, registerUser, completeOnboarding, updateUser, loginDemo, logout }}>
       {children}
     </AuthContext.Provider>
   )

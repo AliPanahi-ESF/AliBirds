@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/lib/auth'
+import { useQuery } from '@tanstack/react-query'
+import { settingsApi } from '@/lib/api'
 
 export const NAV = [
   { to: '/',            icon: LayoutDashboard, label: 'Dashboard' },
@@ -26,6 +28,15 @@ interface SidebarProps {
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { pathname } = useLocation()
   const { user, logout } = useAuth()
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingsApi.get,
+    enabled: !!user,
+  })
+
+  const companyDisplayName = settings?.company_name || user?.company_name || 'ZZP Studio'
+  const userInitial = user?.name ? user.name[0].toUpperCase() : (companyDisplayName ? companyDisplayName[0].toUpperCase() : 'A')
 
   return (
     <>
@@ -97,11 +108,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           <div className="p-3 border-t border-slate-800 bg-slate-900/90 space-y-2.5">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-8 h-8 rounded-full bg-brand-600/25 border border-brand-500/40 flex items-center justify-center text-xs font-bold text-brand-300 shrink-0">
-                {user.name ? user.name[0].toUpperCase() : 'A'}
+                {userInitial}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-semibold text-slate-200 truncate">{user.name}</div>
-                <div className="text-[10px] text-slate-400 truncate">{user.company_name || 'ZZP Studio'}</div>
+                <div className="text-[10px] text-slate-400 truncate" title={companyDisplayName}>{companyDisplayName}</div>
               </div>
             </div>
             <button
