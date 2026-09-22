@@ -74,12 +74,28 @@ export default function Expenses() {
   const excl = watch('amount_excl_vat')
   const rate = watch('vat_rate')
 
-  const recalcFromExcl = (v: number) => {
-    const r = rate === 'REVERSE_CHARGE' ? 0 : (Number(rate) / 100)
-    const vat = Number(v) * r
-    const incl = Number(v) + vat
-    setValue('vat_amount', Math.round(vat * 100) / 100)
-    setValue('amount_incl_vat', Math.round(incl * 100) / 100)
+  const [inputMode, setInputMode] = useState<'excl' | 'incl'>('excl')
+
+  const recalcFromExcl = (v: number, customRate?: string) => {
+    const activeRate = customRate !== undefined ? customRate : rate
+    const r = activeRate === 'REVERSE_CHARGE' ? 0 : (Number(activeRate) / 100)
+    const exclVal = Number(v) || 0
+    const vat = r > 0 ? Math.round(exclVal * r * 100) / 100 : 0
+    const incl = Math.round((exclVal + vat) * 100) / 100
+    setValue('amount_excl_vat', exclVal)
+    setValue('vat_amount', vat)
+    setValue('amount_incl_vat', incl)
+  }
+
+  const recalcFromIncl = (v: number, customRate?: string) => {
+    const activeRate = customRate !== undefined ? customRate : rate
+    const r = activeRate === 'REVERSE_CHARGE' ? 0 : (Number(activeRate) / 100)
+    const inclVal = Number(v) || 0
+    const exclVal = r > 0 ? Math.round((inclVal / (1 + r)) * 100) / 100 : inclVal
+    const vat = Math.round((inclVal - exclVal) * 100) / 100
+    setValue('amount_incl_vat', inclVal)
+    setValue('amount_excl_vat', exclVal)
+    setValue('vat_amount', vat)
   }
 
   const createMutation = useMutation({
@@ -120,11 +136,12 @@ export default function Expenses() {
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">Zakelijke uitgaven en voorbelasting (5b)</p>
         </div>
         <button
-          onClick={() => setShowForm(!showForm)}
-          className="btn-primary text-xs sm:text-sm py-2 px-3.5"
+          type="button"
+          onClick={() => setShowForm(true)}
+          className="btn-primary text-xs sm:text-sm py-2 px-3.5 flex items-center gap-1.5"
         >
-          {showForm ? <X size={15} /> : <Plus size={15} />}
-          {showForm ? 'Sluiten' : 'Kosten toevoegen'}
+          <Plus size={15} />
+          <span>Kosten toevoegen</span>
         </button>
       </div>
 
@@ -144,72 +161,168 @@ export default function Expenses() {
         </div>
       </div>
 
-      {/* Add form */}
+      {/* Add Expense Modal */}
       {showForm && (
-        <div className="card p-4 sm:p-5 animate-fade-in border-brand-600/30">
-          <h2 className="text-sm font-semibold text-slate-200 mb-3">Nieuwe kostenpost invoeren</h2>
-          <form onSubmit={handleSubmit(d => createMutation.mutate(d))} className="space-y-3 sm:space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="label">Leverancier *</label>
-                <input className="input text-xs sm:text-sm" placeholder="Adobe, NS, Apple..." {...register('vendor_name', { required: true })} />
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg animate-fade-in shadow-2xl my-6">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Receipt size={18} className="text-purple-400" />
+                <h3 className="font-semibold text-slate-100 text-sm sm:text-base">Nieuwe kostenpost invoeren</h3>
               </div>
-              <div>
-                <label className="label">Datum</label>
-                <input type="date" className="input text-xs sm:text-sm" {...register('expense_date')} />
-              </div>
-              <div>
-                <label className="label">Categorie</label>
-                <select className="select text-xs sm:text-sm" {...register('category')}>
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="p-1 rounded text-slate-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
             </div>
 
-            <div>
-              <label className="label">Omschrijving</label>
-              <input className="input text-xs sm:text-sm" placeholder="Bijv. Maandabonnement Cloud licenties..." {...register('description')} />
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <form onSubmit={handleSubmit(d => createMutation.mutate(d))} className="p-5 space-y-3.5">
               <div>
-                <label className="label">Excl. btw</label>
+                <label className="label text-xs">Leverancier / Begunstigde *</label>
                 <input
-                  type="number" step="0.01" className="input text-xs sm:text-sm font-mono text-right"
-                  {...register('amount_excl_vat', { valueAsNumber: true })}
-                  onBlur={e => recalcFromExcl(Number(e.target.value))}
+                  className="input text-xs sm:text-sm"
+                  placeholder="Adobe, NS Zakelijk, Apple, Bol.com..."
+                  {...register('vendor_name', { required: true })}
+                  autoFocus
                 />
               </div>
-              <div>
-                <label className="label">Btw%</label>
-                <select className="select text-xs sm:text-sm" {...register('vat_rate')}
-                  onChange={e => { setValue('vat_rate', e.target.value); recalcFromExcl(excl) }}>
-                  <option value="21">21% (hoog)</option>
-                  <option value="9">9% (laag)</option>
-                  <option value="0">0% (nul)</option>
-                </select>
-              </div>
-              <div>
-                <label className="label">Btw bedrag</label>
-                <input type="number" step="0.01" className="input text-xs sm:text-sm font-mono text-right text-emerald-400" readOnly
-                  {...register('vat_amount', { valueAsNumber: true })} />
-              </div>
-              <div>
-                <label className="label">Totaal incl.</label>
-                <input type="number" step="0.01" className="input text-xs sm:text-sm font-mono text-right font-bold text-slate-100" readOnly
-                  {...register('amount_incl_vat', { valueAsNumber: true })} />
-              </div>
-            </div>
 
-            <div className="flex gap-2 justify-end pt-2">
-              <button type="button" onClick={() => setShowForm(false)} className="btn-secondary text-xs sm:text-sm py-2 px-3">
-                Annuleren
-              </button>
-              <button type="submit" className="btn-primary text-xs sm:text-sm py-2 px-4" disabled={createMutation.isPending}>
-                <Receipt size={14} /> {createMutation.isPending ? 'Opslaan...' : 'Opslaan'}
-              </button>
-            </div>
-          </form>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label text-xs">Datum</label>
+                  <input type="date" className="input text-xs sm:text-sm font-mono" {...register('expense_date')} />
+                </div>
+                <div>
+                  <label className="label text-xs">Categorie</label>
+                  <select className="select text-xs sm:text-sm" {...register('category')}>
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="label text-xs">Omschrijving (optioneel)</label>
+                <input
+                  className="input text-xs sm:text-sm"
+                  placeholder="Bijv. Maandabonnement cloud licenties, treinkaartje klantbezoek..."
+                  {...register('description')}
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-xs text-slate-400 font-medium">Berekeningswijze:</span>
+                <div className="flex gap-1 bg-slate-800/80 p-0.5 rounded-lg border border-slate-700 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setInputMode('excl')}
+                    className={clsx(
+                      'px-2 py-1 rounded transition-colors',
+                      inputMode === 'excl' ? 'bg-purple-600 text-white font-medium shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                    )}
+                  >
+                    Excl. btw invoeren
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInputMode('incl')}
+                    className={clsx(
+                      'px-2 py-1 rounded transition-colors',
+                      inputMode === 'incl' ? 'bg-purple-600 text-white font-medium shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                    )}
+                  >
+                    Incl. btw (Kassabon)
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {inputMode === 'excl' ? (
+                  <div>
+                    <label className="label text-xs">Bedrag excl. btw (€) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="input text-xs sm:text-sm font-mono text-right"
+                      {...register('amount_excl_vat', { valueAsNumber: true })}
+                      onChange={e => recalcFromExcl(Number(e.target.value))}
+                      required
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="label text-xs">Totaal incl. btw (€) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="input text-xs sm:text-sm font-mono text-right font-bold text-slate-100"
+                      {...register('amount_incl_vat', { valueAsNumber: true })}
+                      onChange={e => recalcFromIncl(Number(e.target.value))}
+                      required
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="label text-xs">Btw-tarief</label>
+                  <select
+                    className="select text-xs sm:text-sm"
+                    {...register('vat_rate')}
+                    onChange={e => {
+                      const newR = e.target.value
+                      setValue('vat_rate', newR)
+                      if (inputMode === 'excl') {
+                        recalcFromExcl(watch('amount_excl_vat'), newR)
+                      } else {
+                        recalcFromIncl(watch('amount_incl_vat'), newR)
+                      }
+                    }}
+                  >
+                    <option value="21">21% (hoog)</option>
+                    <option value="9">9% (laag)</option>
+                    <option value="0">0% (nul)</option>
+                    <option value="REVERSE_CHARGE">Verlegd (0% / buitenland)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Automatic preview */}
+              <div className="p-3 rounded-lg bg-slate-800/40 border border-slate-800 flex items-center justify-between text-xs font-mono">
+                <div>
+                  <span className="text-slate-400 block">Excl. btw:</span>
+                  <span className="text-slate-200 font-bold">{fmt.currency(Number(watch('amount_excl_vat')) || 0)}</span>
+                </div>
+                <div className="text-center">
+                  <span className="text-slate-400 block">Btw ({rate === 'REVERSE_CHARGE' ? 'Verlegd' : `${rate}%`}):</span>
+                  <span className="text-purple-400 font-bold">{fmt.currency(Number(watch('vat_amount')) || 0)}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-400 block">Totaal incl.:</span>
+                  <span className="text-emerald-400 font-bold text-sm">{fmt.currency(Number(watch('amount_incl_vat')) || 0)}</span>
+                </div>
+              </div>
+
+              <div className="flex gap-2 justify-end pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="btn-secondary text-xs sm:text-sm py-1.5 px-3"
+                >
+                  <span>Annuleren</span>
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary bg-purple-600 hover:bg-purple-500 border-purple-500 text-white text-xs sm:text-sm py-1.5 px-4 flex items-center gap-1.5"
+                  disabled={createMutation.isPending}
+                >
+                  <Receipt size={14} />
+                  <span>{createMutation.isPending ? 'Opslaan...' : 'Kosten opslaan'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

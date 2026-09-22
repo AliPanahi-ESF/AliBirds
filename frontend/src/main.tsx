@@ -6,6 +6,25 @@ import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import './index.css'
 
+// Guard against DOM manipulation by browser extensions/translators (Google Translate, Grammarly, etc.)
+if (typeof Node === 'function' && Node.prototype) {
+  const originalInsertBefore = Node.prototype.insertBefore
+  Node.prototype.insertBefore = function (newNode: Node, referenceNode: Node | null): Node {
+    if (referenceNode && referenceNode.parentNode !== this) {
+      return this.appendChild(newNode)
+    }
+    return originalInsertBefore.call(this, newNode, referenceNode)
+  }
+
+  const originalRemoveChild = Node.prototype.removeChild
+  Node.prototype.removeChild = function (child: Node): Node {
+    if (child.parentNode !== this) {
+      return child
+    }
+    return originalRemoveChild.call(this, child)
+  }
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
