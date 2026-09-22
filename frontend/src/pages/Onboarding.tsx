@@ -15,7 +15,7 @@ export default function OnboardingPage() {
 
   const [step, setStep] = useState(1)
   const [submitting, setSubmitting] = useState(false)
-  const [existingSettingsFound, setExistingSettingsFound] = useState(false)
+  const [hasExistingProfile, setHasExistingProfile] = useState(false)
 
   // Onboarding Form State matching Dutch legal requirements
   const [companyName, setCompanyName] = useState(user?.company_name || '')
@@ -35,30 +35,28 @@ export default function OnboardingPage() {
   const [accentColor, setAccentColor] = useState('#4f46e5')
 
   useEffect(() => {
-    const loadExistingSettings = async () => {
-      try {
-        const s = await settingsApi.get()
-        if (s && s.company_name && s.company_name.trim().length > 0) {
-          setCompanyName(s.company_name)
-          if (s.trade_name) setTradeName(s.trade_name)
-          if (s.kvk_number) setKvkNumber(s.kvk_number)
-          if (s.btw_id) setBtwId(s.btw_id)
-          if (s.address_street) setAddressStreet(s.address_street)
-          if (s.address_postcode) setAddressPostcode(s.address_postcode)
-          if (s.address_city) setAddressCity(s.address_city)
-          if (s.address_country) setAddressCountry(s.address_country)
-          if (s.iban) setIban(s.iban)
-          if (s.bic) setBic(s.bic)
-          if (s.default_payment_term_days) setPaymentTermDays(s.default_payment_term_days)
-          if (s.invoice_prefix) setInvoicePrefix(s.invoice_prefix)
-          if (s.accent_color) setAccentColor(s.accent_color)
-          setExistingSettingsFound(true)
-        }
-      } catch (err) {
-        console.warn('Could not load existing settings:', err)
+    let active = true
+    settingsApi.get().then((existing) => {
+      if (!active || !existing) return
+      if (existing.company_name) setCompanyName(existing.company_name)
+      if (existing.trade_name) setTradeName(existing.trade_name)
+      if (existing.kvk_number) setKvkNumber(existing.kvk_number)
+      if (existing.btw_id) setBtwId(existing.btw_id)
+      if (existing.address_street) setAddressStreet(existing.address_street)
+      if (existing.address_postcode) setAddressPostcode(existing.address_postcode)
+      if (existing.address_city) setAddressCity(existing.address_city)
+      if (existing.address_country) setAddressCountry(existing.address_country)
+      if (existing.iban) setIban(existing.iban)
+      if (existing.bic) setBic(existing.bic)
+      if (existing.default_payment_term_days) setPaymentTermDays(existing.default_payment_term_days)
+      if (existing.invoice_prefix) setInvoicePrefix(existing.invoice_prefix)
+      if (existing.accent_color) setAccentColor(existing.accent_color)
+
+      if (existing.company_name && (existing.kvk_number || existing.btw_id)) {
+        setHasExistingProfile(true)
       }
-    }
-    loadExistingSettings()
+    }).catch(() => {})
+    return () => { active = false }
   }, [])
 
   const handleNextStep = () => {
@@ -117,7 +115,7 @@ export default function OnboardingPage() {
     }
   }
 
-  const handleUseExisting = async () => {
+  const handleTakeOver = async () => {
     setSubmitting(true)
     try {
       await completeOnboarding({
@@ -135,10 +133,10 @@ export default function OnboardingPage() {
         invoice_prefix: invoicePrefix.trim(),
         accent_color: accentColor,
       })
-      toast.success('Bestaande bedrijfsgegevens gekoppeld! Welkom terug.', { duration: 3500 })
+      toast.success('Bestaand bedrijfsprofiel geladen! Welkom op uw dashboard.')
       navigate('/')
-    } catch (err: any) {
-      toast.error(err.message || 'Kon gegevens niet overnemen.')
+    } catch {
+      navigate('/')
     } finally {
       setSubmitting(false)
     }
@@ -171,34 +169,30 @@ export default function OnboardingPage() {
           </p>
         </div>
 
-        {/* Existing settings notification banner */}
-        {existingSettingsFound && (
-          <div className="p-4 rounded-2xl border border-brand-500/40 bg-gradient-to-r from-brand-950/80 to-slate-900/80 backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl shadow-brand-950/40 animate-fade-in">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-brand-500/20 text-brand-400 border border-brand-500/30 shrink-0 mt-0.5">
-                <Building2 size={20} />
+        {/* Existing Profile Fast-Track Banner */}
+        {hasExistingProfile && (
+          <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg shadow-emerald-950/20">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                <ShieldCheck size={18} />
               </div>
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Bestaand Profiel Gevonden</span>
-                  <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded">KvK {kvkNumber || 'Ingevuld'}</span>
+              <div>
+                <div className="text-xs sm:text-sm font-semibold text-emerald-300">
+                  Bestaand bedrijfsprofiel gevonden ({companyName})
                 </div>
-                <h3 className="text-sm font-semibold text-slate-100">
-                  {companyName}
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Uw bedrijfsgegevens zijn al geladen uit de database. U hoeft niets opnieuw in te vullen.
-                </p>
+                <div className="text-[11px] text-slate-300">
+                  Uw gegevens zijn al geconfigureerd in de cloud. U hoeft dit niet opnieuw in te vullen.
+                </div>
               </div>
             </div>
             <button
               type="button"
-              onClick={handleUseExisting}
+              onClick={handleTakeOver}
               disabled={submitting}
-              className="btn-primary text-xs sm:text-sm py-2 px-4 shrink-0 whitespace-nowrap shadow-lg shadow-brand-600/30 self-stretch sm:self-auto justify-center"
+              className="btn-primary text-xs py-2 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 shrink-0 self-end sm:self-auto"
             >
-              <span>Overnemen & Naar Dashboard</span>
-              <ArrowRight size={14} />
+              <span>Naar Dashboard</span>
+              <ArrowRight size={13} />
             </button>
           </div>
         )}

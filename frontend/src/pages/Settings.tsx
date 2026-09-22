@@ -1,35 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import {
-  Save, Settings as SettingsIcon, Mail, Building2, Database,
-  CheckCircle2, AlertCircle, ExternalLink, RefreshCw, Key,
-  Smartphone, QrCode, Copy, Check
+  Save, Settings as SettingsIcon, Mail, Building2,
+  CheckCircle2, ExternalLink, User as UserIcon, LogOut, ShieldCheck
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useAuth } from '@/lib/auth'
 import { settingsApi } from '@/lib/api'
 import { BusinessSettings } from '@/lib/types'
 import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
-import {
-  getSupabaseConfig, saveSupabaseConfig, clearSupabaseConfig,
-  isSupabaseConfigured, testSupabaseConnection
-} from '@/lib/supabase'
+import { isSupabaseConfigured } from '@/lib/supabase'
 import {
   getResendKey, saveResendConfig, getResendSender, isResendConfigured
 } from '@/lib/email'
+import { useAuth } from '@/lib/auth'
 
 export default function SettingsPage() {
   const qc = useQueryClient()
-  const { user, token } = useAuth()
-  const [activeTab, setActiveTab] = useState<'profile' | 'cloud' | 'devices'>('profile')
-  const [copiedLink, setCopiedLink] = useState(false)
-
-  // Supabase state
-  const [supabaseUrl, setSupabaseUrl] = useState('')
-  const [supabaseKey, setSupabaseKey] = useState('')
-  const [supabaseTesting, setSupabaseTesting] = useState(false)
-  const [supabaseStatus, setSupabaseStatus] = useState<string | null>(null)
+  const { user, logout } = useAuth()
+  const [activeTab, setActiveTab] = useState<'profile' | 'account' | 'email'>('profile')
 
   // Resend state
   const [resendApiKey, setResendApiKey] = useState('')
@@ -46,11 +35,6 @@ export default function SettingsPage() {
   }, [settings, reset])
 
   useEffect(() => {
-    const supa = getSupabaseConfig()
-    if (supa) {
-      setSupabaseUrl(supa.url)
-      setSupabaseKey(supa.anonKey)
-    }
     const rKey = getResendKey()
     if (rKey) setResendApiKey(rKey)
     setResendSender(getResendSender())
@@ -64,36 +48,6 @@ export default function SettingsPage() {
     },
     onError: () => toast.error('Opslaan mislukt'),
   })
-
-  const handleTestAndSaveSupabase = async () => {
-    if (!supabaseUrl.trim() || !supabaseKey.trim()) {
-      toast.error('Vul zowel de Supabase URL als de Anon Key in.')
-      return
-    }
-    setSupabaseTesting(true)
-    setSupabaseStatus(null)
-    saveSupabaseConfig(supabaseUrl, supabaseKey)
-
-    const result = await testSupabaseConnection()
-    setSupabaseTesting(false)
-    if (result.ok) {
-      setSupabaseStatus('CONNECTED')
-      toast.success(result.message)
-      qc.invalidateQueries()
-    } else {
-      setSupabaseStatus('ERROR')
-      toast.error(result.message)
-    }
-  }
-
-  const handleDisconnectSupabase = () => {
-    clearSupabaseConfig()
-    setSupabaseUrl('')
-    setSupabaseKey('')
-    setSupabaseStatus(null)
-    toast('Supabase ontkoppeld. AliBirds gebruikt nu lokale browseropslag.', { icon: 'ℹ️' })
-    qc.invalidateQueries()
-  }
 
   const handleSaveResend = () => {
     if (!resendApiKey.trim()) {
@@ -112,7 +66,7 @@ export default function SettingsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-100">Instellingen</h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">Bedrijfsprofiel en gratis cloud-koppelingen</p>
+          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">Bedrijfsprofiel, account en e-mail</p>
         </div>
         {activeTab === 'profile' && (
           <button
@@ -126,7 +80,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-1">
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-1 flex-wrap">
         <button
           onClick={() => setActiveTab('profile')}
           className={clsx(
@@ -141,32 +95,32 @@ export default function SettingsPage() {
         </button>
 
         <button
-          onClick={() => setActiveTab('cloud')}
+          onClick={() => setActiveTab('account')}
           className={clsx(
             'flex items-center gap-2 px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors',
-            activeTab === 'cloud'
+            activeTab === 'account'
               ? 'bg-brand-600/15 text-brand-400 border border-brand-500/30'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
           )}
         >
-          <Database size={16} />
-          <span>Cloud & Integraties (100% Gratis)</span>
-          {isSupabaseConfigured() && (
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Supabase verbonden" />
-          )}
+          <UserIcon size={16} />
+          <span>Account</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('devices')}
+          onClick={() => setActiveTab('email')}
           className={clsx(
             'flex items-center gap-2 px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors',
-            activeTab === 'devices'
+            activeTab === 'email'
               ? 'bg-brand-600/15 text-brand-400 border border-brand-500/30'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
           )}
         >
-          <Smartphone size={16} />
-          <span>Mobiel Koppelen</span>
+          <Mail size={16} />
+          <span>E-mail Versturen</span>
+          {isResendConfigured() && (
+            <span className="w-2 h-2 rounded-full bg-emerald-400" title="Resend geconfigureerd" />
+          )}
         </button>
       </div>
 
@@ -262,103 +216,61 @@ export default function SettingsPage() {
         </form>
       )}
 
-      {/* TAB 2: Cloud & Integrations (Supabase & Resend) */}
-      {activeTab === 'cloud' && (
-        <div className="space-y-5">
-          {/* Supabase Section */}
+      {/* TAB 2: Account */}
+      {activeTab === 'account' && (
+        <div className="space-y-4">
+          {/* User info card */}
           <div className="card p-4 sm:p-6 space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                  <Database size={20} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-100 text-sm sm:text-base">Supabase Cloud Database (PostgreSQL)</h3>
-                  <p className="text-xs text-slate-400">
-                    Koppel een gratis Supabase database voor realtime synchronisatie over al uw apparaten.
-                  </p>
-                </div>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-brand-600/20 border border-brand-500/30 flex items-center justify-center text-brand-300 font-bold text-lg">
+                {user?.name ? user.name[0].toUpperCase() : 'U'}
               </div>
-              {isSupabaseConfigured() ? (
+              <div>
+                <h2 className="text-sm font-bold text-slate-100">{user?.name || '—'}</h2>
+                <p className="text-xs text-slate-400">{user?.email || '—'}</p>
+              </div>
+            </div>
+
+            {/* Status badges */}
+            <div className="flex flex-wrap gap-2">
+              <span className="badge-green text-xs flex items-center gap-1.5 py-1 px-2.5">
+                <CheckCircle2 size={13} /> Ingelogd
+              </span>
+              {isSupabaseConfigured() && (
                 <span className="badge-green text-xs flex items-center gap-1.5 py-1 px-2.5">
-                  <CheckCircle2 size={13} /> Actief verbonden
-                </span>
-              ) : (
-                <span className="badge-gray text-xs py-1 px-2.5">
-                  Lokale browseropslag
+                  <ShieldCheck size={13} /> Cloud sync actief
                 </span>
               )}
             </div>
 
-            <div className="space-y-3 pt-2">
-              <div>
-                <label className="label">Supabase Project URL</label>
-                <input
-                  type="text"
-                  className="input text-xs sm:text-sm font-mono"
-                  placeholder="https://xyzabcdefg.supabase.co"
-                  value={supabaseUrl}
-                  onChange={e => setSupabaseUrl(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="label">Anon Public Key</label>
-                <input
-                  type="password"
-                  className="input text-xs sm:text-sm font-mono"
-                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
-                  value={supabaseKey}
-                  onChange={e => setSupabaseKey(e.target.value)}
-                />
-              </div>
-
-              <div className="flex items-center gap-3 pt-2 flex-wrap">
-                <button
-                  type="button"
-                  onClick={handleTestAndSaveSupabase}
-                  disabled={supabaseTesting}
-                  className="btn-primary text-xs sm:text-sm py-2 px-4"
-                >
-                  <RefreshCw size={14} className={supabaseTesting ? 'animate-spin' : ''} />
-                  <span>{supabaseTesting ? 'Verbinding testen...' : 'Verbinding opslaan & testen'}</span>
-                </button>
-
-                {isSupabaseConfigured() && (
-                  <button
-                    type="button"
-                    onClick={handleDisconnectSupabase}
-                    className="btn-ghost text-xs text-red-400 hover:text-red-300 py-2 px-3"
-                  >
-                    Ontkoppelen
-                  </button>
-                )}
-
-                <a
-                  href="https://supabase.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs text-brand-400 hover:underline flex items-center gap-1 ml-auto"
-                >
-                  Gratis Supabase account aanmaken <ExternalLink size={12} />
-                </a>
-              </div>
-            </div>
-
-            {/* Schema instructions */}
-            <div className="mt-4 p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-xs space-y-1.5 text-slate-300">
-              <div className="font-semibold text-slate-100 flex items-center gap-1.5">
-                <Key size={14} className="text-brand-400" /> Supabase Tabellen Aanmaken in 1 Klik:
-              </div>
-              <p className="text-slate-400 text-[11px] leading-relaxed">
-                Open in Supabase uw <strong className="text-slate-200">SQL Editor</strong> en plak het bestand{' '}
-                <code className="bg-slate-800 px-1 py-0.5 rounded text-brand-300 font-mono">supabase/schema.sql</code>{' '}
-                uit uw GitHub repository. Alle tabellen, kolommen en beveiligingsregels worden dan automatisch aangemaakt.
-              </p>
-            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Uw gegevens zijn privé en afgeschermd. Andere gebruikers kunnen uw facturen, klanten
+              en uitgaven niet zien. U blijft ingelogd op al uw apparaten totdat u uitlogt.
+            </p>
           </div>
 
-          {/* Resend Email Section */}
+          {/* Logout card */}
+          <div className="card p-4 sm:p-6 space-y-3 border border-red-500/10">
+            <div className="flex items-center gap-2">
+              <LogOut size={16} className="text-red-400" />
+              <h3 className="text-sm font-semibold text-slate-200">Uitloggen</h3>
+            </div>
+            <p className="text-xs text-slate-400">
+              U wordt uitgelogd op dit apparaat. Uw gegevens blijven veilig opgeslagen in de cloud.
+            </p>
+            <button
+              onClick={() => logout()}
+              className="btn-ghost text-xs text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-400/50 hover:bg-red-500/5 px-4 py-2"
+            >
+              <LogOut size={14} /> Uitloggen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: Email (Resend) */}
+      {activeTab === 'email' && (
+        <div className="space-y-5">
           <div className="card p-4 sm:p-6 space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -429,101 +341,7 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
-
-      {/* TAB 3: Mobile Phone Pairing */}
-      {activeTab === 'devices' && (
-        <div className="space-y-4 sm:space-y-5 animate-fade-in">
-          <div className="card p-4 sm:p-6 space-y-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Smartphone size={18} className="text-brand-400" />
-              <h2 className="text-sm sm:text-base font-semibold text-slate-100">
-                Koppel uw Mobiele Telefoon (1-Klik Synchronisatie)
-              </h2>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
-              Wanneer u AliBirds opent op uw smartphone, kan uw telefoon direct verbinding maken met ditzelfde account
-              en uw bestaande bedrijfsgegevens. Scan de onderstaande QR-code met uw camera of open de koppel-link op uw smartphone.
-            </p>
-
-            {user ? (
-              (() => {
-                const syncPayload = {
-                  user: {
-                    id: user.id,
-                    name: user.name,
-                    email: user.email,
-                    company_name: user.company_name || settings?.company_name || '',
-                    is_onboarded: true,
-                  },
-                  token: token || `token_${user.id}`,
-                  supabaseConfig: getSupabaseConfig() || undefined,
-                }
-                const syncCode = btoa(encodeURIComponent(JSON.stringify(syncPayload)))
-                const syncUrl = `${window.location.origin}/auth?sync=${syncCode}`
-                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(syncUrl)}`
-
-                const handleCopyLink = () => {
-                  navigator.clipboard.writeText(syncUrl)
-                  setCopiedLink(true)
-                  toast.success('Koppel-link gekopieerd naar klembord!')
-                  setTimeout(() => setCopiedLink(false), 2500)
-                }
-
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
-                    {/* QR Code Container */}
-                    <div className="flex flex-col items-center justify-center p-4 bg-slate-950/80 rounded-2xl border border-slate-800 text-center space-y-3">
-                      <div className="p-2.5 bg-white rounded-xl shadow-lg">
-                        <img
-                          src={qrUrl}
-                          alt="Koppel QR code"
-                          className="w-44 h-44 sm:w-48 sm:h-48 object-contain rounded"
-                        />
-                      </div>
-                      <span className="text-[11px] text-slate-400 font-medium">
-                        Scan met uw camera op iPhone of Android
-                      </span>
-                    </div>
-
-                    {/* Quick Link & Instructions */}
-                    <div className="space-y-3 flex flex-col justify-between">
-                      <div className="space-y-2">
-                        <label className="label text-slate-300">Directe Koppel-link</label>
-                        <div className="p-2.5 bg-slate-950/90 rounded-xl border border-slate-800 text-[11px] font-mono text-slate-400 break-all select-all">
-                          {syncUrl}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleCopyLink}
-                          className="btn-primary w-full justify-center py-2 text-xs sm:text-sm font-semibold gap-1.5"
-                        >
-                          {copiedLink ? <Check size={14} className="text-emerald-300" /> : <Copy size={14} />}
-                          <span>{copiedLink ? 'Gekopieerd!' : 'Kopieer Link voor Telefoon'}</span>
-                        </button>
-                      </div>
-
-                      <div className="p-3 bg-slate-950/50 rounded-xl border border-slate-800/80 space-y-1.5 text-xs text-slate-400">
-                        <div className="flex items-center gap-1.5 font-medium text-slate-300">
-                          <CheckCircle2 size={14} className="text-emerald-400" />
-                          <span>Automatisch op uw telefoon:</span>
-                        </div>
-                        <ul className="list-disc list-inside space-y-1 pl-1 text-[11px]">
-                          <li>Logt direct in op uw account ({user.email})</li>
-                          <li>Neemt uw KvK-, btw- en factuurinstellingen over</li>
-                          <li>Slaat de onboarding wizard automatisch over</li>
-                          {isSupabaseConfigured() && <li>Synchroniseert Supabase cloud-verbinding</li>}
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })()
-            ) : (
-              <div className="text-xs text-slate-500 py-4">Geen actieve gebruiker om te koppelen.</div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
+

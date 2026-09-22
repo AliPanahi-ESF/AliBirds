@@ -1,81 +1,20 @@
-import { useState, useEffect } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Bird, Lock, Mail, User as UserIcon, ArrowRight, Sparkles, CheckCircle2, QrCode, Smartphone } from 'lucide-react'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Bird, Lock, Mail, User as UserIcon, ArrowRight, CheckCircle2, Sparkles, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/lib/auth'
+import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { clsx } from 'clsx'
 
 export default function AuthPage() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const { login, registerUser, loginAsDemo, syncSession } = useAuth()
+  const { login, registerUser, loginDemo } = useAuth()
 
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [showSyncInput, setShowSyncInput] = useState(false)
-  const [syncCode, setSyncCode] = useState('')
-
-  // Handle instant pairing via URL parameter ?sync=...
-  useEffect(() => {
-    const syncParam = searchParams.get('sync')
-    if (syncParam) {
-      const performSync = async () => {
-        setLoading(true)
-        try {
-          const jsonStr = decodeURIComponent(atob(syncParam))
-          const data = JSON.parse(jsonStr)
-          if (data && data.user) {
-            const syncedUser = await syncSession(data)
-            toast.success(`Succesvol gekoppeld! Welkom terug, ${syncedUser.name}.`, { duration: 4000 })
-            if (syncedUser.is_onboarded) {
-              navigate('/')
-            } else {
-              navigate('/onboarding')
-            }
-          }
-        } catch (err: any) {
-          console.error('Sync failed:', err)
-          toast.error('Ongeldige synchronisatielink of verlopen sessie.')
-        } finally {
-          setLoading(false)
-        }
-      }
-      performSync()
-    }
-  }, [searchParams, syncSession, navigate])
-
-  const handleManualSyncSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!syncCode.trim()) return
-    setLoading(true)
-    try {
-      // Remove any full URL part if user pasted the entire link
-      let rawCode = syncCode.trim()
-      if (rawCode.includes('sync=')) {
-        rawCode = rawCode.split('sync=')[1].split('&')[0]
-      }
-      const jsonStr = decodeURIComponent(atob(rawCode))
-      const data = JSON.parse(jsonStr)
-      if (data && data.user) {
-        const syncedUser = await syncSession(data)
-        toast.success(`Succesvol gekoppeld! Welkom terug, ${syncedUser.name}.`)
-        if (syncedUser.is_onboarded) {
-          navigate('/')
-        } else {
-          navigate('/onboarding')
-        }
-      } else {
-        throw new Error('Geen geldige gebruikersgegevens in de code.')
-      }
-    } catch (err: any) {
-      toast.error('Ongeldige koppelcode. Controleer de code vanaf uw computer.')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -95,25 +34,70 @@ export default function AuthPage() {
           setLoading(false)
           return
         }
-        const u = await registerUser(name, email, password)
+        await registerUser(name, email, password)
+        if (isSupabaseConfigured()) {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (!session) {
+            toast.success('Account geregistreerd! Bevestig uw e-mail via de link in uw inbox (of schakel "Confirm email" uit in Supabase om direct in te loggen).', {
+              duration: 8000,
+            })
+            setMode('login')
+            return
+          }
+        }
         toast.success('Account succesvol aangemaakt!')
         navigate('/onboarding')
       }
     } catch (err: any) {
-      toast.error(err.message || 'Inloggen mislukt. Controleer uw gegevens.')
+      const msg = err.message || 'Inloggen mislukt. Controleer uw gegevens.'
+      if (msg.toLowerCase().includes('email not confirmed')) {
+        toast.error('Uw e-mail is nog niet bevestigd. Klik hieronder op "Bevestigingsmail opnieuw" of schakel "Confirm email" uit in uw Supabase Dashboard.', { duration: 8000 })
+      } else {
+        toast.error(msg)
+      }
     } finally {
       setLoading(false)
     }
   }
 
-  const handleDemoLogin = async () => {
-    setLoading(true)
+  const handleForgotPassword = async () => {
+    if (!email) {
+      toast.error('Voer eerst uw e-mailadres in.')
+      return
+    }
+    if (!isSupabaseConfigured()) {
+      toast.error('Wachtwoord resetten is niet beschikbaar.')
+      return
+    }
     try {
-      await loginAsDemo()
-      toast.success('Ingelogd met demo studio account!')
-      navigate('/')
-    } finally {
-      setLoading(false)
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/`,
+      })
+      if (error) throw error
+      toast.success('Wachtwoord reset link verstuurd naar uw e-mail!')
+    } catch (err: any) {
+      toast.error(err.message || 'Kan reset e-mail niet versturen.')
+    }
+  }
+
+  const handleResendConfirmation = async () => {
+    if (!email) {
+      toast.error('Voer eerst uw e-mailadres in om de link opnieuw te sturen.')
+      return
+    }
+    if (!isSupabaseConfigured()) return
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+        },
+      })
+      if (error) throw error
+      toast.success('Nieuwe bevestigingslink verstuurd naar uw e-mail!')
+    } catch (err: any) {
+      toast.error(err.message || 'Kan bevestigingsmail niet opnieuw versturen.')
     }
   }
 
@@ -202,9 +186,15 @@ export default function AuthPage() {
               <div className="flex items-center justify-between">
                 <label className="label">Wachtwoord *</label>
                 {mode === 'login' && (
-                  <span className="text-[11px] text-brand-400 hover:underline cursor-pointer" onClick={() => toast('Wachtwoord vergeten? Neem contact op met uw systeembeheerder.')}>
-                    Vergeten?
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 hover:text-brand-300 hover:underline cursor-pointer" onClick={handleResendConfirmation}>
+                      Bevestigingsmail opnieuw?
+                    </span>
+                    <span className="text-slate-600">·</span>
+                    <span className="text-[11px] text-brand-400 hover:underline cursor-pointer" onClick={handleForgotPassword}>
+                      Vergeten?
+                    </span>
+                  </div>
                 )}
               </div>
               <div className="relative">
@@ -230,69 +220,29 @@ export default function AuthPage() {
             </button>
           </form>
 
-          {/* Quick Demo Login Option */}
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-800" />
+          {/* 1-Click Demo Studio Button */}
+          <div className="pt-1 space-y-2.5">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-800" /></div>
+              <div className="relative flex justify-center text-[10px] uppercase tracking-wider text-slate-500 font-semibold bg-slate-900 px-2 w-max mx-auto">
+                Of direct bekijken
+              </div>
             </div>
-            <div className="relative flex justify-center text-[11px] uppercase tracking-wider">
-              <span className="bg-slate-900 px-2 text-slate-500">Of direct testen</span>
-            </div>
+
+            <button
+              type="button"
+              onClick={loginDemo}
+              className="w-full py-2.5 px-3 rounded-xl text-xs font-semibold text-brand-300 hover:text-white bg-brand-600/15 hover:bg-brand-600/25 border border-brand-500/30 hover:border-brand-500/50 transition-all flex items-center justify-center gap-2 shadow-sm active:scale-98"
+            >
+              <Sparkles size={14} className="text-brand-400" />
+              <span>1-Click Demo Studio (Zonder inloggen)</span>
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleDemoLogin}
-            disabled={loading}
-            className="w-full btn-secondary justify-center py-2 text-xs sm:text-sm font-medium border-slate-700/80 hover:border-brand-500/50"
-          >
-            <Sparkles size={15} className="text-amber-400" />
-            <span>1-Klik Demo Studio (Direct inloggen)</span>
-          </button>
-
-          {/* Phone Pairing Option */}
-          <div className="pt-2 border-t border-slate-800/60">
-            {!showSyncInput ? (
-              <button
-                type="button"
-                onClick={() => setShowSyncInput(true)}
-                className="w-full text-center text-xs text-brand-400 hover:text-brand-300 flex items-center justify-center gap-1.5 py-1"
-              >
-                <Smartphone size={13} />
-                <span>Koppelcode van computer invoeren</span>
-              </button>
-            ) : (
-              <form onSubmit={handleManualSyncSubmit} className="space-y-2 mt-2 p-3 bg-slate-950/60 rounded-xl border border-slate-800">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                    <QrCode size={13} className="text-brand-400" />
-                    Telefoon koppelen
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowSyncInput(false)}
-                    className="text-[11px] text-slate-500 hover:text-slate-300"
-                  >
-                    Sluiten
-                  </button>
-                </div>
-                <input
-                  type="text"
-                  value={syncCode}
-                  onChange={e => setSyncCode(e.target.value)}
-                  placeholder="Plak koppelcode of URL vanaf computer..."
-                  className="input text-xs"
-                />
-                <button
-                  type="submit"
-                  disabled={loading || !syncCode.trim()}
-                  className="btn-primary w-full justify-center py-1.5 text-xs font-semibold"
-                >
-                  Direct Synchroniseren
-                </button>
-              </form>
-            )}
-          </div>
+          {/* Security note */}
+          <p className="text-[11px] text-slate-500 text-center pt-1">
+            Uw gegevens zijn beveiligd en privé. Elke gebruiker heeft een eigen afgeschermd account.
+          </p>
         </div>
 
         {/* Feature bullets */}

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Bird, Menu, Plus, User as UserIcon } from 'lucide-react'
+import { Bird, Menu, Plus, User as UserIcon, LogOut } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 
 interface MobileHeaderProps {
@@ -7,7 +7,7 @@ interface MobileHeaderProps {
 }
 
 export default function MobileHeader({ onOpenMenu }: MobileHeaderProps) {
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
 
   return (
     <header className="md:hidden sticky top-0 z-20 flex items-center justify-between px-3.5 h-14 bg-slate-900/90 backdrop-blur-md border-b border-slate-800">
@@ -38,13 +38,23 @@ export default function MobileHeader({ onOpenMenu }: MobileHeaderProps) {
         </Link>
 
         {user ? (
-          <Link
-            to="/settings"
-            className="w-7 h-7 rounded-full bg-brand-600/30 border border-brand-500/50 flex items-center justify-center text-xs font-bold text-brand-300"
-            title={user.name}
-          >
-            {user.name ? user.name[0].toUpperCase() : 'U'}
-          </Link>
+          <div className="flex items-center gap-1.5">
+            <Link
+              to="/settings"
+              className="w-7 h-7 rounded-full bg-brand-600/30 border border-brand-500/50 flex items-center justify-center text-xs font-bold text-brand-300"
+              title={user.name}
+            >
+              {user.name ? user.name[0].toUpperCase() : 'U'}
+            </Link>
+            <button
+              onClick={() => logout()}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+              title="Uitloggen"
+              aria-label="Uitloggen"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
         ) : (
           <Link
             to="/auth"

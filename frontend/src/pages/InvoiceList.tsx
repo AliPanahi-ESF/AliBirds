@@ -1,10 +1,13 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Download, Eye, Calendar } from 'lucide-react'
+import { Plus, Search, Download, Eye, Calendar, Trash2, Upload, Mail } from 'lucide-react'
 import { useState } from 'react'
-import { invoicesApi, settingsApi, fmt } from '@/lib/api'
-import { Invoice, InvoiceStatus, BusinessSettings } from '@/lib/types'
+import toast from 'react-hot-toast'
+import { invoicesApi, settingsApi, clientsApi, fmt } from '@/lib/api'
+import { Invoice, InvoiceStatus, BusinessSettings, Client } from '@/lib/types'
 import InvoicePrintModal from '@/components/InvoicePrintModal'
+import ImportInvoicePdfModal from '@/components/ImportInvoicePdfModal'
+import SendInvoiceModal from '@/components/SendInvoiceModal'
 import { clsx } from 'clsx'
 
 const STATUS_MAP: Record<InvoiceStatus, { label: string; cls: string }> = {
@@ -17,19 +20,59 @@ const STATUS_MAP: Record<InvoiceStatus, { label: string; cls: string }> = {
 
 export default function InvoiceList() {
   const nav = useNavigate()
+  const qc = useQueryClient()
   const [filter, setFilter] = useState<string>('')
   const [search, setSearch] = useState('')
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null)
+  const [sendInvoice, setSendInvoice] = useState<Invoice | null>(null)
+  const [showImportPdf, setShowImportPdf] = useState(false)
 
   const { data: settings } = useQuery<BusinessSettings>({
     queryKey: ['settings'],
     queryFn: () => settingsApi.get(),
   })
 
+  const { data: clients = [] } = useQuery<Client[]>({
+    queryKey: ['clients'],
+    queryFn: () => clientsApi.list(),
+  })
+
   const { data: invoices = [], isLoading } = useQuery<Invoice[]>({
     queryKey: ['invoices', filter],
     queryFn: () => invoicesApi.list(filter ? { status: filter } : {}),
   })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => invoicesApi.delete(id),
+    onSuccess: () => {
+      toast.success('Factuur succesvol verwijderd!')
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      qc.invalidateQueries({ queryKey: ['kpis'] })
+    },
+    onError: () => toast.error('Verwijderen mislukt'),
+  })
+
+  const clearAllMutation = useMutation({
+    mutationFn: () => invoicesApi.clearAll(),
+    onSuccess: () => {
+      toast.success('Alle facturen zijn gewist!')
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      qc.invalidateQueries({ queryKey: ['kpis'] })
+    },
+    onError: () => toast.error('Wissen mislukt'),
+  })
+
+  const handleDelete = (inv: Invoice) => {
+    if (window.confirm(`Weet u zeker dat u factuur "${inv.invoice_number}" definitief wilt verwijderen?`)) {
+      deleteMutation.mutate(inv.id)
+    }
+  }
+
+  const handleClearAll = () => {
+    if (window.confirm('Weet u zeker dat u ALLE facturen wilt verwijderen? Dit kan niet ongedaan worden gemaakt.')) {
+      clearAllMutation.mutate()
+    }
+  }
 
   const filtered = invoices.filter(inv =>
     !search ||
@@ -40,14 +83,35 @@ export default function InvoiceList() {
   return (
     <div className="space-y-4 sm:space-y-5 max-w-6xl">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-100">Facturen</h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{invoices.length} facturen geregistreerd</p>
         </div>
-        <button onClick={() => nav('/invoices/new')} className="btn-primary text-xs sm:text-sm py-2 px-3.5">
-          <Plus size={15} /> Nieuwe factuur
-        </button>
+        <div className="flex items-center gap-2">
+          {invoices.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              disabled={clearAllMutation.isPending}
+              className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-2 px-3 border border-red-500/20"
+              title="Alle facturen verwijderen"
+            >
+              <Trash2 size={14} />
+              <span>Alle wissen</span>
+            </button>
+          )}
+          <button
+            onClick={() => setShowImportPdf(true)}
+            className="btn-secondary text-xs sm:text-sm py-2 px-3 flex items-center gap-1.5"
+            title="Eerdere facturen importeren via PDF"
+          >
+            <Upload size={14} />
+            <span>PDF importeren</span>
+          </button>
+          <button onClick={() => nav('/invoices/new')} className="btn-primary text-xs sm:text-sm py-2 px-3.5">
+            <Plus size={15} /> Nieuwe factuur
+          </button>
+        </div>
       </div>
 
       {/* Search & Filter Bar */}
@@ -156,10 +220,17 @@ export default function InvoiceList() {
                   </td>
                   <td className="p-3.5"><span className={s.cls}>{s.label}</span></td>
                   <td className="p-3.5 text-right font-mono font-semibold text-slate-100">
-                    {fmt.currency(inv.total_incl_vat)}
+                    {fmt.currency(inv.total_incl ?? inv.total_incl_vat ?? 0)}
                   </td>
                   <td className="p-3.5 text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-1 justify-end">
+                      <button
+                        onClick={() => setSendInvoice(inv)}
+                        className="btn-ghost p-1.5 rounded-lg text-emerald-400 hover:text-emerald-300"
+                        title="Factuur verzenden per e-mail"
+                      >
+                        <Mail size={14} />
+                      </button>
                       <button
                         onClick={() => nav(`/invoices/${inv.id}/edit`)}
                         className="btn-ghost p-1.5 rounded-lg text-slate-400 hover:text-slate-200"
@@ -173,6 +244,13 @@ export default function InvoiceList() {
                         title="Afdrukken / PDF"
                       >
                         <Download size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(inv)}
+                        className="btn-ghost p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                        title="Factuur verwijderen"
+                      >
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </td>
@@ -189,6 +267,28 @@ export default function InvoiceList() {
           invoice={printInvoice}
           settings={settings}
           onClose={() => setPrintInvoice(null)}
+        />
+      )}
+
+      {/* Send Invoice by Email Modal */}
+      {sendInvoice && (
+        <SendInvoiceModal
+          invoice={sendInvoice}
+          client={sendInvoice.client}
+          settings={settings}
+          isOpen={Boolean(sendInvoice)}
+          onClose={() => setSendInvoice(null)}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ['invoices'] })
+          }}
+        />
+      )}
+
+      {/* Historical PDF Import Modal */}
+      {showImportPdf && (
+        <ImportInvoicePdfModal
+          clients={clients}
+          onClose={() => setShowImportPdf(false)}
         />
       )}
     </div>

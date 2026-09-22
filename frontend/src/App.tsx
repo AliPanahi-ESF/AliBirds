@@ -32,12 +32,12 @@ function AppContent() {
     )
   }
 
-  // Not logged in: route exclusively to Auth page (Login / Register / 1-Click Demo / QR Pairing)
+  // Not logged in: route exclusively to Auth page (Login / Register / 1-Click Demo)
   if (!user) {
     return (
       <Routes>
         <Route path="/auth" element={<AuthPage />} />
-        <Route path="*" element={<Navigate to={`/auth${location.search}`} replace />} />
+        <Route path="*" element={<Navigate to="/auth" replace />} />
       </Routes>
     )
   }
