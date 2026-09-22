@@ -196,62 +196,103 @@ export function parseMT940(content: string): ParsedBankStatement {
  */
 export function autoMatchTransactions(
   transactions: Partial<BankTransaction>[],
-  invoices: any[]
+  invoices: any[],
+  expenses: any[] = []
 ): {
   matched: number
-  results: { tx: Partial<BankTransaction>; invoiceId?: string; score: number }[]
+  results: { tx: Partial<BankTransaction>; invoiceId?: string; expenseId?: string; score: number }[]
 } {
   let matchCount = 0
 
   const results = transactions.map(tx => {
-    // Only match incoming payments (CREDIT)
-    if (tx.transaction_type !== 'CREDIT' || tx.reconciliation_status === 'MATCHED') {
+    if (tx.reconciliation_status === 'MATCHED') {
       return { tx, score: 0 }
     }
 
+    const isDebit = tx.transaction_type === 'DEBIT' || tx.type === 'DEBIT'
     const txText = `${tx.description || ''} ${tx.raw_reference || ''}`.toLowerCase()
+    const contraName = (tx.contra_account_name || tx.counterpart_name || '').toLowerCase()
+    const txAmount = Number(tx.amount || 0)
 
-    let bestInvoice: any = null
-    let bestScore = 0
+    // Match DEBIT transactions against expenses
+    if (isDebit && expenses.length > 0) {
+      let bestExpense: any = null
+      let bestScore = 0
 
-    for (const inv of invoices) {
-      // 1. Exact Invoice Number in remittance (e.g. "2026-0001")
-      const invNum = (inv.invoice_number || '').toLowerCase()
-      if (invNum && txText.includes(invNum)) {
-        bestInvoice = inv
-        bestScore = 100
-        break
-      }
+      for (const exp of expenses) {
+        const expTotal = Number(exp.amount_incl_vat ?? exp.amount) || 0
+        const vendor = (exp.vendor_name || '').toLowerCase()
 
-      // 2. Exact amount match + unpaid invoice
-      const invTotal = Number(inv.total_incl ?? inv.total_incl_vat) || 0
-      if (Math.abs(invTotal - (tx.amount || 0)) < 0.01) {
-        // Also check if client name matches counterparty
-        const clientName = (inv.client?.name || '').toLowerCase()
-        const contraName = (tx.contra_account_name || '').toLowerCase()
-
-        if (clientName && contraName && (contraName.includes(clientName) || clientName.includes(contraName))) {
-          bestInvoice = inv
-          bestScore = 95
-          break
-        } else if (!bestInvoice) {
-          bestInvoice = inv
-          bestScore = 75
+        if (Math.abs(expTotal - txAmount) < 0.01) {
+          if (vendor && (contraName.includes(vendor) || txText.includes(vendor) || vendor.includes(contraName))) {
+            bestExpense = exp
+            bestScore = 95
+            break
+          } else if (!bestExpense) {
+            bestExpense = exp
+            bestScore = 75
+          }
         }
       }
+
+      if (bestExpense && bestScore >= 75) {
+        matchCount++
+        return {
+          tx: {
+            ...tx,
+            reconciliation_status: 'MATCHED',
+            matched_expense_id: bestExpense.id,
+            match_score: bestScore,
+          },
+          expenseId: bestExpense.id,
+          score: bestScore,
+        }
+      }
+
+      return { tx, score: 0 }
     }
 
-    if (bestInvoice && bestScore >= 75) {
-      matchCount++
-      return {
-        tx: {
-          ...tx,
-          reconciliation_status: 'MATCHED',
-          matched_invoice_id: bestInvoice.id,
-          match_score: bestScore,
-        },
-        invoiceId: bestInvoice.id,
-        score: bestScore,
+    // Match CREDIT transactions against customer invoices
+    if (!isDebit && invoices.length > 0) {
+      let bestInvoice: any = null
+      let bestScore = 0
+
+      for (const inv of invoices) {
+        // 1. Exact Invoice Number in remittance (e.g. "2026-0001")
+        const invNum = (inv.invoice_number || '').toLowerCase()
+        if (invNum && txText.includes(invNum)) {
+          bestInvoice = inv
+          bestScore = 100
+          break
+        }
+
+        // 2. Exact amount match + unpaid invoice
+        const invTotal = Number(inv.total_incl ?? inv.total_incl_vat) || 0
+        if (Math.abs(invTotal - txAmount) < 0.01) {
+          const clientName = (inv.client?.name || '').toLowerCase()
+          if (clientName && contraName && (contraName.includes(clientName) || clientName.includes(contraName))) {
+            bestInvoice = inv
+            bestScore = 95
+            break
+          } else if (!bestInvoice) {
+            bestInvoice = inv
+            bestScore = 75
+          }
+        }
+      }
+
+      if (bestInvoice && bestScore >= 75) {
+        matchCount++
+        return {
+          tx: {
+            ...tx,
+            reconciliation_status: 'MATCHED',
+            matched_invoice_id: bestInvoice.id,
+            match_score: bestScore,
+          },
+          invoiceId: bestInvoice.id,
+          score: bestScore,
+        }
       }
     }
 

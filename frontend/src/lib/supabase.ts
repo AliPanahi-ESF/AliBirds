@@ -572,8 +572,14 @@ export const supabaseDb = {
 
   deleteExpense: async (id: string) => {
     if (!isSupabaseConfigured()) return null
-    const { error } = await supabase.from('expenses').delete().eq('id', id)
-    if (error) throw error
+    try {
+      await supabase.from('bank_transactions').update({ matched_expense_id: null }).eq('matched_expense_id', id)
+      const { error } = await supabase.from('expenses').delete().eq('id', id)
+      if (error) throw error
+    } catch (err) {
+      console.warn('Supabase deleteExpense error:', err)
+      throw err
+    }
     return true
   },
 
@@ -729,6 +735,7 @@ export const supabaseDb = {
         description: row.description || ref,
         reconciliation_status: row.reconciliation_status || 'UNMATCHED',
         matched_invoice_id: row.matched_invoice_id,
+        matched_expense_id: row.matched_expense_id,
         match_score: row.match_score,
         imported_at: row.created_at,
       }
@@ -752,6 +759,7 @@ export const supabaseDb = {
         raw_reference: t.remittance_reference || t.raw_reference || null,
         reconciliation_status: t.reconciliation_status || 'UNMATCHED',
         matched_invoice_id: t.matched_invoice_id || null,
+        matched_expense_id: t.matched_expense_id || null,
         raw_hash: t.raw_hash || null,
       }
     })
@@ -774,6 +782,23 @@ export const supabaseDb = {
       .from('bank_transactions')
       .update({
         matched_invoice_id: invoiceId,
+        matched_expense_id: null,
+        reconciliation_status: 'MATCHED',
+      })
+      .eq('id', txId)
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  matchBankTransactionToExpense: async (txId: string, expenseId: string) => {
+    if (!isSupabaseConfigured()) return null
+    const { data, error } = await supabase
+      .from('bank_transactions')
+      .update({
+        matched_expense_id: expenseId,
+        matched_invoice_id: null,
         reconciliation_status: 'MATCHED',
       })
       .eq('id', txId)
@@ -789,6 +814,7 @@ export const supabaseDb = {
       .from('bank_transactions')
       .update({
         matched_invoice_id: null,
+        matched_expense_id: null,
         reconciliation_status: 'UNMATCHED',
         match_score: null,
       })

@@ -3,12 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useDropzone } from 'react-dropzone'
 import {
   Upload, CheckCircle, AlertCircle, Clock, Link2, Unlink,
-  TrendingUp, TrendingDown, RefreshCw, X, UserPlus, Receipt, Trash2, Check, Search, PlusCircle
+  TrendingUp, TrendingDown, RefreshCw, X, UserPlus, Receipt, Trash2, Check, Search, PlusCircle, FileText
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { bankApi, invoicesApi, clientsApi, expensesApi, fmt } from '@/lib/api'
-import { BankTransaction, Invoice, Client } from '@/lib/types'
+import { BankTransaction, Invoice, Client, Expense } from '@/lib/types'
 import ConfirmDialog from '@/components/ConfirmDialog'
 
 const STATUS_INFO: Record<string, { label: string; icon: React.ElementType; cls: string }> = {
@@ -21,34 +21,68 @@ const STATUS_INFO: Record<string, { label: string; icon: React.ElementType; cls:
 function MatchModal({
   transaction,
   invoices,
+  expenses,
   clients,
-  onMatch,
+  onMatchInvoice,
+  onMatchExpense,
   onUnmatch,
   onClose,
 }: {
   transaction: BankTransaction
   invoices: Invoice[]
+  expenses: Expense[]
   clients: Client[]
-  onMatch: (invoiceId: string) => void
+  onMatchInvoice: (invoiceId: string) => void
+  onMatchExpense: (expenseId: string) => void
   onUnmatch: () => void
   onClose: () => void
 }) {
   const qc = useQueryClient()
-  const [tab, setTab] = useState<'existing' | 'create'>('existing')
-  const [search, setSearch] = useState('')
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState(transaction.matched_invoice_id || '')
-  const [markAsPaid, setMarkAsPaid] = useState(true)
-
   const isDebit = transaction.type === 'DEBIT' || (transaction as any).transaction_type === 'DEBIT'
   const txDate = transaction.transaction_date || (transaction as any).value_date || new Date().toISOString().slice(0, 10)
   const counterpartName = transaction.counterpart_name || (transaction as any).contra_account_name || ''
   const remittance = transaction.remittance_reference || (transaction as any).raw_reference || (transaction as any).description || ''
 
+  // Primary mode: 'expense' (Uitgave / Kosten) vs 'invoice' (Klantfactuur)
+  const [mode, setMode] = useState<'expense' | 'invoice'>(
+    transaction.matched_expense_id
+      ? 'expense'
+      : transaction.matched_invoice_id
+      ? 'invoice'
+      : isDebit
+      ? 'expense'
+      : 'invoice'
+  )
+
+  // Sub-tabs
+  const [expenseTab, setExpenseTab] = useState<'create' | 'existing'>(
+    transaction.matched_expense_id ? 'existing' : 'create'
+  )
+  const [invoiceTab, setInvoiceTab] = useState<'existing' | 'create'>('existing')
+
+  // Expense form state
+  const [vendor, setVendor] = useState(counterpartName || 'Leverancier')
+  const [expenseDate, setExpenseDate] = useState(txDate)
+  const [expenseCategory, setExpenseCategory] = useState('Software')
+  const [expenseDesc, setExpenseDesc] = useState(remittance || counterpartName || 'Zakelijke kosten')
+  const [expenseAmountIncl, setExpenseAmountIncl] = useState(Number(transaction.amount))
+  const [expenseVatRate, setExpenseVatRate] = useState('21')
+  const [isCreatingExpense, setIsCreatingExpense] = useState(false)
+  const [expenseSearch, setExpenseSearch] = useState('')
+  const [selectedExpenseId, setSelectedExpenseId] = useState(transaction.matched_expense_id || '')
+
+  const expMult = expenseVatRate === 'REVERSE_CHARGE' ? 0 : Number(expenseVatRate) / 100
+  const expAmountExcl = expMult > 0 ? Math.round((expenseAmountIncl / (1 + expMult)) * 100) / 100 : expenseAmountIncl
+  const expVatAmount = Math.round((expenseAmountIncl - expAmountExcl) * 100) / 100
+
+  // Invoice form state
+  const [invoiceSearch, setInvoiceSearch] = useState('')
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState(transaction.matched_invoice_id || '')
+  const [markAsPaid, setMarkAsPaid] = useState(true)
+
   // Attempt to detect invoice number in remittance
   const detectedNumMatch = remittance.match(/\b(202\d[-_]\d{3,5}|\d{4,8})\b/)
   const detectedNum = detectedNumMatch ? detectedNumMatch[1].replace('_', '-') : `FACT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
-
-  // Match existing client by name
   const existingClient = clients.find(c => counterpartName && c.name.toLowerCase().trim() === counterpartName.toLowerCase().trim())
 
   const [createInvoiceNum, setCreateInvoiceNum] = useState(detectedNum)
@@ -56,20 +90,18 @@ function MatchModal({
   const [newClientName, setNewClientName] = useState(counterpartName || 'Nieuwe Klant')
   const [createVatRate, setCreateVatRate] = useState('21')
   const [createDesc, setCreateDesc] = useState(remittance || `Diensten volgens betaling ${fmt.date(txDate)}`)
-  const [isCreating, setIsCreating] = useState(false)
+  const [isCreatingInvoice, setIsCreatingInvoice] = useState(false)
 
-  // Filter existing invoices
+  // Filter & sort invoices
   const filteredInvoices = invoices.filter(inv => {
-    if (!search) return true
-    const q = search.toLowerCase()
+    if (!invoiceSearch) return true
+    const q = invoiceSearch.toLowerCase()
     return (
       inv.invoice_number.toLowerCase().includes(q) ||
       inv.client?.name?.toLowerCase().includes(q) ||
       String(inv.total_incl_vat).includes(q)
     )
   })
-
-  // Sort invoices: best match (amount or invoice number) on top
   const sortedInvoices = [...filteredInvoices].sort((a, b) => {
     const aAmount = Math.abs(Number(a.total_incl_vat) - Number(transaction.amount)) < 0.05
     const bAmount = Math.abs(Number(b.total_incl_vat) - Number(transaction.amount)) < 0.05
@@ -78,9 +110,59 @@ function MatchModal({
     return 0
   })
 
-  const handleCreateAndMatch = async (e: React.FormEvent) => {
+  // Filter & sort expenses
+  const filteredExpenses = expenses.filter(exp => {
+    if (!expenseSearch) return true
+    const q = expenseSearch.toLowerCase()
+    return (
+      exp.vendor_name.toLowerCase().includes(q) ||
+      (exp.description && exp.description.toLowerCase().includes(q)) ||
+      exp.category.toLowerCase().includes(q) ||
+      String(exp.amount_incl_vat).includes(q)
+    )
+  })
+  const sortedExpenses = [...filteredExpenses].sort((a, b) => {
+    const aAmount = Math.abs(Number(a.amount_incl_vat) - Number(transaction.amount)) < 0.05
+    const bAmount = Math.abs(Number(b.amount_incl_vat) - Number(transaction.amount)) < 0.05
+    if (aAmount && !bAmount) return -1
+    if (!aAmount && bAmount) return 1
+    return new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime()
+  })
+
+  const currentMatchedInvoice = invoices.find(i => i.id === transaction.matched_invoice_id)
+  const currentMatchedExpense = expenses.find(e => e.id === transaction.matched_expense_id)
+
+  const handleCreateExpenseAndMatch = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsCreating(true)
+    if (!vendor.trim()) return
+    setIsCreatingExpense(true)
+    try {
+      const newExp = await expensesApi.create({
+        vendor_name: vendor.trim(),
+        expense_date: expenseDate,
+        description: expenseDesc.trim(),
+        category: expenseCategory,
+        vat_rate: expenseVatRate,
+        amount_excl_vat: expAmountExcl,
+        vat_amount: expVatAmount,
+        amount_incl_vat: expenseAmountIncl,
+      })
+      if (newExp && newExp.id) {
+        onMatchExpense(newExp.id)
+        toast.success(`Uitgave "${vendor}" aangemaakt en direct gekoppeld!`)
+        qc.invalidateQueries({ queryKey: ['expenses'] })
+        qc.invalidateQueries({ queryKey: ['bank-transactions'] })
+      }
+    } catch {
+      toast.error('Uitgave aanmaken mislukt')
+    } finally {
+      setIsCreatingExpense(false)
+    }
+  }
+
+  const handleCreateInvoiceAndMatch = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsCreatingInvoice(true)
     try {
       let finalClientId = createClientId
       if (createClientId === 'NEW' && newClientName.trim()) {
@@ -123,18 +205,17 @@ function MatchModal({
       })
 
       if (newInv && newInv.id) {
-        onMatch(newInv.id)
+        onMatchInvoice(newInv.id)
         toast.success(`Factuur ${createInvoiceNum} aangemaakt en gekoppeld!`)
         qc.invalidateQueries({ queryKey: ['invoices'] })
+        qc.invalidateQueries({ queryKey: ['bank-transactions'] })
       }
     } catch {
       toast.error('Factuur aanmaken mislukt')
     } finally {
-      setIsCreating(false)
+      setIsCreatingInvoice(false)
     }
   }
-
-  const currentMatchedInvoice = invoices.find(i => i.id === transaction.matched_invoice_id)
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
@@ -142,7 +223,7 @@ function MatchModal({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
           <div>
-            <h3 className="font-semibold text-slate-100 text-sm sm:text-base">Factuur koppelen / opslaan</h3>
+            <h3 className="font-semibold text-slate-100 text-sm sm:text-base">Transactie afstemmen & koppelen</h3>
             <p className="text-xs text-slate-400 mt-0.5">
               <span className={isDebit ? 'text-red-400 font-mono font-bold' : 'text-emerald-400 font-mono font-bold'}>
                 {isDebit ? '−' : '+'}{fmt.currency(transaction.amount)}
@@ -158,239 +239,525 @@ function MatchModal({
           </button>
         </div>
 
-        {/* Current status if matched */}
+        {/* Current status if matched to invoice */}
         {currentMatchedInvoice && (
           <div className="mx-5 mt-4 p-3 rounded-lg bg-brand-950/40 border border-brand-500/30 flex items-center justify-between">
             <div className="text-xs">
-              <span className="text-slate-400 block">Momenteel gekoppeld aan:</span>
+              <span className="text-slate-400 block">Momenteel gekoppeld aan verkoopfactuur:</span>
               <strong className="text-brand-300 font-mono text-sm">{currentMatchedInvoice.invoice_number}</strong>
-              <span className="text-slate-400 ml-2">({currentMatchedInvoice.client?.name || 'Onbekende klant'})</span>
+              <span className="text-slate-400 ml-2">({currentMatchedInvoice.client?.name || 'Onbekende klant'} · {fmt.currency(currentMatchedInvoice.total_incl_vat)})</span>
             </div>
             <button
               onClick={() => { onUnmatch(); onClose(); }}
-              className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1 px-2 border border-red-500/20"
+              className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1 px-2 border border-red-500/20 flex items-center gap-1"
             >
               <Unlink size={12} /> Ontkoppelen
             </button>
           </div>
         )}
 
-        {/* Tabs */}
+        {/* Current status if matched to expense */}
+        {currentMatchedExpense && (
+          <div className="mx-5 mt-4 p-3 rounded-lg bg-purple-950/40 border border-purple-500/30 flex items-center justify-between">
+            <div className="text-xs">
+              <span className="text-slate-400 block">Momenteel gekoppeld aan uitgave / kosten:</span>
+              <strong className="text-purple-300 font-medium text-sm">{currentMatchedExpense.vendor_name}</strong>
+              <span className="text-slate-400 ml-2 font-mono">({fmt.currency(currentMatchedExpense.amount_incl_vat)} · {currentMatchedExpense.category})</span>
+            </div>
+            <button
+              onClick={() => { onUnmatch(); onClose(); }}
+              className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1 px-2 border border-red-500/20 flex items-center gap-1"
+            >
+              <Unlink size={12} /> Ontkoppelen
+            </button>
+          </div>
+        )}
+
+        {/* Primary Type Selection Tabs (Uitgave vs Verkoopfactuur) */}
         <div className="px-5 pt-4">
           <div className="grid grid-cols-2 p-1 bg-slate-950/80 rounded-xl border border-slate-800 text-xs font-semibold">
             <button
               type="button"
-              onClick={() => setTab('existing')}
+              onClick={() => setMode('expense')}
               className={clsx(
-                'py-2 rounded-lg transition-all',
-                tab === 'existing'
-                  ? 'bg-brand-600 text-white shadow-md'
+                'py-2 rounded-lg transition-all flex items-center justify-center gap-1.5',
+                mode === 'expense'
+                  ? 'bg-purple-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-slate-200'
               )}
             >
-              Bestaande factuur
+              <Receipt size={14} />
+              <span>Uitgave (Kosten)</span>
+              {isDebit && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-900/60 text-purple-200 font-normal">
+                  Aanbevolen
+                </span>
+              )}
             </button>
             <button
               type="button"
-              onClick={() => setTab('create')}
+              onClick={() => setMode('invoice')}
               className={clsx(
                 'py-2 rounded-lg transition-all flex items-center justify-center gap-1.5',
-                tab === 'create'
+                mode === 'invoice'
                   ? 'bg-brand-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-slate-200'
               )}
             >
-              <PlusCircle size={13} />
-              <span>Nieuwe factuur maken</span>
+              <FileText size={14} />
+              <span>Verkoopfactuur (Omzet)</span>
+              {!isDebit && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-900/60 text-brand-200 font-normal">
+                  Aanbevolen
+                </span>
+              )}
             </button>
           </div>
         </div>
 
-        {/* Tab 1: Existing Invoices */}
-        {tab === 'existing' && (
-          <div className="p-5 space-y-3">
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                className="input pl-8 text-xs sm:text-sm py-2"
-                placeholder="Zoek factuurnummer, klant of bedrag..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                autoFocus
-              />
-            </div>
-
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-              {sortedInvoices.length === 0 ? (
-                <div className="text-center py-6 text-xs text-slate-500">
-                  Geen facturen gevonden. Gebruik het tabblad "Nieuwe factuur maken".
-                </div>
-              ) : (
-                sortedInvoices.map(inv => {
-                  const isExactAmount = Math.abs(Number(inv.total_incl_vat) - Number(transaction.amount)) < 0.05
-                  const isSelected = selectedInvoiceId === inv.id
-
-                  return (
-                    <label
-                      key={inv.id}
-                      className={clsx(
-                        'flex items-center gap-3 p-2.5 sm:p-3 rounded-lg border cursor-pointer transition-colors',
-                        isSelected
-                          ? 'bg-brand-600/20 border-brand-500'
-                          : isExactAmount
-                          ? 'bg-slate-800/80 border-emerald-500/40 hover:border-emerald-500/60'
-                          : 'bg-slate-800/40 border-slate-800 hover:border-slate-700',
-                      )}
-                    >
-                      <input
-                        type="radio"
-                        name="invoice"
-                        value={inv.id}
-                        checked={isSelected}
-                        onChange={() => setSelectedInvoiceId(inv.id)}
-                        className="accent-brand-500"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs sm:text-sm font-semibold text-slate-200 font-mono">{inv.invoice_number}</span>
-                          {isExactAmount && (
-                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-medium">
-                              Exact bedrag
-                            </span>
-                          )}
-                          <span className="text-[10px] px-1.5 rounded bg-slate-700/60 text-slate-400">{inv.status}</span>
-                        </div>
-                        <div className="text-xs text-slate-400 truncate mt-0.5">
-                          {inv.client?.name || 'Onbekende klant'} · {fmt.date(inv.issue_date)}
-                        </div>
-                      </div>
-                      <div className="font-mono text-xs sm:text-sm font-bold text-slate-100">
-                        {fmt.currency(inv.total_incl_vat)}
-                      </div>
-                    </label>
-                  )
-                })
-              )}
-            </div>
-
-            <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
-              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={markAsPaid}
-                  onChange={e => setMarkAsPaid(e.target.checked)}
-                  className="accent-brand-500 rounded"
-                />
-                <span>Markeer factuur direct als 'Betaald'</span>
-              </label>
-
-              <div className="flex gap-2">
-                <button type="button" onClick={onClose} className="btn-secondary text-xs sm:text-sm py-1.5 px-3">
-                  Annuleren
+        {/* ======================= MODE: EXPENSE ======================= */}
+        {mode === 'expense' && (
+          <div className="pt-3">
+            {/* Subtabs for expense */}
+            <div className="px-5">
+              <div className="grid grid-cols-2 p-0.5 bg-slate-800/60 rounded-lg border border-slate-700/50 text-xs font-medium">
+                <button
+                  type="button"
+                  onClick={() => setExpenseTab('create')}
+                  className={clsx(
+                    'py-1.5 rounded-md transition-all flex items-center justify-center gap-1',
+                    expenseTab === 'create'
+                      ? 'bg-purple-600/30 text-purple-200 border border-purple-500/40 shadow-sm font-semibold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  )}
+                >
+                  <PlusCircle size={12} />
+                  <span>Kostenpost aanmaken o.b.v. transactie</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => { if (selectedInvoiceId) onMatch(selectedInvoiceId); }}
-                  disabled={!selectedInvoiceId}
-                  className="btn-primary text-xs sm:text-sm py-1.5 px-3.5"
+                  onClick={() => setExpenseTab('existing')}
+                  className={clsx(
+                    'py-1.5 rounded-md transition-all flex items-center justify-center gap-1',
+                    expenseTab === 'existing'
+                      ? 'bg-purple-600/30 text-purple-200 border border-purple-500/40 shadow-sm font-semibold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  )}
                 >
-                  <Link2 size={13} /> Koppeling opslaan
+                  <Link2 size={12} />
+                  <span>Bestaande uitgave</span>
                 </button>
               </div>
             </div>
+
+            {/* Subtab 1: Create expense and match */}
+            {expenseTab === 'create' && (
+              <form onSubmit={handleCreateExpenseAndMatch} className="p-5 space-y-3">
+                <div>
+                  <label className="label text-xs">Leverancier / Begunstigde *</label>
+                  <input
+                    className="input text-xs sm:text-sm"
+                    value={vendor}
+                    onChange={e => setVendor(e.target.value)}
+                    placeholder="bijv. Google Workspace, NS Zakelijk, Bol.com..."
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label text-xs">Datum</label>
+                    <input
+                      type="date"
+                      className="input text-xs sm:text-sm font-mono"
+                      value={expenseDate}
+                      onChange={e => setExpenseDate(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label text-xs">Categorie</label>
+                    <select
+                      className="select text-xs sm:text-sm"
+                      value={expenseCategory}
+                      onChange={e => setExpenseCategory(e.target.value)}
+                    >
+                      <option value="Software">Software</option>
+                      <option value="Subscriptions">Abonnementen</option>
+                      <option value="Hardware">Hardware</option>
+                      <option value="Office">Kantoor</option>
+                      <option value="Travel">Reiskosten</option>
+                      <option value="Marketing">Marketing</option>
+                      <option value="Professional Services">Diensten</option>
+                      <option value="Other">Overig</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label text-xs">Bedrag incl. btw (€)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="input text-xs sm:text-sm font-mono text-right"
+                      value={expenseAmountIncl}
+                      onChange={e => setExpenseAmountIncl(parseFloat(e.target.value) || 0)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label text-xs">Btw-tarief</label>
+                    <select
+                      className="select text-xs sm:text-sm"
+                      value={expenseVatRate}
+                      onChange={e => setExpenseVatRate(e.target.value)}
+                    >
+                      <option value="21">21% (hoog)</option>
+                      <option value="9">9% (laag)</option>
+                      <option value="0">0% (nul)</option>
+                      <option value="REVERSE_CHARGE">Verlegd</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="text-xs text-slate-400 bg-slate-800/40 p-2.5 rounded-lg border border-slate-800 flex justify-between font-mono">
+                  <span>Excl. btw: <strong className="text-slate-200">{fmt.currency(expAmountExcl)}</strong></span>
+                  <span>Btw: <strong className="text-purple-400">{fmt.currency(expVatAmount)}</strong></span>
+                </div>
+
+                <div>
+                  <label className="label text-xs">Omschrijving</label>
+                  <input
+                    className="input text-xs sm:text-sm"
+                    value={expenseDesc}
+                    onChange={e => setExpenseDesc(e.target.value)}
+                    placeholder="Omschrijving van de aankoop of dienst..."
+                  />
+                </div>
+
+                <div className="pt-2 border-t border-slate-800 flex items-center justify-end gap-2">
+                  <button type="button" onClick={onClose} className="btn-secondary text-xs sm:text-sm py-1.5 px-3">
+                    Annuleren
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isCreatingExpense}
+                    className="btn-primary bg-purple-600 hover:bg-purple-500 border-purple-500 text-white text-xs sm:text-sm py-1.5 px-3.5 flex items-center gap-1.5"
+                  >
+                    <Check size={14} /> {isCreatingExpense ? 'Maken...' : 'Uitgave opslaan & direct koppelen'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Subtab 2: Link existing expense */}
+            {expenseTab === 'existing' && (
+              <div className="p-5 space-y-3">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    className="input pl-8 text-xs sm:text-sm py-2"
+                    placeholder="Zoek leverancier, categorie of bedrag..."
+                    value={expenseSearch}
+                    onChange={e => setExpenseSearch(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {sortedExpenses.length === 0 ? (
+                    <div className="text-center py-6 text-xs text-slate-500">
+                      Geen uitgaven gevonden. Gebruik het tabblad "Kostenpost aanmaken o.b.v. transactie".
+                    </div>
+                  ) : (
+                    sortedExpenses.map(exp => {
+                      const isExactAmount = Math.abs(Number(exp.amount_incl_vat) - Number(transaction.amount)) < 0.05
+                      const isSelected = selectedExpenseId === exp.id
+
+                      return (
+                        <label
+                          key={exp.id}
+                          className={clsx(
+                            'flex items-center gap-3 p-2.5 sm:p-3 rounded-lg border cursor-pointer transition-colors',
+                            isSelected
+                              ? 'bg-purple-600/20 border-purple-500'
+                              : isExactAmount
+                              ? 'bg-slate-800/80 border-purple-500/40 hover:border-purple-500/60'
+                              : 'bg-slate-800/40 border-slate-800 hover:border-slate-700',
+                          )}
+                        >
+                          <input
+                            type="radio"
+                            name="expense"
+                            value={exp.id}
+                            checked={isSelected}
+                            onChange={() => setSelectedExpenseId(exp.id)}
+                            className="accent-purple-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs sm:text-sm font-semibold text-slate-200">{exp.vendor_name}</span>
+                              {isExactAmount && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-medium">
+                                  Exact bedrag
+                                </span>
+                              )}
+                              <span className="text-[10px] px-1.5 rounded bg-slate-700/60 text-slate-400">{exp.category}</span>
+                            </div>
+                            <div className="text-xs text-slate-400 truncate mt-0.5">
+                              {exp.description || 'Geen omschrijving'} · {fmt.date(exp.expense_date)}
+                            </div>
+                          </div>
+                          <div className="font-mono text-xs sm:text-sm font-bold text-slate-100">
+                            {fmt.currency(exp.amount_incl_vat)}
+                          </div>
+                        </label>
+                      )
+                    })
+                  )}
+                </div>
+
+                <div className="pt-2 border-t border-slate-800 flex justify-end gap-2">
+                  <button type="button" onClick={onClose} className="btn-secondary text-xs sm:text-sm py-1.5 px-3">
+                    Annuleren
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { if (selectedExpenseId) onMatchExpense(selectedExpenseId); }}
+                    disabled={!selectedExpenseId}
+                    className="btn-primary bg-purple-600 hover:bg-purple-500 border-purple-500 text-white text-xs sm:text-sm py-1.5 px-3.5 flex items-center gap-1.5"
+                  >
+                    <Link2 size={13} /> Koppeling opslaan
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Tab 2: Create New Invoice & Match */}
-        {tab === 'create' && (
-          <form onSubmit={handleCreateAndMatch} className="p-5 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label text-xs">Factuurnummer *</label>
-                <input
-                  className="input text-xs sm:text-sm font-mono"
-                  value={createInvoiceNum}
-                  onChange={e => setCreateInvoiceNum(e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <label className="label text-xs">Btw-tarief</label>
-                <select
-                  className="select text-xs sm:text-sm"
-                  value={createVatRate}
-                  onChange={e => setCreateVatRate(e.target.value)}
+        {/* ======================= MODE: INVOICE ======================= */}
+        {mode === 'invoice' && (
+          <div className="pt-3">
+            {/* Subtabs for invoice */}
+            <div className="px-5">
+              <div className="grid grid-cols-2 p-0.5 bg-slate-800/60 rounded-lg border border-slate-700/50 text-xs font-medium">
+                <button
+                  type="button"
+                  onClick={() => setInvoiceTab('existing')}
+                  className={clsx(
+                    'py-1.5 rounded-md transition-all flex items-center justify-center gap-1',
+                    invoiceTab === 'existing'
+                      ? 'bg-brand-600/30 text-brand-200 border border-brand-500/40 shadow-sm font-semibold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  )}
                 >
-                  <option value="21">21% hoog</option>
-                  <option value="9">9% laag</option>
-                  <option value="0">0% nul</option>
-                  <option value="REVERSE_CHARGE">Verlegd</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="label text-xs">Opdrachtgever / Klant</label>
-              <select
-                className="select text-xs sm:text-sm"
-                value={createClientId}
-                onChange={e => setCreateClientId(e.target.value)}
-              >
-                <option value="NEW">+ Nieuwe klant: {newClientName || counterpartName || 'Invoeren...'}</option>
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-
-              {createClientId === 'NEW' && (
-                <input
-                  className="input text-xs sm:text-sm mt-1.5"
-                  placeholder="Bedrijfsnaam klant..."
-                  value={newClientName}
-                  onChange={e => setNewClientName(e.target.value)}
-                />
-              )}
-            </div>
-
-            <div>
-              <label className="label text-xs">Omschrijving op factuur</label>
-              <input
-                className="input text-xs sm:text-sm"
-                value={createDesc}
-                onChange={e => setCreateDesc(e.target.value)}
-              />
-            </div>
-
-            <div className="p-2.5 rounded-lg bg-slate-800/40 border border-slate-800 text-xs text-slate-300 flex justify-between items-center font-mono">
-              <span>Factuurbedrag incl. btw:</span>
-              <span className="font-bold text-emerald-400 text-sm">{fmt.currency(transaction.amount)}</span>
-            </div>
-
-            <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
-              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={markAsPaid}
-                  onChange={e => setMarkAsPaid(e.target.checked)}
-                  className="accent-brand-500 rounded"
-                />
-                <span>Direct als 'Betaald' boeken</span>
-              </label>
-
-              <div className="flex gap-2">
-                <button type="button" onClick={onClose} className="btn-secondary text-xs sm:text-sm py-1.5 px-3">
-                  Annuleren
+                  <Link2 size={12} />
+                  <span>Bestaande factuur</span>
                 </button>
                 <button
-                  type="submit"
-                  disabled={isCreating}
-                  className="btn-primary text-xs sm:text-sm py-1.5 px-3.5"
+                  type="button"
+                  onClick={() => setInvoiceTab('create')}
+                  className={clsx(
+                    'py-1.5 rounded-md transition-all flex items-center justify-center gap-1',
+                    invoiceTab === 'create'
+                      ? 'bg-brand-600/30 text-brand-200 border border-brand-500/40 shadow-sm font-semibold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  )}
                 >
-                  <Check size={14} /> {isCreating ? 'Maken...' : 'Aanmaken & koppelen'}
+                  <PlusCircle size={12} />
+                  <span>Nieuwe factuur maken</span>
                 </button>
               </div>
             </div>
-          </form>
+
+            {/* Subtab 1: Existing Invoices */}
+            {invoiceTab === 'existing' && (
+              <div className="p-5 space-y-3">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    className="input pl-8 text-xs sm:text-sm py-2"
+                    placeholder="Zoek factuurnummer, klant of bedrag..."
+                    value={invoiceSearch}
+                    onChange={e => setInvoiceSearch(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {sortedInvoices.length === 0 ? (
+                    <div className="text-center py-6 text-xs text-slate-500">
+                      Geen facturen gevonden. Gebruik het tabblad "Nieuwe factuur maken".
+                    </div>
+                  ) : (
+                    sortedInvoices.map(inv => {
+                      const isExactAmount = Math.abs(Number(inv.total_incl_vat) - Number(transaction.amount)) < 0.05
+                      const isSelected = selectedInvoiceId === inv.id
+
+                      return (
+                        <label
+                          key={inv.id}
+                          className={clsx(
+                            'flex items-center gap-3 p-2.5 sm:p-3 rounded-lg border cursor-pointer transition-colors',
+                            isSelected
+                              ? 'bg-brand-600/20 border-brand-500'
+                              : isExactAmount
+                              ? 'bg-slate-800/80 border-emerald-500/40 hover:border-emerald-500/60'
+                              : 'bg-slate-800/40 border-slate-800 hover:border-slate-700',
+                          )}
+                        >
+                          <input
+                            type="radio"
+                            name="invoice"
+                            value={inv.id}
+                            checked={isSelected}
+                            onChange={() => setSelectedInvoiceId(inv.id)}
+                            className="accent-brand-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs sm:text-sm font-semibold text-slate-200 font-mono">{inv.invoice_number}</span>
+                              {isExactAmount && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-medium">
+                                  Exact bedrag
+                                </span>
+                              )}
+                              <span className="text-[10px] px-1.5 rounded bg-slate-700/60 text-slate-400">{inv.status}</span>
+                            </div>
+                            <div className="text-xs text-slate-400 truncate mt-0.5">
+                              {inv.client?.name || 'Onbekende klant'} · {fmt.date(inv.issue_date)}
+                            </div>
+                          </div>
+                          <div className="font-mono text-xs sm:text-sm font-bold text-slate-100">
+                            {fmt.currency(inv.total_incl_vat)}
+                          </div>
+                        </label>
+                      )
+                    })
+                  )}
+                </div>
+
+                <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+                  <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={markAsPaid}
+                      onChange={e => setMarkAsPaid(e.target.checked)}
+                      className="accent-brand-500 rounded"
+                    />
+                    <span>Markeer factuur direct als 'Betaald'</span>
+                  </label>
+
+                  <div className="flex gap-2">
+                    <button type="button" onClick={onClose} className="btn-secondary text-xs sm:text-sm py-1.5 px-3">
+                      Annuleren
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { if (selectedInvoiceId) onMatchInvoice(selectedInvoiceId); }}
+                      disabled={!selectedInvoiceId}
+                      className="btn-primary text-xs sm:text-sm py-1.5 px-3.5"
+                    >
+                      <Link2 size={13} /> Koppeling opslaan
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Subtab 2: Create New Invoice & Match */}
+            {invoiceTab === 'create' && (
+              <form onSubmit={handleCreateInvoiceAndMatch} className="p-5 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label text-xs">Factuurnummer *</label>
+                    <input
+                      className="input text-xs sm:text-sm font-mono"
+                      value={createInvoiceNum}
+                      onChange={e => setCreateInvoiceNum(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label text-xs">Btw-tarief</label>
+                    <select
+                      className="select text-xs sm:text-sm"
+                      value={createVatRate}
+                      onChange={e => setCreateVatRate(e.target.value)}
+                    >
+                      <option value="21">21% hoog</option>
+                      <option value="9">9% laag</option>
+                      <option value="0">0% nul</option>
+                      <option value="REVERSE_CHARGE">Verlegd</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="label text-xs">Opdrachtgever / Klant</label>
+                  <select
+                    className="select text-xs sm:text-sm"
+                    value={createClientId}
+                    onChange={e => setCreateClientId(e.target.value)}
+                  >
+                    <option value="NEW">+ Nieuwe klant: {newClientName || counterpartName || 'Invoeren...'}</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+
+                  {createClientId === 'NEW' && (
+                    <input
+                      className="input text-xs sm:text-sm mt-1.5"
+                      placeholder="Bedrijfsnaam klant..."
+                      value={newClientName}
+                      onChange={e => setNewClientName(e.target.value)}
+                    />
+                  )}
+                </div>
+
+                <div>
+                  <label className="label text-xs">Omschrijving op factuur</label>
+                  <input
+                    className="input text-xs sm:text-sm"
+                    value={createDesc}
+                    onChange={e => setCreateDesc(e.target.value)}
+                  />
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-slate-800/40 border border-slate-800 text-xs text-slate-300 flex justify-between items-center font-mono">
+                  <span>Factuurbedrag incl. btw:</span>
+                  <span className="font-bold text-emerald-400 text-sm">{fmt.currency(transaction.amount)}</span>
+                </div>
+
+                <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+                  <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={markAsPaid}
+                      onChange={e => setMarkAsPaid(e.target.checked)}
+                      className="accent-brand-500 rounded"
+                    />
+                    <span>Direct als 'Betaald' boeken</span>
+                  </label>
+
+                  <div className="flex gap-2">
+                    <button type="button" onClick={onClose} className="btn-secondary text-xs sm:text-sm py-1.5 px-3">
+                      Annuleren
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isCreatingInvoice}
+                      className="btn-primary text-xs sm:text-sm py-1.5 px-3.5"
+                    >
+                      <Check size={14} /> {isCreatingInvoice ? 'Maken...' : 'Aanmaken & koppelen'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -524,7 +891,7 @@ function AddExpenseFromTxnModal({
     if (!vendor.trim()) return
     setIsSubmitting(true)
     try {
-      await expensesApi.create({
+      const newExp = await expensesApi.create({
         vendor_name: vendor.trim(),
         expense_date: date,
         description: description.trim(),
@@ -534,7 +901,10 @@ function AddExpenseFromTxnModal({
         vat_amount: vatAmount,
         amount_incl_vat: amountIncl,
       })
-      toast.success(`Kostenpost "${vendor}" succesvol opgeslagen!`)
+      if (newExp && newExp.id) {
+        await bankApi.matchExpense(transaction.id, newExp.id)
+      }
+      toast.success(`Kostenpost "${vendor}" opgeslagen en direct gekoppeld!`)
       onCreated()
       onClose()
     } catch {
@@ -550,7 +920,7 @@ function AddExpenseFromTxnModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <Receipt size={18} className="text-purple-400" />
-            <h3 className="font-semibold text-slate-100 text-sm sm:text-base">Als uitgave opslaan</h3>
+            <h3 className="font-semibold text-slate-100 text-sm sm:text-base">Als uitgave opslaan & direct koppelen</h3>
           </div>
           <button onClick={onClose} className="p-1 rounded text-slate-400 hover:text-white">
             <X size={18} />
@@ -660,6 +1030,10 @@ export default function BankReconciliation() {
     queryKey: ['invoices'],
     queryFn: () => invoicesApi.list(),
   })
+  const { data: expenses = [] } = useQuery<Expense[]>({
+    queryKey: ['expenses'],
+    queryFn: () => expensesApi.list(),
+  })
   const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ['clients'],
     queryFn: () => clientsApi.list(),
@@ -675,6 +1049,7 @@ export default function BankReconciliation() {
       }
       qc.invalidateQueries({ queryKey: ['bank-transactions'] })
       qc.invalidateQueries({ queryKey: ['invoices'] })
+      qc.invalidateQueries({ queryKey: ['expenses'] })
     },
     onError: () => toast.error('Upload mislukt'),
   })
@@ -685,6 +1060,7 @@ export default function BankReconciliation() {
       toast.success(`Afstemming voltooid: ${r.matched ?? 0} gematcht`)
       qc.invalidateQueries({ queryKey: ['bank-transactions'] })
       qc.invalidateQueries({ queryKey: ['invoices'] })
+      qc.invalidateQueries({ queryKey: ['expenses'] })
     },
   })
 
@@ -698,13 +1074,24 @@ export default function BankReconciliation() {
     onError: () => toast.error('Wissen mislukt'),
   })
 
-  const matchMutation = useMutation({
+  const matchInvoiceMutation = useMutation({
     mutationFn: ({ txId, invoiceId }: { txId: string; invoiceId: string }) =>
       bankApi.match(txId, invoiceId),
     onSuccess: () => {
-      toast.success('Transactie gekoppeld!')
+      toast.success('Transactie gekoppeld aan factuur!')
       qc.invalidateQueries({ queryKey: ['bank-transactions'] })
       qc.invalidateQueries({ queryKey: ['invoices'] })
+      setMatchModal(null)
+    },
+  })
+
+  const matchExpenseMutation = useMutation({
+    mutationFn: ({ txId, expenseId }: { txId: string; expenseId: string }) =>
+      bankApi.matchExpense(txId, expenseId),
+    onSuccess: () => {
+      toast.success('Transactie gekoppeld aan uitgave!')
+      qc.invalidateQueries({ queryKey: ['bank-transactions'] })
+      qc.invalidateQueries({ queryKey: ['expenses'] })
       setMatchModal(null)
     },
   })
@@ -715,6 +1102,7 @@ export default function BankReconciliation() {
       toast.success('Koppeling verwijderd')
       qc.invalidateQueries({ queryKey: ['bank-transactions'] })
       qc.invalidateQueries({ queryKey: ['invoices'] })
+      qc.invalidateQueries({ queryKey: ['expenses'] })
     },
   })
 
@@ -814,6 +1202,8 @@ export default function BankReconciliation() {
           transactions.map(txn => {
             const si = STATUS_INFO[txn.reconciliation_status] ?? STATUS_INFO.UNMATCHED
             const matched_inv = invoices.find(i => i.id === txn.matched_invoice_id)
+            const matched_exp = expenses.find(e => e.id === txn.matched_expense_id)
+            const isMatched = !!(matched_inv || matched_exp)
             const isDebit = txn.type === 'DEBIT' || (txn as any).transaction_type === 'DEBIT'
             const txDate = txn.transaction_date || (txn as any).value_date || (txn as any).entry_date
             const counterpartName = txn.counterpart_name || (txn as any).contra_account_name || ''
@@ -835,10 +1225,11 @@ export default function BankReconciliation() {
                           <UserPlus size={10} /> + Klant
                         </button>
                       )}
-                      {isDebit && counterpartName && (
+                      {isDebit && counterpartName && !isMatched && (
                         <button
                           onClick={() => setExpenseModalTxn(txn)}
                           className="px-1.5 py-0.5 rounded text-[10px] bg-purple-600/20 text-purple-300 hover:bg-purple-600/30 border border-purple-500/30 flex items-center gap-1"
+                          title="Als uitgave opslaan en direct koppelen"
                         >
                           <Receipt size={10} /> + Uitgave
                         </button>
@@ -861,22 +1252,38 @@ export default function BankReconciliation() {
                 </div>
 
                 <div className="text-xs text-slate-400 pt-1.5 border-t border-slate-800 flex items-center justify-between gap-2">
-                  <span className="truncate max-w-[200px] text-slate-400 font-mono text-[11px]">{remittance || '—'}</span>
+                  <div className="truncate max-w-[200px]">
+                    <div className="text-slate-400 font-mono text-[11px] truncate">{remittance || '—'}</div>
+                    {matched_inv && (
+                      <div className="font-mono text-brand-400 text-xs font-semibold flex items-center gap-1 mt-0.5">
+                        <Check size={11} /> Factuur {matched_inv.invoice_number}
+                      </div>
+                    )}
+                    {matched_exp && (
+                      <div className="text-purple-400 text-xs font-medium flex items-center gap-1 mt-0.5 truncate">
+                        <Receipt size={11} /> Uitgave: {matched_exp.vendor_name}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {matched_inv ? (
-                      <span className="font-mono text-brand-400 text-xs font-semibold flex items-center gap-1">
-                        <Check size={12} /> {matched_inv.invoice_number}
-                      </span>
-                    ) : null}
                     <button
                       onClick={() => setMatchModal(txn)}
                       className={clsx(
                         'btn-sm text-xs py-1 px-2.5 flex items-center gap-1',
-                        matched_inv ? 'btn-ghost text-slate-400 hover:text-white' : 'btn-secondary text-brand-300'
+                        isMatched ? 'btn-ghost text-slate-400 hover:text-white' : 'btn-secondary text-brand-300'
                       )}
                     >
-                      <Link2 size={12} /> {matched_inv ? 'Wijzigen' : 'Koppelen'}
+                      <Link2 size={12} /> {isMatched ? 'Wijzigen' : 'Koppelen'}
                     </button>
+                    {isMatched && (
+                      <button
+                        onClick={() => unmatchMutation.mutate(txn.id)}
+                        className="btn-ghost p-1 text-red-400 hover:text-red-300"
+                        title="Koppeling ongedaan maken"
+                      >
+                        <Unlink size={13} />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -907,6 +1314,8 @@ export default function BankReconciliation() {
             ) : transactions.map(txn => {
               const si = STATUS_INFO[txn.reconciliation_status] ?? STATUS_INFO.UNMATCHED
               const matched_inv = invoices.find(i => i.id === txn.matched_invoice_id)
+              const matched_exp = expenses.find(e => e.id === txn.matched_expense_id)
+              const isMatched = !!(matched_inv || matched_exp)
               const isDebit = txn.type === 'DEBIT' || (txn as any).transaction_type === 'DEBIT'
               const txDate = txn.transaction_date || (txn as any).value_date || (txn as any).entry_date
               const counterpartName = txn.counterpart_name || (txn as any).contra_account_name || ''
@@ -940,11 +1349,11 @@ export default function BankReconciliation() {
                           <UserPlus size={10} /> + Klant
                         </button>
                       )}
-                      {isDebit && counterpartName && (
+                      {isDebit && counterpartName && !isMatched && (
                         <button
                           onClick={() => setExpenseModalTxn(txn)}
                           className="px-1.5 py-0.5 rounded text-[10px] bg-purple-600/20 text-purple-300 hover:bg-purple-600/30 border border-purple-500/30 flex items-center gap-1"
-                          title="Als zakelijke uitgave registreren"
+                          title="Als zakelijke uitgave registreren en direct koppelen"
                         >
                           <Receipt size={10} /> + Uitgave
                         </button>
@@ -954,13 +1363,18 @@ export default function BankReconciliation() {
                       <div className="text-xs text-slate-500 font-mono mt-0.5">{counterpartIban}</div>
                     )}
                   </td>
-                  <td className="p-3.5 max-w-[220px]">
+                  <td className="p-3.5 max-w-[240px]">
                     <div className="text-xs text-slate-400 truncate font-mono" title={remittance}>
                       {remittance || '—'}
                     </div>
                     {matched_inv && (
                       <div className="text-xs text-brand-400 font-mono font-medium mt-0.5 flex items-center gap-1">
                         <Check size={12} /> Factuur {matched_inv.invoice_number}
+                      </div>
+                    )}
+                    {matched_exp && (
+                      <div className="text-xs text-purple-400 font-medium mt-0.5 flex items-center gap-1">
+                        <Receipt size={12} /> Uitgave: {matched_exp.vendor_name} ({fmt.currency(matched_exp.amount_incl_vat)})
                       </div>
                     )}
                   </td>
@@ -977,16 +1391,16 @@ export default function BankReconciliation() {
                         onClick={() => setMatchModal(txn)}
                         className={clsx(
                           'p-1.5 rounded-lg flex items-center gap-1 text-xs transition-colors',
-                          matched_inv
+                          isMatched
                             ? 'text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700'
                             : 'text-brand-400 hover:text-brand-300 bg-brand-600/15 hover:bg-brand-600/25 border border-brand-500/30'
                         )}
-                        title={matched_inv ? 'Koppeling wijzigen' : 'Aan factuur koppelen'}
+                        title={isMatched ? 'Koppeling wijzigen' : 'Aan factuur of uitgave koppelen'}
                       >
                         <Link2 size={13} />
-                        <span>{matched_inv ? 'Wijzigen' : 'Koppelen'}</span>
+                        <span>{isMatched ? 'Wijzigen' : 'Koppelen'}</span>
                       </button>
-                      {matched_inv && (
+                      {isMatched && (
                         <button
                           onClick={() => unmatchMutation.mutate(txn.id)}
                           className="btn-ghost p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10"
@@ -1009,8 +1423,10 @@ export default function BankReconciliation() {
         <MatchModal
           transaction={matchModal}
           invoices={invoices}
+          expenses={expenses}
           clients={clients}
-          onMatch={(invoiceId) => matchMutation.mutate({ txId: matchModal.id, invoiceId })}
+          onMatchInvoice={(invoiceId) => matchInvoiceMutation.mutate({ txId: matchModal.id, invoiceId })}
+          onMatchExpense={(expenseId) => matchExpenseMutation.mutate({ txId: matchModal.id, expenseId })}
           onUnmatch={() => unmatchMutation.mutate(matchModal.id)}
           onClose={() => setMatchModal(null)}
         />
@@ -1030,7 +1446,10 @@ export default function BankReconciliation() {
         <AddExpenseFromTxnModal
           transaction={expenseModalTxn}
           onClose={() => setExpenseModalTxn(null)}
-          onCreated={() => qc.invalidateQueries({ queryKey: ['expenses'] })}
+          onCreated={() => {
+            qc.invalidateQueries({ queryKey: ['expenses'] })
+            qc.invalidateQueries({ queryKey: ['bank-transactions'] })
+          }}
         />
       )}
 
@@ -1038,7 +1457,7 @@ export default function BankReconciliation() {
       <ConfirmDialog
         isOpen={confirmClearAll}
         title="Alle banktransacties wissen"
-        description="Weet u zeker dat u alle geïmporteerde banktransacties wilt wissen? Gekoppelde facturen blijven behouden maar worden ontkoppeld."
+        description="Weet u zeker dat u alle geïmporteerde banktransacties wilt wissen? Gekoppelde facturen en uitgaven blijven behouden maar worden ontkoppeld."
         confirmLabel="Alle transacties wissen"
         cancelLabel="Annuleren"
         variant="danger"

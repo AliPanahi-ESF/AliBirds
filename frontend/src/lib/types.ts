@@ -96,6 +96,7 @@ export interface BankTransaction {
   match_score?: number
   reconciliation_status: ReconciliationStatus
   matched_invoice_id?: string
+  matched_expense_id?: string
   imported_at: string
 }
 

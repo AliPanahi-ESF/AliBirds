@@ -365,15 +365,17 @@ export const bankApi = {
         return { success: false, count: 0, message: 'Geen geldige transacties gevonden in dit MT940 bestand.' }
       }
 
-      // Fetch outstanding invoices to attempt auto-reconciliation
+      // Fetch outstanding invoices & expenses to attempt auto-reconciliation
       let invoices: any[] = []
+      let expenses: any[] = []
       try {
         invoices = (await invoicesApi.list()) || []
+        expenses = (await expensesApi.list()) || []
       } catch {
         // ignore
       }
 
-      const { results } = autoMatchTransactions(parsed.transactions, invoices)
+      const { results } = autoMatchTransactions(parsed.transactions, invoices, expenses)
       const finalTxs = results.map(r => r.tx)
 
       // Save to Supabase if configured
@@ -414,11 +416,14 @@ export const bankApi = {
   reconcile: async () => {
     const txs = await bankApi.transactions()
     const invoices = (await invoicesApi.list()) || []
-    const { matched, results } = autoMatchTransactions(txs, invoices)
+    const expenses = (await expensesApi.list()) || []
+    const { matched, results } = autoMatchTransactions(txs, invoices, expenses)
 
     for (const r of results) {
       if (r.invoiceId && r.tx.id) {
         await bankApi.match(r.tx.id, r.invoiceId)
+      } else if (r.expenseId && r.tx.id) {
+        await bankApi.matchExpense(r.tx.id, r.expenseId)
       }
     }
     return { matched, total: txs.length }
@@ -440,6 +445,18 @@ export const bankApi = {
     return { success: true }
   },
 
+  matchExpense: async (txId: string, expenseId: string) => {
+    if (isSupabaseConfigured()) {
+      try {
+        await supabaseDb.matchBankTransactionToExpense(txId, expenseId)
+      } catch (err) {
+        console.warn('Supabase matchExpense error:', err)
+      }
+    }
+    demoStore.matchBankTransactionToExpense(txId, expenseId)
+    return { success: true }
+  },
+
   unmatch: async (txId: string) => {
     if (isSupabaseConfigured()) {
       try {
@@ -448,6 +465,7 @@ export const bankApi = {
         console.warn('Supabase unmatch error:', err)
       }
     }
+    demoStore.unmatchBankTransaction(txId)
     return { success: true }
   },
 

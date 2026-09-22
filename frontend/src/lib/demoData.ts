@@ -558,6 +558,16 @@ export const demoStore = {
   deleteExpense: (id: string): void => {
     const list = demoStore.getExpenses().filter(e => e.id !== id)
     setStored(STORAGE_KEYS.EXPENSES, list)
+    const bankList = demoStore.getBankTransactions()
+    let changed = false
+    bankList.forEach(t => {
+      if (t.matched_expense_id === id) {
+        t.matched_expense_id = undefined
+        t.reconciliation_status = 'UNMATCHED'
+        changed = true
+      }
+    })
+    if (changed) setStored(STORAGE_KEYS.BANK, bankList)
   },
 
   getBankTransactions: (): BankTransaction[] => getStored(STORAGE_KEYS.BANK, INITIAL_BANK),
@@ -587,6 +597,7 @@ export const demoStore = {
         description: t.description || ref,
         reconciliation_status: t.reconciliation_status || 'UNMATCHED',
         matched_invoice_id: t.matched_invoice_id,
+        matched_expense_id: t.matched_expense_id,
         raw_hash: t.raw_hash,
         imported_at: t.imported_at || new Date().toISOString(),
       }
@@ -606,6 +617,7 @@ export const demoStore = {
     if (tx) {
       tx.reconciliation_status = 'MATCHED'
       tx.matched_invoice_id = invoiceId
+      tx.matched_expense_id = undefined
       setStored(STORAGE_KEYS.BANK, list)
     }
     const invoices = demoStore.getInvoices()
@@ -615,6 +627,27 @@ export const demoStore = {
       inv.paid_at = new Date().toISOString()
       inv.amount_paid = inv.total_incl_vat
       setStored(STORAGE_KEYS.INVOICES, invoices)
+    }
+  },
+  matchBankTransactionToExpense: (bankId: string, expenseId: string): void => {
+    const list = demoStore.getBankTransactions()
+    const tx = list.find(t => t.id === bankId)
+    if (tx) {
+      tx.reconciliation_status = 'MATCHED'
+      tx.matched_expense_id = expenseId
+      tx.matched_invoice_id = undefined
+      setStored(STORAGE_KEYS.BANK, list)
+    }
+  },
+  unmatchBankTransaction: (bankId: string): void => {
+    const list = demoStore.getBankTransactions()
+    const tx = list.find(t => t.id === bankId)
+    if (tx) {
+      tx.reconciliation_status = 'UNMATCHED'
+      tx.matched_invoice_id = undefined
+      tx.matched_expense_id = undefined
+      tx.match_score = undefined
+      setStored(STORAGE_KEYS.BANK, list)
     }
   },
 
