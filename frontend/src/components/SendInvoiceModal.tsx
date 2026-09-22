@@ -65,6 +65,17 @@ export default function SendInvoiceModal({
     }
   }, [isOpen, resolvedClient, settings, invoice])
 
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
+
   if (!isOpen) return null
 
   const markInvoiceAsSent = async () => {
@@ -203,7 +214,12 @@ export default function SendInvoiceModal({
   )
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="send-invoice-title"
+    >
       <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl shadow-2xl overflow-hidden p-5 sm:p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
@@ -213,13 +229,14 @@ export default function SendInvoiceModal({
               <Mail size={18} />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-100">Factuur Verzenden</h2>
+              <h2 id="send-invoice-title" className="text-base font-bold text-slate-100">Factuur Verzenden</h2>
               <p className="text-xs text-slate-400">Verstuur PDF-factuur {invoice.invoice_number} direct met betaallink</p>
             </div>
           </div>
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            aria-label="Sluiten"
           >
             <X size={18} />
           </button>

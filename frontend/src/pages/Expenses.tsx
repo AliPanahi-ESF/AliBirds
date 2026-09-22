@@ -6,16 +6,34 @@ import toast from 'react-hot-toast'
 import { expensesApi, fmt } from '@/lib/api'
 import { Expense } from '@/lib/types'
 import { clsx } from 'clsx'
+import ConfirmDialog from '@/components/ConfirmDialog'
+import { TableRowSkeleton, CardSkeleton } from '@/components/TableSkeleton'
 
 const CATEGORIES = [
-  'Software', 'Hardware', 'Office', 'Subscriptions',
-  'Travel', 'Marketing', 'Professional Services', 'Other',
+  'Software', 'Hardware', 'Kantoor', 'Abonnementen',
+  'Reiskosten', 'Marketing', 'Professionele Diensten', 'Overig',
 ]
 
 const CAT_COLORS: Record<string, string> = {
-  Software: 'badge-blue', Hardware: 'badge-purple', Office: 'badge-gray',
-  Subscriptions: 'badge-yellow', Travel: 'badge-green',
-  Marketing: 'badge-red', 'Professional Services': 'badge-blue', Other: 'badge-gray',
+  Software: 'badge-blue', Hardware: 'badge-purple',
+  Kantoor: 'badge-gray', Office: 'badge-gray',
+  Abonnementen: 'badge-yellow', Subscriptions: 'badge-yellow',
+  Reiskosten: 'badge-green', Travel: 'badge-green',
+  Marketing: 'badge-red',
+  'Professionele Diensten': 'badge-blue', 'Professional Services': 'badge-blue',
+  Overig: 'badge-gray', Other: 'badge-gray',
+}
+
+const CAT_LABELS: Record<string, string> = {
+  Office: 'Kantoor',
+  Subscriptions: 'Abonnementen',
+  Travel: 'Reiskosten',
+  'Professional Services': 'Professionele Diensten',
+  Other: 'Overig',
+}
+
+export function formatCategory(cat: string) {
+  return CAT_LABELS[cat] || cat
 }
 
 interface ExpenseForm {
@@ -32,6 +50,7 @@ interface ExpenseForm {
 export default function Expenses() {
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
+  const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null)
   const today = new Date().toISOString().slice(0, 10)
 
   const { data: expenses = [], isLoading } = useQuery<Expense[]>({
@@ -83,8 +102,10 @@ export default function Expenses() {
     mutationFn: expensesApi.delete,
     onSuccess: () => {
       toast.success('Kosten verwijderd')
+      setDeletingExpense(null)
       qc.invalidateQueries({ queryKey: ['expenses'] })
     },
+    onError: () => toast.error('Verwijderen mislukt'),
   })
 
   const totalExcl = expenses.reduce((s, e) => s + Number(e.amount_excl_vat), 0)
@@ -195,7 +216,7 @@ export default function Expenses() {
       {/* Mobile Card List (< md) */}
       <div className="md:hidden space-y-2.5">
         {isLoading ? (
-          <div className="card text-center py-10 text-xs text-slate-500">Kosten laden...</div>
+          <CardSkeleton count={4} />
         ) : expenses.length === 0 ? (
           <div className="card text-center py-10 text-xs text-slate-500">Geen kosten gevonden</div>
         ) : (
@@ -208,7 +229,7 @@ export default function Expenses() {
                     <div className="text-xs text-slate-400 mt-0.5">{exp.description}</div>
                   )}
                 </div>
-                <span className={clsx(CAT_COLORS[exp.category] ?? 'badge-gray', 'text-[10px]')}>{exp.category}</span>
+                <span className={clsx(CAT_COLORS[exp.category] ?? 'badge-gray', 'text-[10px]')}>{formatCategory(exp.category)}</span>
               </div>
 
               <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-800 text-slate-400">
@@ -224,8 +245,10 @@ export default function Expenses() {
                     <span className="text-[10px] text-emerald-400 block font-mono">+{fmt.currency(Number(exp.vat_amount))} btw</span>
                   </div>
                   <button
-                    onClick={() => deleteMutation.mutate(exp.id)}
+                    onClick={() => setDeletingExpense(exp)}
                     className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 ml-1"
+                    title="Uitgave verwijderen"
+                    aria-label={`Uitgave van ${exp.vendor_name} verwijderen`}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -254,7 +277,7 @@ export default function Expenses() {
           </thead>
           <tbody className="divide-y divide-slate-800/60">
             {isLoading ? (
-              <tr><td colSpan={9} className="text-center py-10 text-slate-500">Laden...</td></tr>
+              <TableRowSkeleton cols={9} rows={5} />
             ) : expenses.length === 0 ? (
               <tr><td colSpan={9} className="text-center py-10 text-slate-500">Nog geen kosten geregistreerd</td></tr>
             ) : expenses.map(exp => (
@@ -262,16 +285,17 @@ export default function Expenses() {
                 <td className="p-3.5 text-xs text-slate-400 whitespace-nowrap">{fmt.date(exp.expense_date)}</td>
                 <td className="p-3.5 font-medium text-slate-200">{exp.vendor_name}</td>
                 <td className="p-3.5 text-slate-400 text-xs max-w-[160px] truncate">{exp.description ?? '—'}</td>
-                <td className="p-3.5"><span className={CAT_COLORS[exp.category] ?? 'badge-gray'}>{exp.category}</span></td>
+                <td className="p-3.5"><span className={CAT_COLORS[exp.category] ?? 'badge-gray'}>{formatCategory(exp.category)}</span></td>
                 <td className="p-3.5 text-slate-400 text-xs">{exp.vat_rate}%</td>
                 <td className="p-3.5 text-right font-mono text-xs text-slate-300">{fmt.currency(Number(exp.amount_excl_vat))}</td>
                 <td className="p-3.5 text-right font-mono text-xs text-emerald-400">{fmt.currency(Number(exp.vat_amount))}</td>
                 <td className="p-3.5 text-right font-mono text-sm font-semibold text-slate-100">{fmt.currency(Number(exp.amount_incl_vat))}</td>
                 <td className="p-3.5 text-right">
                   <button
-                    onClick={() => deleteMutation.mutate(exp.id)}
+                    onClick={() => setDeletingExpense(exp)}
                     className="btn-danger p-1.5 rounded-lg text-red-400"
-                    title="Verwijderen"
+                    title="Uitgave verwijderen"
+                    aria-label={`Uitgave van ${exp.vendor_name} verwijderen`}
                   >
                     <Trash2 size={13} />
                   </button>
@@ -281,6 +305,25 @@ export default function Expenses() {
           </tbody>
         </table>
       </div>
+
+      {/* Expense Delete Confirmation Modal */}
+      <ConfirmDialog
+        isOpen={Boolean(deletingExpense)}
+        title="Uitgave verwijderen"
+        description={
+          <span>
+            Weet u zeker dat u de uitgave van <strong className="text-slate-200">{deletingExpense?.vendor_name}</strong> ter waarde van <strong className="text-slate-200">{fmt.currency(Number(deletingExpense?.amount_incl_vat))}</strong> wilt verwijderen?
+          </span>
+        }
+        confirmLabel="Uitgave wissen"
+        cancelLabel="Annuleren"
+        variant="danger"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deletingExpense) deleteMutation.mutate(deletingExpense.id)
+        }}
+        onClose={() => setDeletingExpense(null)}
+      />
     </div>
   )
 }

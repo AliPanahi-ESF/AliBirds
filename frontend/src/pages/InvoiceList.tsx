@@ -9,23 +9,27 @@ import InvoicePrintModal from '@/components/InvoicePrintModal'
 import ImportInvoicePdfModal from '@/components/ImportInvoicePdfModal'
 import SendInvoiceModal from '@/components/SendInvoiceModal'
 import { clsx } from 'clsx'
+import ConfirmDialog from '@/components/ConfirmDialog'
+import { TableRowSkeleton, CardSkeleton } from '@/components/TableSkeleton'
 
 const STATUS_MAP: Record<InvoiceStatus, { label: string; cls: string }> = {
   DRAFT:     { label: 'Concept',     cls: 'badge-gray' },
   SENT:      { label: 'Verzonden',   cls: 'badge-blue' },
   PAID:      { label: 'Betaald',     cls: 'badge-green' },
   OVERDUE:   { label: 'Verlopen',    cls: 'badge-red' },
-  CANCELLED: { label: 'Geannuleerd', cls: 'badge-gray' },
+  CANCELLED: { label: 'Geannuleerd', cls: 'badge-yellow' },
 }
 
 export default function InvoiceList() {
-  const nav = useNavigate()
   const qc = useQueryClient()
+  const nav = useNavigate()
   const [filter, setFilter] = useState<string>('')
   const [search, setSearch] = useState('')
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null)
   const [sendInvoice, setSendInvoice] = useState<Invoice | null>(null)
   const [showImportPdf, setShowImportPdf] = useState(false)
+  const [deletingInvoice, setDeletingInvoice] = useState<Invoice | null>(null)
+  const [confirmClearAll, setConfirmClearAll] = useState(false)
 
   const { data: settings } = useQuery<BusinessSettings>({
     queryKey: ['settings'],
@@ -46,6 +50,7 @@ export default function InvoiceList() {
     mutationFn: (id: string) => invoicesApi.delete(id),
     onSuccess: () => {
       toast.success('Factuur succesvol verwijderd!')
+      setDeletingInvoice(null)
       qc.invalidateQueries({ queryKey: ['invoices'] })
       qc.invalidateQueries({ queryKey: ['kpis'] })
     },
@@ -56,6 +61,7 @@ export default function InvoiceList() {
     mutationFn: () => invoicesApi.clearAll(),
     onSuccess: () => {
       toast.success('Alle facturen zijn gewist!')
+      setConfirmClearAll(false)
       qc.invalidateQueries({ queryKey: ['invoices'] })
       qc.invalidateQueries({ queryKey: ['kpis'] })
     },
@@ -63,15 +69,11 @@ export default function InvoiceList() {
   })
 
   const handleDelete = (inv: Invoice) => {
-    if (window.confirm(`Weet u zeker dat u factuur "${inv.invoice_number}" definitief wilt verwijderen?`)) {
-      deleteMutation.mutate(inv.id)
-    }
+    setDeletingInvoice(inv)
   }
 
   const handleClearAll = () => {
-    if (window.confirm('Weet u zeker dat u ALLE facturen wilt verwijderen? Dit kan niet ongedaan worden gemaakt.')) {
-      clearAllMutation.mutate()
-    }
+    setConfirmClearAll(true)
   }
 
   const filtered = invoices.filter(inv =>
@@ -148,7 +150,7 @@ export default function InvoiceList() {
       {/* Mobile Card View (< md) */}
       <div className="md:hidden space-y-2.5">
         {isLoading ? (
-          <div className="card text-center py-10 text-xs text-slate-500">Facturen laden...</div>
+          <CardSkeleton count={4} />
         ) : filtered.length === 0 ? (
           <div className="card text-center py-10 text-xs text-slate-500">Geen facturen gevonden</div>
         ) : (
@@ -204,7 +206,7 @@ export default function InvoiceList() {
           </thead>
           <tbody className="divide-y divide-slate-800/60">
             {isLoading ? (
-              <tr><td colSpan={7} className="text-center py-12 text-slate-500">Laden...</td></tr>
+              <TableRowSkeleton cols={7} rows={5} />
             ) : filtered.length === 0 ? (
               <tr><td colSpan={7} className="text-center py-12 text-slate-500">Geen facturen gevonden</td></tr>
             ) : filtered.map((inv) => {
@@ -228,6 +230,7 @@ export default function InvoiceList() {
                         onClick={() => setSendInvoice(inv)}
                         className="btn-ghost p-1.5 rounded-lg text-emerald-400 hover:text-emerald-300"
                         title="Factuur verzenden per e-mail"
+                        aria-label={`Factuur ${inv.invoice_number} verzenden per e-mail`}
                       >
                         <Mail size={14} />
                       </button>
@@ -235,6 +238,7 @@ export default function InvoiceList() {
                         onClick={() => nav(`/invoices/${inv.id}/edit`)}
                         className="btn-ghost p-1.5 rounded-lg text-slate-400 hover:text-slate-200"
                         title="Bewerken"
+                        aria-label={`Factuur ${inv.invoice_number} bewerken`}
                       >
                         <Eye size={14} />
                       </button>
@@ -242,6 +246,7 @@ export default function InvoiceList() {
                         onClick={() => setPrintInvoice(inv)}
                         className="btn-ghost p-1.5 rounded-lg text-brand-400 hover:text-brand-300"
                         title="Afdrukken / PDF"
+                        aria-label={`Factuur ${inv.invoice_number} afdrukken als PDF`}
                       >
                         <Download size={14} />
                       </button>
@@ -249,6 +254,7 @@ export default function InvoiceList() {
                         onClick={() => handleDelete(inv)}
                         className="btn-ghost p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10"
                         title="Factuur verwijderen"
+                        aria-label={`Factuur ${inv.invoice_number} verwijderen`}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -291,6 +297,38 @@ export default function InvoiceList() {
           onClose={() => setShowImportPdf(false)}
         />
       )}
+
+      {/* Single Invoice Delete Confirmation Modal */}
+      <ConfirmDialog
+        isOpen={Boolean(deletingInvoice)}
+        title="Factuur verwijderen"
+        description={
+          <span>
+            Weet u zeker dat u factuur <strong className="text-slate-200">{deletingInvoice?.invoice_number}</strong> definitief wilt verwijderen? Dit kan niet ongedaan worden gemaakt.
+          </span>
+        }
+        confirmLabel="Factuur wissen"
+        cancelLabel="Annuleren"
+        variant="danger"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deletingInvoice) deleteMutation.mutate(deletingInvoice.id)
+        }}
+        onClose={() => setDeletingInvoice(null)}
+      />
+
+      {/* Delete ALL Invoices Confirmation Modal */}
+      <ConfirmDialog
+        isOpen={confirmClearAll}
+        title="Alle facturen wissen"
+        description="Weet u zeker dat u ALLE facturen definitief wilt wissen uit uw administratie? Deze actie is onomkeerbaar."
+        confirmLabel="Alles definitief wissen"
+        cancelLabel="Annuleren"
+        variant="danger"
+        isLoading={clearAllMutation.isPending}
+        onConfirm={() => clearAllMutation.mutate()}
+        onClose={() => setConfirmClearAll(false)}
+      />
     </div>
   )
 }

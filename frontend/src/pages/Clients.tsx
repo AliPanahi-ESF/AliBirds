@@ -6,6 +6,8 @@ import toast from 'react-hot-toast'
 import { clientsApi, bankApi } from '@/lib/api'
 import { Client, BankTransaction } from '@/lib/types'
 import { parsePdfInvoice } from '@/lib/pdfInvoiceParser'
+import ConfirmDialog from '@/components/ConfirmDialog'
+import { TableRowSkeleton, CardSkeleton } from '@/components/TableSkeleton'
 
 const COUNTRIES = [
   { code: 'NL', name: 'Nederland' }, { code: 'BE', name: 'België' },
@@ -17,6 +19,7 @@ export default function Clients() {
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<Client | null>(null)
+  const [deletingClient, setDeletingClient] = useState<Client | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [isParsingPdf, setIsParsingPdf] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -83,8 +86,10 @@ export default function Clients() {
     mutationFn: clientsApi.remove,
     onSuccess: () => {
       toast.success('Klant verwijderd')
+      setDeletingClient(null)
       qc.invalidateQueries({ queryKey: ['clients'] })
     },
+    onError: () => toast.error('Verwijderen mislukt'),
   })
 
   const onSubmit = (data: Partial<Client>) => {
@@ -315,7 +320,7 @@ export default function Clients() {
       {/* Mobile Card View (< md) */}
       <div className="md:hidden space-y-2.5">
         {isLoading ? (
-          <div className="card text-center py-10 text-xs text-slate-500">Klanten laden...</div>
+          <CardSkeleton count={4} />
         ) : clients.length === 0 ? (
           <div className="card text-center py-10 text-xs text-slate-500">Geen klanten gevonden</div>
         ) : (
@@ -362,12 +367,16 @@ export default function Clients() {
                   <button
                     onClick={() => openEdit(c)}
                     className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                    title="Klant bewerken"
+                    aria-label={`Klant ${c.name} bewerken`}
                   >
                     <Edit2 size={14} />
                   </button>
                   <button
-                    onClick={() => removeMutation.mutate(c.id)}
+                    onClick={() => setDeletingClient(c)}
                     className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                    title="Klant verwijderen"
+                    aria-label={`Klant ${c.name} verwijderen`}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -394,7 +403,7 @@ export default function Clients() {
           </thead>
           <tbody className="divide-y divide-slate-800/60">
             {isLoading ? (
-              <tr><td colSpan={7} className="text-center py-10 text-slate-500">Laden...</td></tr>
+              <TableRowSkeleton cols={7} rows={5} />
             ) : clients.length === 0 ? (
               <tr><td colSpan={7} className="text-center py-10 text-slate-500">Geen klanten gevonden</td></tr>
             ) : clients.map(c => (
@@ -421,10 +430,20 @@ export default function Clients() {
                 <td className="p-3.5 text-slate-400">{c.default_payment_term_days}d</td>
                 <td className="p-3.5 text-right">
                   <div className="flex gap-1 justify-end">
-                    <button onClick={() => openEdit(c)} className="btn-ghost p-1.5 rounded-lg text-slate-400 hover:text-slate-200">
+                    <button
+                      onClick={() => openEdit(c)}
+                      className="btn-ghost p-1.5 rounded-lg text-slate-400 hover:text-slate-200"
+                      title="Klant bewerken"
+                      aria-label={`Klant ${c.name} bewerken`}
+                    >
                       <Edit2 size={13} />
                     </button>
-                    <button onClick={() => removeMutation.mutate(c.id)} className="btn-danger p-1.5 rounded-lg text-red-400">
+                    <button
+                      onClick={() => setDeletingClient(c)}
+                      className="btn-danger p-1.5 rounded-lg text-red-400"
+                      title="Klant verwijderen"
+                      aria-label={`Klant ${c.name} verwijderen`}
+                    >
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -434,6 +453,25 @@ export default function Clients() {
           </tbody>
         </table>
       </div>
+
+      {/* Client Delete Confirmation Modal */}
+      <ConfirmDialog
+        isOpen={Boolean(deletingClient)}
+        title="Klant verwijderen"
+        description={
+          <span>
+            Weet u zeker dat u klant <strong className="text-slate-200">{deletingClient?.name}</strong> definitief wilt verwijderen? Eerder aangemaakte facturen blijven behouden.
+          </span>
+        }
+        confirmLabel="Klant wissen"
+        cancelLabel="Annuleren"
+        variant="danger"
+        isLoading={removeMutation.isPending}
+        onConfirm={() => {
+          if (deletingClient) removeMutation.mutate(deletingClient.id)
+        }}
+        onClose={() => setDeletingClient(null)}
+      />
     </div>
   )
 }

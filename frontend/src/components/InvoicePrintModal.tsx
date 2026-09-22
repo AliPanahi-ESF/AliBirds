@@ -69,8 +69,21 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
     vatBreakdown[rate].vat += (Number(it.vat_amount) || 0)
   })
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex justify-center p-2 sm:p-4 md:p-6 print:p-0 print:bg-white print:static">
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex justify-center p-2 sm:p-4 md:p-6 print:p-0 print:bg-white print:static"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Factuur ${invoice.invoice_number} preview`}
+    >
       <div className="relative w-full max-w-4xl bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden print:shadow-none print:rounded-none print:w-full print:max-w-none">
         
         {/* Top Action Bar (Hidden when printing) */}

@@ -8,6 +8,7 @@ import { invoicesApi, clientsApi, settingsApi, fmt } from '@/lib/api'
 import { Client, Invoice, LineItem, BusinessSettings } from '@/lib/types'
 import InvoicePrintModal from '@/components/InvoicePrintModal'
 import SendInvoiceModal from '@/components/SendInvoiceModal'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import { sendInvoiceViaResend, generateMailtoUrl, isResendConfigured } from '@/lib/email'
 
 interface LineItemRow {
@@ -62,6 +63,7 @@ export default function InvoiceEditor() {
   const [showSendModal, setShowSendModal] = useState(false)
   const [isSendingEmail, setIsSendingEmail] = useState(false)
   const [liveCalc, setLiveCalc] = useState({ excl: 0, vat: 0, incl: 0 })
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const { data: settings } = useQuery<BusinessSettings>({
     queryKey: ['settings'],
@@ -182,6 +184,7 @@ export default function InvoiceEditor() {
     mutationFn: () => invoicesApi.delete(id!),
     onSuccess: () => {
       toast.success('Factuur succesvol verwijderd!')
+      setShowDeleteConfirm(false)
       qc.invalidateQueries({ queryKey: ['invoices'] })
       qc.invalidateQueries({ queryKey: ['kpis'] })
       nav('/invoices')
@@ -190,9 +193,7 @@ export default function InvoiceEditor() {
   })
 
   const handleDelete = () => {
-    if (window.confirm(`Weet u zeker dat u factuur "${existing?.invoice_number}" definitief wilt verwijderen?`)) {
-      deleteMutation.mutate()
-    }
+    setShowDeleteConfirm(true)
   }
 
   const handleSendInvoice = async () => {
@@ -598,6 +599,23 @@ export default function InvoiceEditor() {
           qc.invalidateQueries({ queryKey: ['invoices'] })
           if (id) qc.invalidateQueries({ queryKey: ['invoice', id] })
         }}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Factuur definitief verwijderen"
+        description={
+          <span>
+            Weet u zeker dat u factuur <strong className="text-slate-200">{existing?.invoice_number}</strong> definitief wilt verwijderen? Dit kan niet ongedaan worden gemaakt.
+          </span>
+        }
+        confirmLabel="Factuur wissen"
+        cancelLabel="Annuleren"
+        variant="danger"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => deleteMutation.mutate()}
+        onClose={() => setShowDeleteConfirm(false)}
       />
     </div>
   )

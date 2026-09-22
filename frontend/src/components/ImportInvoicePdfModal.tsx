@@ -45,6 +45,14 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
     setAmountIncl(incl)
   }
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
   const parsePdfFile = async (selectedFile: File) => {
     setIsParsing(true)
     setFile(selectedFile)
@@ -229,7 +237,12 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="import-pdf-title"
+    >
       <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-xl shadow-2xl animate-fade-in my-8">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
@@ -238,11 +251,15 @@ export default function ImportInvoicePdfModal({ clients, onClose }: Props) {
               <FileText size={18} />
             </div>
             <div>
-              <h3 className="font-semibold text-slate-100 text-base">Historische factuur importeren (PDF)</h3>
+              <h3 id="import-pdf-title" className="font-semibold text-slate-100 text-base">Historische factuur importeren (PDF)</h3>
               <p className="text-xs text-slate-400">Voeg een eerdere factuur toe aan uw administratie</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+            aria-label="Sluiten"
+          >
             <X size={18} />
           </button>
         </div>

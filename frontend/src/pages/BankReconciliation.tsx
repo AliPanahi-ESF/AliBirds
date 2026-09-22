@@ -9,6 +9,7 @@ import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { bankApi, invoicesApi, clientsApi, expensesApi, fmt } from '@/lib/api'
 import { BankTransaction, Invoice, Client } from '@/lib/types'
+import ConfirmDialog from '@/components/ConfirmDialog'
 
 const STATUS_INFO: Record<string, { label: string; icon: React.ElementType; cls: string }> = {
   MATCHED:              { label: 'Gematcht',     icon: CheckCircle,  cls: 'badge-green' },
@@ -649,6 +650,7 @@ export default function BankReconciliation() {
   const [matchModal, setMatchModal] = useState<BankTransaction | null>(null)
   const [clientModalTxn, setClientModalTxn] = useState<BankTransaction | null>(null)
   const [expenseModalTxn, setExpenseModalTxn] = useState<BankTransaction | null>(null)
+  const [confirmClearAll, setConfirmClearAll] = useState(false)
 
   const { data: transactions = [], isLoading } = useQuery<BankTransaction[]>({
     queryKey: ['bank-transactions'],
@@ -690,6 +692,7 @@ export default function BankReconciliation() {
     mutationFn: bankApi.clearAll,
     onSuccess: () => {
       toast.success('Alle banktransacties gewist')
+      setConfirmClearAll(false)
       qc.invalidateQueries({ queryKey: ['bank-transactions'] })
     },
     onError: () => toast.error('Wissen mislukt'),
@@ -742,14 +745,11 @@ export default function BankReconciliation() {
         <div className="flex items-center gap-2 self-start sm:self-auto">
           {transactions.length > 0 && (
             <button
-              onClick={() => {
-                if (window.confirm('Weet u zeker dat u alle banktransacties wilt wissen?')) {
-                  clearAllMutation.mutate()
-                }
-              }}
+              onClick={() => setConfirmClearAll(true)}
               disabled={clearAllMutation.isPending}
               className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-2 px-3 border border-red-500/20 flex items-center gap-1.5"
               title="Alle transacties verwijderen"
+              aria-label="Alle banktransacties wissen"
             >
               <Trash2 size={14} />
               <span>Wissen</span>
@@ -1033,6 +1033,19 @@ export default function BankReconciliation() {
           onCreated={() => qc.invalidateQueries({ queryKey: ['expenses'] })}
         />
       )}
+
+      {/* Clear All Bank Transactions Confirmation Modal */}
+      <ConfirmDialog
+        isOpen={confirmClearAll}
+        title="Alle banktransacties wissen"
+        description="Weet u zeker dat u alle geïmporteerde banktransacties wilt wissen? Gekoppelde facturen blijven behouden maar worden ontkoppeld."
+        confirmLabel="Alle transacties wissen"
+        cancelLabel="Annuleren"
+        variant="danger"
+        isLoading={clearAllMutation.isPending}
+        onConfirm={() => clearAllMutation.mutate()}
+        onClose={() => setConfirmClearAll(false)}
+      />
     </div>
   )
 }

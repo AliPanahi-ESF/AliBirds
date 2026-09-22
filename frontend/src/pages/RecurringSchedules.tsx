@@ -7,6 +7,7 @@ import { clsx } from 'clsx'
 import { useNavigate } from 'react-router-dom'
 import { recurringApi, clientsApi, fmt } from '@/lib/api'
 import { Client, RecurringSchedule, RecurringLineItemTemplate } from '@/lib/types'
+import ConfirmDialog from '@/components/ConfirmDialog'
 
 interface ScheduleForm {
   name: string
@@ -23,8 +24,8 @@ interface ScheduleForm {
 const VAT_OPTIONS = [
   { value: '21', label: '21% (hoog)' },
   { value: '9', label: '9% (laag)' },
-  { value: '0', label: '0% (nul)' },
-  { value: 'REVERSE_CHARGE', label: 'Verlegd' },
+  { value: '0', label: '0% (geen)' },
+  { value: 'REVERSE_CHARGE', label: 'Verlegd (0%)' },
 ]
 
 export default function RecurringSchedules() {
@@ -32,6 +33,8 @@ export default function RecurringSchedules() {
   const nav = useNavigate()
   const [showForm, setShowForm] = useState(false)
   const [editingSchedule, setEditingSchedule] = useState<RecurringSchedule | null>(null)
+  const [deletingSchedule, setDeletingSchedule] = useState<RecurringSchedule | null>(null)
+  const [previewTotals, setPreviewTotals] = useState({ excl: 0, vat: 0, incl: 0 })
   const today = new Date().toISOString().slice(0, 10)
 
   const { data: schedules = [], isLoading } = useQuery<RecurringSchedule[]>({
@@ -127,6 +130,7 @@ export default function RecurringSchedules() {
     mutationFn: recurringApi.delete,
     onSuccess: () => {
       toast.success('Herhaalschema verwijderd')
+      setDeletingSchedule(null)
       qc.invalidateQueries({ queryKey: ['recurring'] })
     },
     onError: () => toast.error('Verwijderen mislukt'),
@@ -403,15 +407,17 @@ export default function RecurringSchedules() {
                       type="button"
                       onClick={() => openEditForm(sched)}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-white"
-                      title="Bewerken"
+                      title="Schema bewerken"
+                      aria-label={`Herhaalschema ${sched.name} bewerken`}
                     >
                       <Edit2 size={13} />
                     </button>
                     <button
                       type="button"
-                      onClick={() => deleteMutation.mutate(sched.id)}
+                      onClick={() => setDeletingSchedule(sched)}
                       className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10"
-                      title="Verwijderen"
+                      title="Schema verwijderen"
+                      aria-label={`Herhaalschema ${sched.name} verwijderen`}
                     >
                       <Trash2 size={13} />
                     </button>
@@ -493,14 +499,16 @@ export default function RecurringSchedules() {
                         onClick={() => openEditForm(sched)}
                         className="btn-ghost p-1.5 rounded-lg text-slate-400 hover:text-white"
                         title="Schema bewerken"
+                        aria-label={`Herhaalschema ${sched.name} bewerken`}
                       >
                         <Edit2 size={13} />
                       </button>
                       <button
                         type="button"
-                        onClick={() => deleteMutation.mutate(sched.id)}
+                        onClick={() => setDeletingSchedule(sched)}
                         className="btn-ghost p-1.5 rounded-lg text-red-400 hover:bg-red-500/10"
                         title="Schema verwijderen"
+                        aria-label={`Herhaalschema ${sched.name} verwijderen`}
                       >
                         <Trash2 size={13} />
                       </button>
@@ -512,6 +520,25 @@ export default function RecurringSchedules() {
           </tbody>
         </table>
       </div>
+
+      {/* Recurring Schedule Delete Confirmation Modal */}
+      <ConfirmDialog
+        isOpen={Boolean(deletingSchedule)}
+        title="Herhaalschema verwijderen"
+        description={
+          <span>
+            Weet u zeker dat u het herhaalschema <strong className="text-slate-200">{deletingSchedule?.name}</strong> wilt verwijderen? Reeds gegenereerde facturen blijven behouden.
+          </span>
+        }
+        confirmLabel="Schema wissen"
+        cancelLabel="Annuleren"
+        variant="danger"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deletingSchedule) deleteMutation.mutate(deletingSchedule.id)
+        }}
+        onClose={() => setDeletingSchedule(null)}
+      />
     </div>
   )
 }

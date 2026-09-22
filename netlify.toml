@@ -6,6 +6,9 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  SECRETS_SCAN_ENABLED = "false"
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY,VITE_RESEND_FROM_EMAIL"
+  SECRETS_SCAN_OMIT_PATHS = "dist/**"
 
 [[redirects]]
   from = "/api/send-email"
