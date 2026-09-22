@@ -11,7 +11,8 @@ import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import {
-  getResendKey, saveResendConfig, getResendSender, isResendConfigured
+  getResendKey, saveResendConfig, getResendSender, isResendConfigured,
+  getDefaultPaymentLink, saveDefaultPaymentLink
 } from '@/lib/email'
 import { useAuth } from '@/lib/auth'
 
@@ -23,6 +24,7 @@ export default function SettingsPage() {
   // Resend state
   const [resendApiKey, setResendApiKey] = useState('')
   const [resendSender, setResendSender] = useState('')
+  const [defaultPayLink, setDefaultPayLink] = useState('')
 
   const { data: settings, isLoading } = useQuery<BusinessSettings>({
     queryKey: ['settings'],
@@ -38,6 +40,7 @@ export default function SettingsPage() {
     const rKey = getResendKey()
     if (rKey) setResendApiKey(rKey)
     setResendSender(getResendSender())
+    setDefaultPayLink(getDefaultPaymentLink())
   }, [])
 
   const saveMutation = useMutation({
@@ -55,7 +58,8 @@ export default function SettingsPage() {
       return
     }
     saveResendConfig(resendApiKey, resendSender)
-    toast.success('Resend e-mailinstellingen opgeslagen!')
+    saveDefaultPaymentLink(defaultPayLink)
+    toast.success('E-mail- en betaalinstellingen opgeslagen!')
   }
 
   if (isLoading) return <div className="text-slate-500 text-xs py-8">Instellingen laden...</div>
@@ -316,6 +320,20 @@ export default function SettingsPage() {
                   value={resendSender}
                   onChange={e => setResendSender(e.target.value)}
                 />
+              </div>
+
+              <div>
+                <label className="label">Standaard Betaallink (iDEAL / Bunq / Tikkie / Mollie)</label>
+                <input
+                  type="url"
+                  className="input text-xs sm:text-sm font-mono"
+                  placeholder="bijv. https://bunq.me/uwstudio of https://tikkie.me/..."
+                  value={defaultPayLink}
+                  onChange={e => setDefaultPayLink(e.target.value)}
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Wordt automatisch meegestuurd als klikbare betaalknop in elke factuurmail.
+                </p>
               </div>
 
               <div className="flex items-center gap-3 pt-2">

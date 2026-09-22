@@ -22,8 +22,7 @@ export default async (req: Request) => {
   }
 
   try {
-    const body = await req.json()
-    const { to, from, subject, html, apiKey } = body
+    const { to, from, subject, html, apiKey, attachments } = body
 
     if (!to || !to.length) {
       return new Response(JSON.stringify({ ok: false, message: 'No recipient email address provided.' }), {
@@ -40,18 +39,24 @@ export default async (req: Request) => {
 
     const resendSender = from || process.env.VITE_RESEND_FROM_EMAIL || 'AliBirds <onboarding@resend.dev>'
 
+    const emailPayload: any = {
+      from: resendSender,
+      to: Array.isArray(to) ? to : [to],
+      subject: subject || 'Factuur van AliBirds',
+      html: html || '<p>Hierbij ontvangt u uw factuur.</p>',
+    }
+
+    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+      emailPayload.attachments = attachments
+    }
+
     const resendRes = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${resendKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        from: resendSender,
-        to: Array.isArray(to) ? to : [to],
-        subject: subject || 'Factuur van AliBirds',
-        html: html || '<p>Hierbij ontvangt u uw factuur.</p>',
-      }),
+      body: JSON.stringify(emailPayload),
     })
 
     const resendData = await resendRes.json()
