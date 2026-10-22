@@ -102,7 +102,7 @@ export async function subscribeToPushNotifications(
 
       // If a VAPID public key is provided (e.g. from environment or settings)
       if (vapidPublicKey) {
-        subscribeOptions.applicationServerKey = urlBase64ToUint8Array(vapidPublicKey)
+        subscribeOptions.applicationServerKey = urlBase64ToUint8Array(vapidPublicKey) as any
       }
 
       subscription = await registration.pushManager.subscribe(subscribeOptions)

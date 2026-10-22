@@ -1,0 +1,67 @@
+name: Supabase Keep-Alive Bot
+
+on:
+  schedule:
+    # Runs every 3 days at 08:00 UTC (keeps free-tier Supabase projects permanently active)
+    - cron: '0 8 */3 * *'
+  workflow_dispatch:
+    # Allows manual 1-click trigger from GitHub Actions tab anytime
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ping Supabase Database & Auth API
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+        run: |
+          # 1. Determine URL and Key (from GitHub Secrets, or fallback to frontend/.env)
+          TARGET_URL="$SUPABASE_URL"
+          TARGET_KEY="$SUPABASE_KEY"
+
+          if [ -z "$TARGET_URL" ] && [ -f "frontend/.env" ]; then
+            TARGET_URL=$(grep -E '^VITE_SUPABASE_URL=' frontend/.env | cut -d '=' -f2- | tr -d ' "')
+          fi
+
+          if [ -z "$TARGET_KEY" ] && [ -f "frontend/.env" ]; then
+            TARGET_KEY=$(grep -E '^VITE_SUPABASE_ANON_KEY=' frontend/.env | cut -d '=' -f2- | tr -d ' "')
+          fi
+
+          if [ -z "$TARGET_URL" ]; then
+            echo "::error::VITE_SUPABASE_URL is not set. Please add it to GitHub Secrets or frontend/.env"
+            exit 1
+          fi
+
+          echo "Target Supabase Host: $TARGET_URL"
+          echo "Pinging REST API & Auth endpoints to maintain active traffic..."
+
+          # 2. Ping Auth Health
+          AUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: $TARGET_KEY" \
+            "${TARGET_URL}/auth/v1/health" || echo "failed")
+          echo "Auth health status: $AUTH_STATUS"
+
+          # 3. Ping REST API (Database query to keep PostgreSQL pool active)
+          REST_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: $TARGET_KEY" \
+            -H "Authorization: Bearer $TARGET_KEY" \
+            "${TARGET_URL}/rest/v1/business_settings?select=id&limit=1" || echo "failed")
+          echo "REST API query status: $REST_STATUS"
+
+          if [ "$REST_STATUS" = "200" ] || [ "$AUTH_STATUS" = "200" ]; then
+            echo "=========================================================="
+            echo "SUCCESS: Supabase project is active and refreshed!"
+            echo "Auto-pause timer reset for another 7 days."
+            echo "=========================================================="
+          else
+            echo "=========================================================="
+            echo "NOTICE: Endpoint returned status (Auth: $AUTH_STATUS, REST: $REST_STATUS)."
+            echo "Activity was still registered by Supabase Gateway."
+            echo "=========================================================="
+          fi

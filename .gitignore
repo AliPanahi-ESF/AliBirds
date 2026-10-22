@@ -34,6 +34,9 @@ storage/
 *.sqlite
 *.sqlite3
 *.log
+*.backup*
+*.dump
+*.gz
 
 # Operating System & IDE
 .DS_Store

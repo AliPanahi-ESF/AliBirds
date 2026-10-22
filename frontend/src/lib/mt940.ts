@@ -240,7 +240,7 @@ export function autoMatchTransactions(
         return {
           tx: {
             ...tx,
-            reconciliation_status: 'MATCHED',
+            reconciliation_status: 'MATCHED' as const,
             matched_expense_id: bestExpense.id,
             match_score: bestScore,
           },
@@ -286,7 +286,7 @@ export function autoMatchTransactions(
         return {
           tx: {
             ...tx,
-            reconciliation_status: 'MATCHED',
+            reconciliation_status: 'MATCHED' as const,
             matched_invoice_id: bestInvoice.id,
             match_score: bestScore,
           },

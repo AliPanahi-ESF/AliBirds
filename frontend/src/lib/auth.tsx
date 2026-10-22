@@ -420,16 +420,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(DEMO_ACTIVE_KEY)
     if (isSupabaseConfigured()) {
       cleanupDemoStorage()
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) throw new Error(error.message)
-      if (data.session) {
-        updateSessionInfoFromSbSession(data.session)
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+        if (error) {
+          if (error.message.toLowerCase().includes('email not confirmed')) {
+            throw error
+          }
+          if (error.message.toLowerCase().includes('invalid login credentials') || error.status === 400) {
+            throw error
+          }
+          throw error
+        }
+        if (data.session) {
+          updateSessionInfoFromSbSession(data.session)
+        }
+        const baseUser = supabaseUserToAppUser(data.user)
+        const syncedUser = await syncOnboardingIfCompleted(baseUser, data.user)
+        setUser(syncedUser)
+        broadcastSync({ type: 'LOGIN', uid: data.user.id, timestamp: Date.now() })
+        return syncedUser
+      } catch (sbErr: any) {
+        const msg = sbErr?.message || ''
+        const isNetworkErr = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('fetch')
+        if (isNetworkErr) {
+          console.warn('Supabase project unreachable (likely paused). Falling back to resilient local session.')
+          toast('Supabase server is momenteel niet bereikbaar (project gepauzeerd). U bent ingelogd in lokale werkmodus.', {
+            icon: '⚠️',
+            duration: 8000,
+            id: 'supabase-offline-fallback',
+          })
+          const localUser: User = {
+            id: 'local_' + btoa(email).slice(0, 12),
+            name: email.split('@')[0],
+            email: email,
+            company_name: 'Mijn ZZP Studio',
+            is_onboarded: true,
+          }
+          localStorage.setItem('alibirds_local_session', JSON.stringify(localUser))
+          setUser(localUser)
+          setSessionInfo({
+            type: 'LOCAL',
+            status: 'ACTIVE',
+            lastChecked: new Date(),
+            expiresAt: null,
+          })
+          broadcastSync({ type: 'LOGIN', uid: localUser.id, timestamp: Date.now() })
+          return localUser
+        }
+        throw sbErr
       }
-      const baseUser = supabaseUserToAppUser(data.user)
-      const syncedUser = await syncOnboardingIfCompleted(baseUser, data.user)
-      setUser(syncedUser)
-      broadcastSync({ type: 'LOGIN', uid: data.user.id, timestamp: Date.now() })
-      return syncedUser
     } else {
       // Seamless zero-friction session
       const saved = localStorage.getItem('alibirds_local_session')
@@ -472,26 +511,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(DEMO_ACTIVE_KEY)
     cleanupDemoStorage()
     if (isSupabaseConfigured()) {
-      const redirectUrl = `${window.location.origin}/`
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name: name },
-          emailRedirectTo: redirectUrl,
-        },
-      })
-      if (error) throw new Error(error.message)
-      if (!data.user) throw new Error('Registratie mislukt. Probeer het opnieuw.')
+      try {
+        const redirectUrl = `${window.location.origin}/`
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { full_name: name },
+            emailRedirectTo: redirectUrl,
+          },
+        })
+        if (error) throw new Error(error.message)
+        if (!data.user) throw new Error('Registratie mislukt. Probeer het opnieuw.')
 
-      const appUser = supabaseUserToAppUser(data.user)
-      // Only set user if session is established immediately (e.g. email confirm disabled)
-      if (data.session) {
-        updateSessionInfoFromSbSession(data.session)
-        setUser(appUser)
-        broadcastSync({ type: 'LOGIN', uid: data.user.id, timestamp: Date.now() })
+        const appUser = supabaseUserToAppUser(data.user)
+        // Only set user if session is established immediately (e.g. email confirm disabled)
+        if (data.session) {
+          updateSessionInfoFromSbSession(data.session)
+          setUser(appUser)
+          broadcastSync({ type: 'LOGIN', uid: data.user.id, timestamp: Date.now() })
+        }
+        return appUser
+      } catch (sbErr: any) {
+        const msg = sbErr?.message || ''
+        const isNetworkErr = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('fetch')
+        if (isNetworkErr) {
+          console.warn('Supabase project unreachable during signup. Creating local offline account.')
+          toast('Supabase server is momenteel gepauzeerd. Account is lokaal aangemaakt zodat u direct verder kunt!', {
+            icon: '⚠️',
+            duration: 8000,
+            id: 'signup-offline-fallback',
+          })
+          const localUser: User = {
+            id: 'local_' + btoa(email).slice(0, 12),
+            name: name,
+            email: email,
+            company_name: '',
+            is_onboarded: false,
+          }
+          localStorage.setItem('alibirds_local_session', JSON.stringify(localUser))
+          setUser(localUser)
+          setSessionInfo({
+            type: 'LOCAL',
+            status: 'ACTIVE',
+            lastChecked: new Date(),
+            expiresAt: null,
+          })
+          broadcastSync({ type: 'LOGIN', uid: localUser.id, timestamp: Date.now() })
+          return localUser
+        }
+        throw sbErr
       }
-      return appUser
     } else {
       // Seamless zero-friction registration
       const localUser: User = {
@@ -518,19 +588,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) return
 
     // Save business profile to Supabase (or local fallback)
-    await settingsApi.update(companyData)
+    try {
+      await settingsApi.update(companyData)
+    } catch (err) {
+      console.warn('Could not persist to remote settings table, stored in local cache:', err)
+      try {
+        const prev = localStorage.getItem('alibirds_settings_cache')
+        const prevObj = prev ? JSON.parse(prev) : {}
+        localStorage.setItem('alibirds_settings_cache', JSON.stringify({ ...prevObj, ...companyData }))
+      } catch {}
+    }
 
     // Update Supabase user metadata with company name & is_onboarded flag
     if (isSupabaseConfigured()) {
-      await supabase.auth.updateUser({
-        data: {
-          company_name: companyData.company_name,
-          trade_name: companyData.trade_name,
-          payment_link: companyData.payment_link,
-          invoice_notes_default: companyData.invoice_notes_default,
-          is_onboarded: true,
-        },
-      })
+      try {
+        await supabase.auth.updateUser({
+          data: {
+            company_name: companyData.company_name,
+            trade_name: companyData.trade_name,
+            payment_link: companyData.payment_link,
+            invoice_notes_default: companyData.invoice_notes_default,
+            is_onboarded: true,
+          },
+        })
+      } catch {}
     }
 
     // Persist onboarding completion for this user

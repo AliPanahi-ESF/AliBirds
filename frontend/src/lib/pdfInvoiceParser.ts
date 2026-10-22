@@ -6,7 +6,7 @@ async function decompressChunk(rawDeflate: Uint8Array): Promise<string | null> {
     const ds = new DecompressionStream('deflate-raw')
     const writer = ds.writable.getWriter()
     const readPromise = new Response(ds.readable).arrayBuffer().catch(() => null)
-    await writer.write(rawDeflate).catch(() => {})
+    await writer.write(rawDeflate as any).catch(() => {})
     await writer.close().catch(() => {})
     const res = await readPromise
     if (res) {
@@ -37,7 +37,7 @@ async function tryDecompress(raw: Uint8Array): Promise<string | null> {
       const ds = new DecompressionStream('deflate')
       const writer = ds.writable.getWriter()
       const readPromise = new Response(ds.readable).arrayBuffer().catch(() => null)
-      await writer.write(raw).catch(() => {})
+      await writer.write(raw as any).catch(() => {})
       await writer.close().catch(() => {})
       const res = await readPromise
       if (res) {

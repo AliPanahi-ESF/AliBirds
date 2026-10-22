@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { X, Upload, FileText, Check, AlertCircle, Building2, Calendar, Eye, Sparkles } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'

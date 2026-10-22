@@ -421,9 +421,9 @@ export default function Quotations() {
         <ConfirmDialog
           isOpen={!!deletingQuotation}
           title="Offerte Verwijderen"
-          message={`Weet u zeker dat u offerte "${deletingQuotation.quotation_number}" wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`}
+          description={`Weet u zeker dat u offerte "${deletingQuotation.quotation_number}" wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`}
           confirmLabel="Verwijderen"
-          danger
+          variant="danger"
           onConfirm={() => deleteMutation.mutate(deletingQuotation.id)}
           onClose={() => setDeletingQuotation(null)}
         />

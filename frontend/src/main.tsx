@@ -15,7 +15,7 @@ if (typeof window !== 'undefined') {
 // Guard against DOM manipulation by browser extensions/translators (Google Translate, Grammarly, etc.)
 if (typeof Node === 'function' && Node.prototype) {
   const originalInsertBefore = Node.prototype.insertBefore
-  Node.prototype.insertBefore = function (newNode: Node, referenceNode: Node | null): Node {
+  ;(Node.prototype as any).insertBefore = function (newNode: Node, referenceNode: Node | null): Node {
     if (referenceNode && referenceNode.parentNode !== this) {
       return this.appendChild(newNode)
     }
@@ -23,7 +23,7 @@ if (typeof Node === 'function' && Node.prototype) {
   }
 
   const originalRemoveChild = Node.prototype.removeChild
-  Node.prototype.removeChild = function (child: Node): Node {
+  ;(Node.prototype as any).removeChild = function (child: Node): Node {
     if (child.parentNode !== this) {
       return child
     }
