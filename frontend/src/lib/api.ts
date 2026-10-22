@@ -624,22 +624,139 @@ export const bankApi = {
 
 export const taxApi = {
   btw: async (year: number = 2026, quarter: number = 3) => {
+    // 1. Determine quarter date bounds
+    const qStartMonth = (quarter - 1) * 3 + 1
+    const qEndMonth = quarter * 3
+    const startStr = `${year}-${String(qStartMonth).padStart(2, '0')}-01`
+    const lastDays = [31, quarter === 1 ? (year % 4 === 0 ? 29 : 28) : (quarter === 2 ? 30 : (quarter === 3 ? 30 : 31)), 31]
+    const endStr = `${year}-${String(qEndMonth).padStart(2, '0')}-${lastDays[quarter - 1] || 31}`
+
     try {
-      const res = await api.get('/tax/btw-aangifte', { params: { year, quarter } })
-      if (res.data && res.data.rubrics) return res.data
-      return demoStore.getBtwAangifte(`Q${quarter}`, String(year))
-    } catch (err) {
+      // 2. Fetch live invoices and expenses
+      const invoices = (await invoicesApi.list()) || []
+      const expenses = (await expensesApi.list()) || []
+
+      let t21 = 0, v21 = 0
+      let t9 = 0, v9 = 0
+      let t0 = 0
+      let t3b = 0
+
+      for (const inv of invoices) {
+        if (!['SENT', 'PAID', 'OVERDUE'].includes(inv.status)) continue
+        const invDate = inv.issue_date || (inv as any).created_at || ''
+        if (invDate < startStr || invDate > endStr) continue
+
+        for (const item of (inv.line_items || [])) {
+          const excl = Number(item.line_total_excl ?? ((Number(item.quantity) || 1) * (Number(item.unit_price) || 0))) || 0
+          const vat = Number(item.vat_amount || 0)
+
+          if (item.vat_rate === '21') {
+            t21 += excl
+            v21 += vat
+          } else if (item.vat_rate === '9') {
+            t9 += excl
+            v9 += vat
+          } else if (item.vat_rate === '0') {
+            t0 += excl
+          } else if (item.vat_rate === 'REVERSE_CHARGE') {
+            t3b += excl
+          }
+        }
+      }
+
+      // 3. Voorbelasting (Rubriek 5b): input VAT from deductible business expenses
+      let voorbelasting = 0
+      for (const exp of expenses) {
+        if ((exp as any).is_deductible === false) continue
+        const expDate = exp.expense_date || (exp as any).date || (exp as any).created_at || ''
+        if (expDate < startStr || expDate > endStr) continue
+        voorbelasting += Number(exp.vat_amount || 0)
+      }
+
+      const totalOutputTax = Math.round((v21 + v9) * 100) / 100
+      const roundedVoorbelasting = Math.round(voorbelasting * 100) / 100
+      const teBetalen = Math.round((totalOutputTax - roundedVoorbelasting) * 100) / 100
+
+      return {
+        quarter: `${year}-Q${quarter}`,
+        start_date: startStr,
+        end_date: endStr,
+        rubrics: {
+          '1a': { code: '1a', description: 'Leveringen/diensten belast met hoog tarief (21%)', turnover: Math.round(t21 * 100) / 100, tax: Math.round(v21 * 100) / 100 },
+          '1b': { code: '1b', description: 'Leveringen/diensten belast met laag tarief (9%)', turnover: Math.round(t9 * 100) / 100, tax: Math.round(v9 * 100) / 100 },
+          '1c': { code: '1c', description: 'Leveringen/diensten belast met overige tarieven behalve 0%', turnover: 0, tax: 0 },
+          '1e': { code: '1e', description: 'Leveringen/diensten belast met 0% of niet bij u belast', turnover: Math.round(t0 * 100) / 100, tax: 0 },
+          '3a': { code: '3a', description: 'Leveringen naar landen buiten de EU (uitvoer)', turnover: 0, tax: 0 },
+          '3b': { code: '3b', description: 'Leveringen naar/diensten in landen binnen de EU (ICP)', turnover: Math.round(t3b * 100) / 100, tax: 0 },
+          '5b': { code: '5b', description: 'Voorbelasting (btw op zakelijke kosten en investeringen)', turnover: 0, tax: roundedVoorbelasting },
+        },
+        voorbelasting: roundedVoorbelasting,
+        te_betalen: teBetalen,
+      }
+    } catch {
       return demoStore.getBtwAangifte(`Q${quarter}`, String(year))
     }
   },
-  quarters: async () => {
-    try {
-      const res = await api.get('/tax/quarters')
-      if (Array.isArray(res.data)) return res.data
-      return ['2026-Q3', '2026-Q2', '2026-Q1', '2025-Q4']
-    } catch (err) {
-      return ['2026-Q3', '2026-Q2', '2026-Q1', '2025-Q4']
+
+  icp: async (year: number = 2026, quarter: number = 3) => {
+    const qStartMonth = (quarter - 1) * 3 + 1
+    const qEndMonth = quarter * 3
+    const startStr = `${year}-${String(qStartMonth).padStart(2, '0')}-01`
+    const lastDays = [31, quarter === 1 ? (year % 4 === 0 ? 29 : 28) : (quarter === 2 ? 30 : (quarter === 3 ? 30 : 31)), 31]
+    const endStr = `${year}-${String(qEndMonth).padStart(2, '0')}-${lastDays[quarter - 1] || 31}`
+
+    const invoices = (await invoicesApi.list()) || []
+    const clientMap: Record<string, { country_code: string; vat_number: string; client_name: string; turnover: number; supply_type: 'DIENSTEN' | 'GOEDEREN' }> = {}
+
+    for (const inv of invoices) {
+      if (!['SENT', 'PAID', 'OVERDUE'].includes(inv.status)) continue
+      const invDate = inv.issue_date || (inv as any).created_at || ''
+      if (invDate < startStr || invDate > endStr) continue
+
+      const hasReverseCharge = inv.is_reverse_charge || inv.line_items?.some(i => i.vat_rate === 'REVERSE_CHARGE')
+      if (!hasReverseCharge) continue
+
+      const client = inv.client
+      const clientVat = client?.vat_number || 'Onbekend BTW-id'
+      const clientCountry = (client?.country_code || (clientVat.slice(0, 2).toUpperCase() !== 'NL' ? clientVat.slice(0, 2).toUpperCase() : 'EU')).toUpperCase()
+      const clientName = client?.name || 'Onbekende Klant'
+
+      const excl = (inv.line_items || [])
+        .filter(i => i.vat_rate === 'REVERSE_CHARGE')
+        .reduce((s, i) => s + (Number(i.line_total_excl) || 0), 0)
+
+      if (excl > 0) {
+        const key = `${clientCountry}-${clientVat}`
+        if (!clientMap[key]) {
+          clientMap[key] = {
+            country_code: clientCountry,
+            vat_number: clientVat,
+            client_name: clientName,
+            turnover: 0,
+            supply_type: 'DIENSTEN',
+          }
+        }
+        clientMap[key].turnover += excl
+      }
     }
+
+    const items = Object.values(clientMap).map(i => ({
+      ...i,
+      turnover: Math.round(i.turnover * 100) / 100,
+    }))
+
+    const totalAmount = items.reduce((s, i) => s + i.turnover, 0)
+
+    return {
+      quarter: `${year}-Q${quarter}`,
+      year,
+      total_amount: Math.round(totalAmount * 100) / 100,
+      items,
+    }
+  },
+
+  quarters: async () => {
+    return ['2026-Q4', '2026-Q3', '2026-Q2', '2026-Q1', '2025-Q4']
   },
 }
 

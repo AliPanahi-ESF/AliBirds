@@ -398,19 +398,42 @@ export const supabaseDb = {
         .single()
 
       if (insertRes.error) {
-        // If unique constraint violation on invoice_number, retry with unique sequence
+        // If unique constraint violation on invoice_number, increment sequence properly instead of appending random digits
         if (insertRes.error.code === '23505' || insertRes.error.message?.includes('duplicate key') || insertRes.error.message?.includes('unique')) {
-          const uniqueNum = `${dbPayload.invoice_number}-${Math.floor(100 + Math.random() * 900)}`
-          insertRes = await supabase
-            .from('invoices')
-            .insert({ ...dbPayload, invoice_number: uniqueNum })
-            .select()
-            .single()
+          const match = (dbPayload.invoice_number || '').match(/^(.*?)(\d+)$/)
+          if (match) {
+            const prefix = match[1]
+            const curSeq = parseInt(match[2], 10)
+            const nextNum = `${prefix}${String(curSeq + 1).padStart(match[2].length, '0')}`
+            insertRes = await supabase
+              .from('invoices')
+              .insert({ ...dbPayload, invoice_number: nextNum })
+              .select()
+              .single()
+          }
         }
       }
 
       if (insertRes.error) throw insertRes.error
       invoiceId = insertRes.data.id
+
+      // Auto-increment next_invoice_sequence in business_settings to guarantee continuous sequential numbering (Art. 35a Wet OB)
+      try {
+        const { data: curSettings } = await supabase
+          .from('business_settings')
+          .select('id, next_invoice_sequence')
+          .limit(1)
+          .maybeSingle()
+        if (curSettings?.id) {
+          const nextSeq = (Number(curSettings.next_invoice_sequence) || 1) + 1
+          await supabase
+            .from('business_settings')
+            .update({ next_invoice_sequence: nextSeq })
+            .eq('id', curSettings.id)
+        }
+      } catch (seqErr) {
+        console.warn('Could not auto-increment next_invoice_sequence in DB:', seqErr)
+      }
     }
 
     if (lineItems && lineItems.length > 0) {
@@ -1011,6 +1034,7 @@ export const supabaseDb = {
   signQuotationPublicly: async (id: string, signatureDataUrl: string, signedByName: string) => {
     if (!isSupabaseConfigured()) return null
     try {
+      const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'Web Browser'
       const { data, error } = await supabase
         .from('quotations')
         .update({
@@ -1018,9 +1042,10 @@ export const supabaseDb = {
           signed_by_name: signedByName,
           signed_at: new Date().toISOString(),
           status: 'ACCEPTED',
+          notes: `Akkoord & digitaal ondertekend door ${signedByName} op ${new Date().toLocaleString('nl-NL')} [Client: ${userAgent.slice(0, 60)}]`,
         })
         .eq('id', id)
-        .select(`*, client:clients(*)`)
+        .select('*')
         .single()
       if (error) throw error
       return data

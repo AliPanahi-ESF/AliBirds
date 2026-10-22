@@ -70,6 +70,7 @@ export interface Invoice {
   paid_at?: string
   line_items: LineItem[]
   payment_link?: string
+  is_reverse_charge?: boolean
   created_at: string
   updated_at: string
 }
@@ -174,6 +175,21 @@ export interface BtwAangifte {
   rubrics: Record<string, BtwRubric>
   voorbelasting: number
   te_betalen: number
+}
+
+export interface IcpItem {
+  country_code: string
+  vat_number: string
+  client_name: string
+  turnover: number
+  supply_type: 'DIENSTEN' | 'GOEDEREN'
+}
+
+export interface IcpDeclaration {
+  quarter: string
+  year: number
+  total_amount: number
+  items: IcpItem[]
 }
 
 export interface DashboardKPIs {

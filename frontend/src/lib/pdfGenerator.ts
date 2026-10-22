@@ -241,7 +241,7 @@ export function generateInvoicePdf(
   doc.line(margin, y, pageWidth - margin, y)
   y += 6
 
-  // ── Totals Box ─────────────────────────────────────────────────────────────
+  // ── Multi-rate VAT Breakdown & Totals Box (Dutch Tax Compliant) ────────────
   const subtotalExcl = Number(
     invoice.subtotal_excl ??
     invoice.subtotal_excl_vat ??
@@ -258,6 +258,48 @@ export function generateInvoicePdf(
     (subtotalExcl + totalVat)
   )
 
+  // Compute breakdown per VAT tariff (Art. 35a lid 1 sub i Wet OB)
+  const vatBreakdown: Record<string, { base: number; vat: number }> = {}
+  items.forEach(it => {
+    const rate = it.vat_rate || '21'
+    const excl = Number(it.line_total_excl ?? (Number(it.quantity) * Number(it.unit_price))) || 0
+    const vat = Number(it.vat_amount ?? (rate === 'REVERSE_CHARGE' ? 0 : Math.round(excl * (Number(rate) / 100) * 100) / 100)) || 0
+    if (!vatBreakdown[rate]) vatBreakdown[rate] = { base: 0, vat: 0 }
+    vatBreakdown[rate].base += excl
+    vatBreakdown[rate].vat += vat
+  })
+
+  // Left side: Btw-specificatie table (Legal Requirement)
+  const vatTableX = margin
+  let vatTableY = y
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(7.5)
+  doc.setTextColor(100, 116, 139)
+  doc.text('BTW-SPECIFICATIE', vatTableX, vatTableY)
+  doc.text('GRONDSLAG', vatTableX + 35, vatTableY, { align: 'right' })
+  doc.text('BTW', vatTableX + 55, vatTableY, { align: 'right' })
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7.5)
+  doc.setTextColor(71, 85, 105)
+  vatTableY += 4
+
+  const rateLabels: Record<string, string> = {
+    '21': 'Tarief 21% (hoog)',
+    '9': 'Tarief 9% (laag)',
+    '0': 'Tarief 0% (nul)',
+    'REVERSE_CHARGE': 'Btw verlegd (0%)',
+  }
+
+  Object.entries(vatBreakdown).forEach(([rate, data]) => {
+    const label = rateLabels[rate] || `Tarief ${rate}%`
+    doc.text(label, vatTableX, vatTableY)
+    doc.text(fmt.currency(data.base), vatTableX + 35, vatTableY, { align: 'right' })
+    doc.text(fmt.currency(data.vat), vatTableX + 55, vatTableY, { align: 'right' })
+    vatTableY += 3.5
+  })
+
+  // Right side: Grand Totals
   const totalsLabelX = pageWidth - margin - 60
   const totalsValX = pageWidth - margin
 
@@ -281,7 +323,21 @@ export function generateInvoicePdf(
   doc.text('Totaal incl. btw:', totalsLabelX, y + 2)
   doc.text(fmt.currency(totalIncl), totalsValX, y + 2, { align: 'right' })
 
-  y += 14
+  y = Math.max(y + 11, vatTableY + 4)
+
+  // Reverse Charge Legal Notice (Art. 12 lid 3 Wet OB / EU Richtlijn 2006/112/EG)
+  const isReverseCharge = invoice.is_reverse_charge || items.some(i => i.vat_rate === 'REVERSE_CHARGE')
+  if (isReverseCharge) {
+    doc.setFillColor(254, 243, 199)
+    doc.setDrawColor(245, 158, 11)
+    doc.roundedRect(margin, y, contentWidth, 7, 1, 1, 'FD')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(146, 64, 14)
+    const noticeText = `Btw verlegd op grond van art. 12 lid 3 Wet OB / Art. 194-196 EU Richtlijn 2006/112/EG${client?.vat_number ? ` | Btw-id afnemer: ${client.vat_number}` : ''}`
+    doc.text(noticeText, margin + 3, y + 4.5)
+    y += 10
+  }
 
   // ── Payment Box (Bottom) ───────────────────────────────────────────────────
   const boxHeight = resolvedPaymentLink ? 26 : 20
