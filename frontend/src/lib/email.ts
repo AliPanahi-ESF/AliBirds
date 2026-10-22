@@ -11,6 +11,7 @@ import axios from 'axios'
 import { Invoice, BusinessSettings } from './types'
 import { fmt } from './api'
 import { generateInvoicePdfBase64 } from './pdfGenerator'
+import { supabase } from './supabase'
 
 const STORAGE_KEY_API_KEY = 'alibirds_resend_api_key'
 const STORAGE_KEY_SENDER = 'alibirds_resend_sender'
@@ -22,8 +23,7 @@ export function getResendKey(): string {
   try {
     const localKey = localStorage.getItem(STORAGE_KEY_API_KEY)
     if (localKey && localKey.trim()) return localKey.trim()
-    const envKey = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_RESEND_API_KEY) || ''
-    return envKey.trim()
+    return ''
   } catch {
     return ''
   }
@@ -284,9 +284,14 @@ export async function sendInvoiceViaResend(
     console.warn('Could not generate PDF attachment for Resend:', err)
   }
 
-  // 1. Try serverless function endpoint first (handles server-side CORS & attachments cleanly)
-  // Note: apiKey is NOT sent to the serverless function — it reads from Netlify env vars server-side
+  // 1. Dispatch securely via Netlify serverless function (server-side Resend API key & auth verification)
   try {
+    let authToken = ''
+    try {
+      const { data } = await supabase.auth.getSession()
+      authToken = data.session?.access_token || ''
+    } catch {}
+
     const res = await axios.post(
       '/api/send-email',
       {
@@ -296,17 +301,20 @@ export async function sendInvoiceViaResend(
         subject,
         html: htmlBody,
         attachments,
-        apiKey: apiKey || undefined,
       },
       {
-        timeout: 12000,
-        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
       }
     )
 
     if (res.data?.ok) {
       return { ok: true, message: `Factuur met PDF-bijlage succesvol verzonden naar ${recipient}!` }
     }
+    return { ok: false, message: res.data?.message || 'Verzenden mislukt.' }
   } catch (err: any) {
     // If serverless function returned 403 due to Resend testing domain restriction:
     if (err.response?.data?.isResendTestingRestriction || err.response?.status === 403) {
@@ -316,61 +324,15 @@ export async function sendInvoiceViaResend(
         message: 'Resend testmodus kan alleen naar uw eigen account e-mail verzenden. Gebruik 1-klik Gmail of Outlook om direct vanaf uw eigen adres te sturen.',
       }
     }
-    // If not a 404:
-    if (err.response && err.response.status !== 404) {
+    if (err.response?.status === 401) {
       return {
         ok: false,
-        message: err.response.data?.message || err.message || 'Verzenden mislukt.',
+        message: 'Niet geautoriseerd om e-mails te verzenden. Log opnieuw in.',
       }
     }
-  }
-
-  // 2. Fallback direct Resend REST API (if function not reachable)
-  try {
-    const payload: any = {
-      from: fromAddress,
-      to: [recipient],
-      subject,
-      html: htmlBody,
-    }
-    if (attachments.length > 0) {
-      payload.attachments = attachments
-    }
-
-    const res = await axios.post('https://api.resend.com/emails', payload, {
-      timeout: 12000,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    })
-
-    if (res.status === 200 || res.status === 201) {
-      return { ok: true, message: `Factuur met PDF succesvol verzonden naar ${recipient} via Resend!` }
-    }
-    return { ok: false, message: 'Verzenden mislukt via Resend.' }
-  } catch (err: any) {
-    const status = err.response?.status
-    const errorMsg = err.response?.data?.message || err.message || ''
-
-    if (status === 403 || errorMsg.includes('testing emails to your own email address')) {
-      return {
-        ok: false,
-        isResendTestingRestriction: true,
-        message: 'Resend testmodus staat alleen verzenden toe naar uw eigen account e-mail. Gebruik Gmail, Outlook of Mailto om direct vanaf uw eigen adres te sturen.',
-      }
-    }
-
-    if (!err.response && err.message?.includes('Network Error')) {
-      return {
-        ok: false,
-        message: 'Browser CORS blokkeert directe externe e-mail. Gebruik Gmail, Outlook of de Mailto knop hieronder.',
-      }
-    }
-
     return {
       ok: false,
-      message: errorMsg || 'Fout bij verzenden via Resend.',
+      message: err.response?.data?.message || err.message || 'Verzenden via e-mailserver mislukt.',
     }
   }
 }

@@ -11,6 +11,7 @@ import { quotationsApi, clientsApi, settingsApi, fmt } from '@/lib/api'
 import { Client, Quotation, BusinessSettings } from '@/lib/types'
 import QuotationPrintModal from '@/components/QuotationPrintModal'
 import { clsx } from 'clsx'
+import { calculateLineItem } from '@/lib/vatCalculator'
 
 interface LineItemRow {
   description: string
@@ -39,19 +40,7 @@ const VAT_OPTIONS = [
 ]
 
 function calcLine(row: LineItemRow, mode: string) {
-  const q = Number(row.quantity) || 0
-  const p = Number(row.unit_price) || 0
-  const r = row.vat_rate === 'REVERSE_CHARGE' ? 0 : (Number(row.vat_rate) || 0) / 100
-  if (mode === 'EXCLUSIVE') {
-    const excl = q * p
-    const vat = excl * r
-    return { excl, vat, incl: excl + vat }
-  } else {
-    const incl = q * p
-    const excl = r === 0 ? incl : incl / (1 + r)
-    const vat = incl - excl
-    return { excl, vat, incl }
-  }
+  return calculateLineItem(row.quantity, row.unit_price, row.vat_rate, mode)
 }
 
 export default function QuotationEditor() {

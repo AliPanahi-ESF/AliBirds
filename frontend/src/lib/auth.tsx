@@ -56,6 +56,26 @@ function cleanupDemoStorage() {
   }
 }
 
+export function clearAllLocalUserData(): void {
+  try {
+    const keysToRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && (
+        k.startsWith('alibirds_settings_cache') ||
+        k.startsWith('alibirds_resend_') ||
+        k === 'alibirds_local_session' ||
+        k === 'alibirds_default_payment_link'
+      )) {
+        keysToRemove.push(k)
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k))
+  } catch (err) {
+    console.warn('Could not clear local user data:', err)
+  }
+}
+
 function getOnboardingStatus(uid: string): boolean {
   try {
     const raw = localStorage.getItem(ONBOARDING_KEY)
@@ -443,29 +463,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const msg = sbErr?.message || ''
         const isNetworkErr = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('fetch')
         if (isNetworkErr) {
-          console.warn('Supabase project unreachable (likely paused). Falling back to resilient local session.')
-          toast('Supabase server is momenteel niet bereikbaar (project gepauzeerd). U bent ingelogd in lokale werkmodus.', {
-            icon: '⚠️',
-            duration: 8000,
-            id: 'supabase-offline-fallback',
-          })
-          const localUser: User = {
-            id: 'local_' + btoa(email).slice(0, 12),
-            name: email.split('@')[0],
-            email: email,
-            company_name: 'Mijn ZZP Studio',
-            is_onboarded: true,
-          }
-          localStorage.setItem('alibirds_local_session', JSON.stringify(localUser))
-          setUser(localUser)
-          setSessionInfo({
-            type: 'LOCAL',
-            status: 'ACTIVE',
-            lastChecked: new Date(),
-            expiresAt: null,
-          })
-          broadcastSync({ type: 'LOGIN', uid: localUser.id, timestamp: Date.now() })
-          return localUser
+          throw new Error('De database is momenteel niet bereikbaar (het Supabase project is mogelijk gepauzeerd wegens inactiviteit). Activeer het project in uw Supabase dashboard om in te loggen.')
         }
         throw sbErr
       }
@@ -536,29 +534,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const msg = sbErr?.message || ''
         const isNetworkErr = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('fetch')
         if (isNetworkErr) {
-          console.warn('Supabase project unreachable during signup. Creating local offline account.')
-          toast('Supabase server is momenteel gepauzeerd. Account is lokaal aangemaakt zodat u direct verder kunt!', {
-            icon: '⚠️',
-            duration: 8000,
-            id: 'signup-offline-fallback',
-          })
-          const localUser: User = {
-            id: 'local_' + btoa(email).slice(0, 12),
-            name: name,
-            email: email,
-            company_name: '',
-            is_onboarded: false,
-          }
-          localStorage.setItem('alibirds_local_session', JSON.stringify(localUser))
-          setUser(localUser)
-          setSessionInfo({
-            type: 'LOCAL',
-            status: 'ACTIVE',
-            lastChecked: new Date(),
-            expiresAt: null,
-          })
-          broadcastSync({ type: 'LOGIN', uid: localUser.id, timestamp: Date.now() })
-          return localUser
+          throw new Error('De database is momenteel niet bereikbaar (het Supabase project is mogelijk gepauzeerd). Activeer het project in het Supabase dashboard om een account aan te maken.')
         }
         throw sbErr
       }
@@ -593,9 +569,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.warn('Could not persist to remote settings table, stored in local cache:', err)
       try {
-        const prev = localStorage.getItem('alibirds_settings_cache')
+        const cacheKey = user?.id ? `alibirds_settings_cache_${user.id}` : 'alibirds_settings_cache'
+        const prev = localStorage.getItem(cacheKey)
         const prevObj = prev ? JSON.parse(prev) : {}
-        localStorage.setItem('alibirds_settings_cache', JSON.stringify({ ...prevObj, ...companyData }))
+        localStorage.setItem(cacheKey, JSON.stringify({ ...prevObj, ...companyData }))
       } catch {}
     }
 
@@ -652,6 +629,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async (): Promise<void> => {
     localStorage.removeItem(DEMO_ACTIVE_KEY)
     localStorage.removeItem('alibirds_local_session')
+    clearAllLocalUserData()
     broadcastSync({ type: 'LOGOUT', timestamp: Date.now() })
     setIsRecoveryMode(false)
     setAuthError(null)

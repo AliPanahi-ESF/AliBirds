@@ -229,7 +229,7 @@ function invoiceToDb(inv: any) {
     : null
 
   return {
-    invoice_number: inv.invoice_number || `FACT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+    invoice_number: inv.invoice_number || `${new Date().getFullYear()}-0001`,
     client_id: validClientId,
     issue_date: inv.issue_date || new Date().toISOString().slice(0, 10),
     due_date: inv.due_date || new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10),
@@ -372,14 +372,43 @@ export const supabaseDb = {
 
   saveInvoice: async (invoiceData: any, items: any[] = []) => {
     if (!isSupabaseConfigured()) return null
-    const dbPayload = invoiceToDb(invoiceData)
-    const lineItems = (items && items.length > 0) ? items : (invoiceData.line_items || [])
     const id = invoiceData.id
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    const isUpdate = Boolean(id && typeof id === 'string' && isUuid.test(id))
 
+    // For new invoices without an explicit number, atomically fetch or compute the next sequence number (Art. 35a Wet OB)
+    if (!isUpdate && !invoiceData.invoice_number) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user?.id) {
+          const { data: nextNum } = await supabase.rpc('get_next_invoice_number', { p_user_id: session.user.id })
+          if (nextNum) {
+            invoiceData.invoice_number = nextNum
+          }
+        }
+      } catch {}
+
+      if (!invoiceData.invoice_number) {
+        try {
+          const { data: curSettings } = await supabase
+            .from('business_settings')
+            .select('id, invoice_prefix, next_invoice_sequence')
+            .limit(1)
+            .maybeSingle()
+          const prefix = curSettings?.invoice_prefix || `${new Date().getFullYear()}-`
+          const seq = Number(curSettings?.next_invoice_sequence) || 1
+          invoiceData.invoice_number = `${prefix}${String(seq).padStart(4, '0')}`
+        } catch {
+          invoiceData.invoice_number = `${new Date().getFullYear()}-0001`
+        }
+      }
+    }
+
+    const dbPayload = invoiceToDb(invoiceData)
+    const lineItems = (items && items.length > 0) ? items : (invoiceData.line_items || [])
     let invoiceId: string
 
-    if (id && typeof id === 'string' && isUuid.test(id)) {
+    if (isUpdate) {
       const { data, error } = await supabase
         .from('invoices')
         .update(dbPayload)
@@ -620,12 +649,16 @@ export const supabaseDb = {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const userMetadata = session?.user?.user_metadata || {}
+      const userId = session?.user?.id
+      const cacheKey = userId ? `alibirds_settings_cache_${userId}` : null
 
       let cached: any = null
-      try {
-        const raw = localStorage.getItem('alibirds_settings_cache')
-        if (raw) cached = JSON.parse(raw)
-      } catch {}
+      if (cacheKey) {
+        try {
+          const raw = localStorage.getItem(cacheKey)
+          if (raw) cached = JSON.parse(raw)
+        } catch {}
+      }
 
       const { data, error } = await supabase
         .from('business_settings')
@@ -642,15 +675,17 @@ export const supabaseDb = {
       }
 
       const mergedMeta = {
-        ...cached,
+        ...(cached || {}),
         ...userMetadata,
       }
 
       const settings = dbToSettings(data, mergedMeta)
 
-      try {
-        localStorage.setItem('alibirds_settings_cache', JSON.stringify(settings))
-      } catch {}
+      if (cacheKey) {
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(settings))
+        } catch {}
+      }
 
       return settings
     } catch (err) {
@@ -693,12 +728,16 @@ export const supabaseDb = {
       console.warn('Could not update user metadata:', authErr)
     }
 
-    // 3. Cache locally immediately so UI never loses changes
-    try {
-      const prev = localStorage.getItem('alibirds_settings_cache')
-      const prevObj = prev ? JSON.parse(prev) : {}
-      localStorage.setItem('alibirds_settings_cache', JSON.stringify({ ...prevObj, ...settingsData }))
-    } catch {}
+    // 3. Cache locally immediately so UI never loses changes (strictly user-scoped)
+    const userId = session?.user?.id
+    const cacheKey = userId ? `alibirds_settings_cache_${userId}` : null
+    if (cacheKey) {
+      try {
+        const prev = localStorage.getItem(cacheKey)
+        const prevObj = prev ? JSON.parse(prev) : {}
+        localStorage.setItem(cacheKey, JSON.stringify({ ...prevObj, ...settingsData }))
+      } catch {}
+    }
 
     // 4. Map to safe database columns (strictly valid PostgreSQL table columns)
     const dbPayload = settingsToDb(settingsData)
@@ -1031,10 +1070,52 @@ export const supabaseDb = {
     }
   },
 
-  signQuotationPublicly: async (id: string, signatureDataUrl: string, signedByName: string) => {
+  getPublicQuotation: async (tokenOrId: string) => {
     if (!isSupabaseConfigured()) return null
     try {
-      const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'Web Browser'
+      // 1. Try secure RPC function (respects security definer & token index)
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('get_public_quotation', {
+        p_token: tokenOrId,
+      })
+      if (!rpcErr && rpcData) {
+        return rpcData
+      }
+    } catch {}
+
+    // Fallback direct query for existing installations
+    try {
+      const { data, error } = await supabase
+        .from('quotations')
+        .select(`
+          *,
+          client:clients(*)
+        `)
+        .eq('id', tokenOrId)
+        .maybeSingle()
+      if (error || !data) return null
+      return data
+    } catch (err) {
+      console.warn('Supabase getPublicQuotation error:', err)
+      return null
+    }
+  },
+
+  signQuotationPublicly: async (tokenOrId: string, signatureDataUrl: string, signedByName: string) => {
+    if (!isSupabaseConfigured()) return null
+    try {
+      // 1. Try secure RPC function
+      const { data: rpcSuccess, error: rpcErr } = await supabase.rpc('sign_quotation_publicly', {
+        p_token: tokenOrId,
+        p_signature: signatureDataUrl,
+        p_signer_name: signedByName,
+      })
+      if (!rpcErr && rpcSuccess) {
+        return { success: true }
+      }
+    } catch {}
+
+    // Fallback direct update for existing schema
+    try {
       const { data, error } = await supabase
         .from('quotations')
         .update({
@@ -1042,9 +1123,8 @@ export const supabaseDb = {
           signed_by_name: signedByName,
           signed_at: new Date().toISOString(),
           status: 'ACCEPTED',
-          notes: `Akkoord & digitaal ondertekend door ${signedByName} op ${new Date().toLocaleString('nl-NL')} [Client: ${userAgent.slice(0, 60)}]`,
         })
-        .eq('id', id)
+        .eq('id', tokenOrId)
         .select('*')
         .single()
       if (error) throw error

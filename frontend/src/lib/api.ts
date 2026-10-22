@@ -4,6 +4,8 @@ import { demoStore } from './demoData'
 import { isSupabaseConfigured, supabaseDb, supabase } from './supabase'
 import { parseMT940, autoMatchTransactions } from './mt940'
 import { scanReceiptFile } from './ocrScanner'
+import { classifySalesReverseChargeRubric, isEuCountry, roundBelastingdienst } from './vatCalculator'
+import { BtwAangifte } from './types'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -121,7 +123,10 @@ export const invoicesApi = {
       } catch (err) {
         console.warn('Supabase getInvoices error:', err)
       }
+      return []
     }
+
+    if (!isDemoMode()) return []
 
     let list = demoStore.getInvoices()
     if (params?.status) {
@@ -139,20 +144,14 @@ export const invoicesApi = {
       }
     }
 
-    const found = demoStore.getInvoice(id)
-    if (found) return found
-
-    try {
-      const res = await api.get(`/invoices/${id}`)
-      if (res.data && typeof res.data === 'object' && res.data.id) {
-        return res.data
-      }
-    } catch {
-      // ignore
+    if (isDemoMode()) {
+      const found = demoStore.getInvoice(id)
+      if (found) return found
     }
 
     throw new Error('Factuur niet gevonden')
   },
+
   create: async (data: any) => {
     if (isSupabaseConfigured() && !isDemoMode()) {
       const supaCreated = await supabaseDb.saveInvoice(data, data.line_items)
@@ -272,7 +271,10 @@ export const quotationsApi = {
       } catch (err) {
         console.warn('Supabase getQuotations error:', err)
       }
+      return []
     }
+
+    if (!isDemoMode()) return []
 
     let list = demoStore.getQuotations()
     if (params?.status) {
@@ -291,8 +293,10 @@ export const quotationsApi = {
       }
     }
 
-    const found = demoStore.getQuotation(id)
-    if (found) return found
+    if (isDemoMode()) {
+      const found = demoStore.getQuotation(id)
+      if (found) return found
+    }
 
     try {
       const res = await api.get(`/quotations/${id}`)
@@ -302,6 +306,18 @@ export const quotationsApi = {
     }
 
     throw new Error('Offerte niet gevonden')
+  },
+
+  getPublic: async (tokenOrId: string) => {
+    if (isSupabaseConfigured() && !isDemoMode()) {
+      try {
+        const supaQuote = await supabaseDb.getPublicQuotation(tokenOrId)
+        if (supaQuote) return supaQuote
+      } catch (err) {
+        console.warn('Supabase getPublicQuotation error:', err)
+      }
+    }
+    return quotationsApi.get(tokenOrId)
   },
 
   create: async (data: any) => {
@@ -367,8 +383,13 @@ export const quotationsApi = {
 
     const today = new Date().toISOString().slice(0, 10)
     const due14 = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10)
+    const settings = await settingsApi.get()
+    const prefix = settings?.invoice_prefix || `${new Date().getFullYear()}-`
+    const seq = Number(settings?.next_invoice_sequence) || 1
+    const invoiceNumber = `${prefix}${String(seq).padStart(4, '0')}`
 
     const createdInvoice = await invoicesApi.create({
+      invoice_number: invoiceNumber,
       client_id: quote.client_id,
       issue_date: today,
       delivery_date: today,
@@ -540,15 +561,16 @@ export const bankApi = {
   },
 
   transactions: async (params?: any) => {
-    if (isSupabaseConfigured()) {
+    if (isSupabaseConfigured() && !isDemoMode()) {
       try {
         const supaTxs = await supabaseDb.getBankTransactions()
-        if (Array.isArray(supaTxs) && supaTxs.length > 0) return supaTxs
+        if (Array.isArray(supaTxs)) return supaTxs
       } catch (err) {
         console.warn('Supabase getBankTransactions error:', err)
       }
+      return []
     }
-    return demoStore.getBankTransactions()
+    return isDemoMode() ? demoStore.getBankTransactions() : []
   },
 
   reconcile: async () => {
@@ -623,7 +645,7 @@ export const bankApi = {
 // ── Tax ────────────────────────────────────────────────────────────────────
 
 export const taxApi = {
-  btw: async (year: number = 2026, quarter: number = 3) => {
+  btw: async (year: number = 2026, quarter: number = 3): Promise<BtwAangifte> => {
     // 1. Determine quarter date bounds
     const qStartMonth = (quarter - 1) * 3 + 1
     const qEndMonth = quarter * 3
@@ -639,12 +661,20 @@ export const taxApi = {
       let t21 = 0, v21 = 0
       let t9 = 0, v9 = 0
       let t0 = 0
+      let t1e = 0
+      let t3a = 0
       let t3b = 0
+      let t4a = 0, v4a = 0
+      let t4b = 0, v4b = 0
 
+      // 1. Sales Invoices
       for (const inv of invoices) {
         if (!['SENT', 'PAID', 'OVERDUE'].includes(inv.status)) continue
         const invDate = inv.issue_date || (inv as any).created_at || ''
         if (invDate < startStr || invDate > endStr) continue
+
+        const clientCountry = inv.client?.country_code
+        const clientVat = inv.client?.vat_number
 
         for (const item of (inv.line_items || [])) {
           const excl = Number(item.line_total_excl ?? ((Number(item.quantity) || 1) * (Number(item.unit_price) || 0))) || 0
@@ -657,44 +687,102 @@ export const taxApi = {
             t9 += excl
             v9 += vat
           } else if (item.vat_rate === '0') {
-            t0 += excl
+            if (clientCountry && clientCountry !== 'NL' && !isEuCountry(clientCountry)) {
+              t3a += excl
+            } else {
+              t0 += excl
+            }
           } else if (item.vat_rate === 'REVERSE_CHARGE') {
-            t3b += excl
+            const rubric = classifySalesReverseChargeRubric(clientCountry, clientVat)
+            if (rubric === '3b') {
+              t3b += excl
+            } else {
+              t1e += excl
+            }
           }
         }
       }
 
-      // 3. Voorbelasting (Rubriek 5b): input VAT from deductible business expenses
-      let voorbelasting = 0
+      // 2. Expenses (Voorbelasting & Foreign Reverse Charge Rubrieken 4a en 4b)
+      let domesticVoorbelasting = 0
       for (const exp of expenses) {
         if ((exp as any).is_deductible === false) continue
         const expDate = exp.expense_date || (exp as any).date || (exp as any).created_at || ''
         if (expDate < startStr || expDate > endStr) continue
-        voorbelasting += Number(exp.vat_amount || 0)
+
+        const excl = Number(exp.amount_excl_vat || 0)
+        const isReverseCharge = exp.vat_rate === 'REVERSE_CHARGE' || exp.category === 'SOFTWARE_EU' || exp.category === 'SOFTWARE_NON_EU'
+
+        if (isReverseCharge) {
+          const vendor = ((exp.vendor_name || '') + ' ' + (exp.description || '')).toLowerCase()
+          const isNonEu = exp.category === 'SOFTWARE_NON_EU' || vendor.includes('openai') || vendor.includes('aws') || vendor.includes('amazon') || vendor.includes('notion') || vendor.includes('figma') || vendor.includes('us') || vendor.includes('united states')
+
+          const vatOnReverseCharge = Math.round(excl * 21) / 100
+          if (isNonEu) {
+            t4a += excl
+            v4a += vatOnReverseCharge
+          } else {
+            t4b += excl
+            v4b += vatOnReverseCharge
+          }
+          domesticVoorbelasting += vatOnReverseCharge
+        } else {
+          domesticVoorbelasting += Number(exp.vat_amount || 0)
+        }
       }
 
-      const totalOutputTax = Math.round((v21 + v9) * 100) / 100
-      const roundedVoorbelasting = Math.round(voorbelasting * 100) / 100
+      const totalTurnover1e = Math.round((t0 + t1e) * 100) / 100
+      const totalOutputTax = Math.round((v21 + v9 + v4a + v4b) * 100) / 100
+      const roundedVoorbelasting = Math.round(domesticVoorbelasting * 100) / 100
       const teBetalen = Math.round((totalOutputTax - roundedVoorbelasting) * 100) / 100
+
+      // Whole-euro amounts as required by Belastingdienst portal:
+      const wholeTurnover1a = roundBelastingdienst(t21, 'TURNOVER_OR_DUE')
+      const wholeTax1a = roundBelastingdienst(v21, 'TURNOVER_OR_DUE')
+      const wholeTurnover1b = roundBelastingdienst(t9, 'TURNOVER_OR_DUE')
+      const wholeTax1b = roundBelastingdienst(v9, 'TURNOVER_OR_DUE')
+      const wholeTurnover1e = roundBelastingdienst(totalTurnover1e, 'TURNOVER_OR_DUE')
+      const wholeTurnover3a = roundBelastingdienst(t3a, 'TURNOVER_OR_DUE')
+      const wholeTurnover3b = roundBelastingdienst(t3b, 'TURNOVER_OR_DUE')
+      const wholeTurnover4a = roundBelastingdienst(t4a, 'TURNOVER_OR_DUE')
+      const wholeTax4a = roundBelastingdienst(v4a, 'TURNOVER_OR_DUE')
+      const wholeTurnover4b = roundBelastingdienst(t4b, 'TURNOVER_OR_DUE')
+      const wholeTax4b = roundBelastingdienst(v4b, 'TURNOVER_OR_DUE')
+      const wholeVoorbelasting = roundBelastingdienst(roundedVoorbelasting, 'VOORBELASTING')
+      const wholeTeBetalen = (wholeTax1a + wholeTax1b + wholeTax4a + wholeTax4b) - wholeVoorbelasting
 
       return {
         quarter: `${year}-Q${quarter}`,
         start_date: startStr,
         end_date: endStr,
         rubrics: {
-          '1a': { code: '1a', description: 'Leveringen/diensten belast met hoog tarief (21%)', turnover: Math.round(t21 * 100) / 100, tax: Math.round(v21 * 100) / 100 },
-          '1b': { code: '1b', description: 'Leveringen/diensten belast met laag tarief (9%)', turnover: Math.round(t9 * 100) / 100, tax: Math.round(v9 * 100) / 100 },
-          '1c': { code: '1c', description: 'Leveringen/diensten belast met overige tarieven behalve 0%', turnover: 0, tax: 0 },
-          '1e': { code: '1e', description: 'Leveringen/diensten belast met 0% of niet bij u belast', turnover: Math.round(t0 * 100) / 100, tax: 0 },
-          '3a': { code: '3a', description: 'Leveringen naar landen buiten de EU (uitvoer)', turnover: 0, tax: 0 },
-          '3b': { code: '3b', description: 'Leveringen naar/diensten in landen binnen de EU (ICP)', turnover: Math.round(t3b * 100) / 100, tax: 0 },
-          '5b': { code: '5b', description: 'Voorbelasting (btw op zakelijke kosten en investeringen)', turnover: 0, tax: roundedVoorbelasting },
+          '1a': { code: '1a', description: 'Leveringen/diensten belast met hoog tarief (21%)', turnover: Math.round(t21 * 100) / 100, tax: Math.round(v21 * 100) / 100, turnover_whole: wholeTurnover1a, tax_whole: wholeTax1a },
+          '1b': { code: '1b', description: 'Leveringen/diensten belast met laag tarief (9%)', turnover: Math.round(t9 * 100) / 100, tax: Math.round(v9 * 100) / 100, turnover_whole: wholeTurnover1b, tax_whole: wholeTax1b },
+          '1c': { code: '1c', description: 'Leveringen/diensten belast met overige tarieven behalve 0%', turnover: 0, tax: 0, turnover_whole: 0, tax_whole: 0 },
+          '1e': { code: '1e', description: 'Leveringen/diensten belast met 0% of niet bij u belast', turnover: totalTurnover1e, tax: 0, turnover_whole: wholeTurnover1e, tax_whole: 0 },
+          '3a': { code: '3a', description: 'Leveringen naar landen buiten de EU (uitvoer)', turnover: Math.round(t3a * 100) / 100, tax: 0, turnover_whole: wholeTurnover3a, tax_whole: 0 },
+          '3b': { code: '3b', description: 'Leveringen naar/diensten in landen binnen de EU (ICP)', turnover: Math.round(t3b * 100) / 100, tax: 0, turnover_whole: wholeTurnover3b, tax_whole: 0 },
+          '4a': { code: '4a', description: 'Leveringen/diensten uit landen buiten de EU (Invoer)', turnover: Math.round(t4a * 100) / 100, tax: Math.round(v4a * 100) / 100, turnover_whole: wholeTurnover4a, tax_whole: wholeTax4a },
+          '4b': { code: '4b', description: 'Leveringen/diensten uit landen binnen de EU (Btw verlegd)', turnover: Math.round(t4b * 100) / 100, tax: Math.round(v4b * 100) / 100, turnover_whole: wholeTurnover4b, tax_whole: wholeTax4b },
+          '5b': { code: '5b', description: 'Voorbelasting (btw op zakelijke kosten en investeringen)', turnover: 0, tax: roundedVoorbelasting, tax_whole: wholeVoorbelasting },
         },
         voorbelasting: roundedVoorbelasting,
         te_betalen: teBetalen,
+        voorbelasting_whole: wholeVoorbelasting,
+        te_betalen_whole: wholeTeBetalen,
       }
     } catch {
-      return demoStore.getBtwAangifte(`Q${quarter}`, String(year))
+      if (isDemoMode()) {
+        return demoStore.getBtwAangifte(`Q${quarter}`, String(year))
+      }
+      return {
+        quarter: `${year}-Q${quarter}`,
+        start_date: startStr,
+        end_date: endStr,
+        rubrics: {},
+        voorbelasting: 0,
+        te_betalen: 0,
+      }
     }
   },
 
@@ -717,20 +805,25 @@ export const taxApi = {
       if (!hasReverseCharge) continue
 
       const client = inv.client
-      const clientVat = client?.vat_number || 'Onbekend BTW-id'
-      const clientCountry = (client?.country_code || (clientVat.slice(0, 2).toUpperCase() !== 'NL' ? clientVat.slice(0, 2).toUpperCase() : 'EU')).toUpperCase()
-      const clientName = client?.name || 'Onbekende Klant'
+      const clientVat = client?.vat_number || ''
+      const rawCountry = (client?.country_code || (clientVat.length >= 2 ? clientVat.slice(0, 2) : '')).toUpperCase()
 
+      // ICP is strictly for EU B2B cross-border supplies (excludes NL domestic reverse charge and non-EU)
+      if (!rawCountry || rawCountry === 'NL' || !isEuCountry(rawCountry)) {
+        continue
+      }
+
+      const clientName = client?.name || 'Onbekende EU Klant'
       const excl = (inv.line_items || [])
         .filter(i => i.vat_rate === 'REVERSE_CHARGE')
         .reduce((s, i) => s + (Number(i.line_total_excl) || 0), 0)
 
       if (excl > 0) {
-        const key = `${clientCountry}-${clientVat}`
+        const key = `${rawCountry}-${clientVat}`
         if (!clientMap[key]) {
           clientMap[key] = {
-            country_code: clientCountry,
-            vat_number: clientVat,
+            country_code: rawCountry,
+            vat_number: clientVat || 'Onbekend BTW-id',
             client_name: clientName,
             turnover: 0,
             supply_type: 'DIENSTEN',
@@ -838,11 +931,31 @@ export const settingsApi = {
       }
     }
 
-    try {
-      const res = await api.get('/settings')
-      if (res.data && typeof res.data === 'object' && res.data.company_name) return res.data
-    } catch {
-      // ignore
+    if (!isDemoMode()) {
+      return {
+        id: 'settings-new',
+        company_name: '',
+        trade_name: '',
+        kvk_number: '',
+        btw_id: '',
+        iban: '',
+        bic: '',
+        address_street: '',
+        address_city: '',
+        address_postcode: '',
+        address_country: 'NL',
+        phone: '',
+        email: '',
+        website: '',
+        default_payment_term_days: 14,
+        invoice_prefix: `${new Date().getFullYear()}-`,
+        next_invoice_sequence: 1,
+        invoice_notes_default: 'Graag betalen binnen 14 dagen o.v.v. het factuurnummer.',
+        accent_color: '#4f46e5',
+        font_family: 'Inter',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
     }
 
     return demoStore.getSettings()
@@ -868,15 +981,16 @@ export const settingsApi = {
 
 export const recurringApi = {
   list: async () => {
-    if (isSupabaseConfigured()) {
+    if (isSupabaseConfigured() && !isDemoMode()) {
       try {
         const supa = await supabaseDb.getRecurringSchedules()
-        if (Array.isArray(supa) && supa.length > 0) return supa
+        if (Array.isArray(supa)) return supa
       } catch (err) {
         console.warn('Supabase getRecurringSchedules error:', err)
       }
+      return []
     }
-    return demoStore.getRecurringSchedules()
+    return isDemoMode() ? demoStore.getRecurringSchedules() : []
   },
   create: async (data: any) => {
     if (isSupabaseConfigured()) {

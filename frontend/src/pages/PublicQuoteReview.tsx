@@ -17,7 +17,7 @@ export default function PublicQuoteReview() {
 
   const { data: quote, isLoading, error } = useQuery<Quotation>({
     queryKey: ['public-quotation', id],
-    queryFn: () => quotationsApi.get(id!),
+    queryFn: () => quotationsApi.getPublic(id!),
     enabled: !!id,
     retry: 1,
   })
@@ -73,7 +73,8 @@ export default function PublicQuoteReview() {
 
   const isSigned = quote.status === 'ACCEPTED' || quote.status === 'CONVERTED' || Boolean(quote.signature_data_url)
   const isExpired = new Date(quote.valid_until_date).getTime() < Date.now() && !isSigned
-  const accentColor = settings?.accent_color || '#4f46e5'
+  const biz = (quote as any)?.business || settings
+  const accentColor = biz?.accent_color || settings?.accent_color || '#4f46e5'
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-8 px-3 sm:px-6 lg:px-8 print:p-0 print:bg-white animate-fade-in">
@@ -150,22 +151,22 @@ export default function PublicQuoteReview() {
           {/* Company & Quote Details Header */}
           <div className="flex flex-col sm:flex-row justify-between gap-6 pb-6 border-b border-slate-800 print:border-slate-300">
             <div>
-              {settings?.logo_url ? (
-                <img src={settings.logo_url} alt="Bedrijfslogo" className="h-12 w-auto object-contain mb-3" />
+              {biz?.logo_url ? (
+                <img src={biz.logo_url} alt="Bedrijfslogo" className="h-12 w-auto object-contain mb-3" />
               ) : (
                 <div
                   className="font-black text-2xl tracking-tight mb-1 text-brand-400"
                   style={{ color: accentColor }}
                 >
-                  {settings?.company_name || 'Mijn ZZP Studio'}
+                  {biz?.company_name || 'Mijn ZZP Studio'}
                 </div>
               )}
               <div className="text-xs text-slate-400 space-y-0.5 print:text-slate-600">
-                <p>{settings?.address_street}</p>
-                <p>{settings?.address_postcode} {settings?.address_city}</p>
-                {settings?.kvk_number && <p><span className="font-semibold text-slate-300">KVK:</span> {settings.kvk_number}</p>}
-                {settings?.btw_id && <p><span className="font-semibold text-slate-300">Btw-id:</span> {settings.btw_id}</p>}
-                {settings?.email && <p><span className="font-semibold text-slate-300">E-mail:</span> {settings.email}</p>}
+                <p>{biz?.address_street}</p>
+                <p>{biz?.address_postcode} {biz?.address_city}</p>
+                {biz?.kvk_number && <p><span className="font-semibold text-slate-300">KVK:</span> {biz.kvk_number}</p>}
+                {biz?.btw_id && <p><span className="font-semibold text-slate-300">Btw-id:</span> {biz.btw_id}</p>}
+                {biz?.email && <p><span className="font-semibold text-slate-300">E-mail:</span> {biz.email}</p>}
               </div>
             </div>
 

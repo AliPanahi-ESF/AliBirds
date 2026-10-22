@@ -5,10 +5,15 @@ import { clsx } from 'clsx'
 import { taxApi, fmt } from '@/lib/api'
 import { BtwAangifte, IcpDeclaration } from '@/lib/types'
 
-function CopyButton({ value }: { value: number | string }) {
+function CopyButton({ value, wholeValue }: { value: number | string; wholeValue?: number }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
-    const text = typeof value === 'number' ? value.toFixed(2).replace('.', ',') : String(value)
+    // Belastingdienst portal strictly requires whole euros
+    const text = wholeValue !== undefined
+      ? String(wholeValue)
+      : typeof value === 'number'
+        ? String(Math.floor(value))
+        : String(value)
     navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
@@ -17,15 +22,18 @@ function CopyButton({ value }: { value: number | string }) {
     <button
       onClick={copy}
       className={clsx(
-        'p-1.5 rounded transition-colors',
+        'p-1.5 rounded transition-colors flex items-center gap-1',
         copied
           ? 'text-emerald-400 bg-emerald-500/10'
           : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700',
       )}
-      title="Kopieer naar klembord"
-      aria-label="Kopieer bedrag"
+      title={wholeValue !== undefined ? `Kopieer €${wholeValue} (Belastingdienst geheel eurobedrag)` : 'Kopieer bedrag naar klembord'}
+      aria-label="Kopieer bedrag voor Belastingdienst"
     >
       {copied ? <Check size={14} /> : <Copy size={14} />}
+      {wholeValue !== undefined && (
+        <span className="text-[10px] font-mono text-slate-400">€{wholeValue}</span>
+      )}
     </button>
   )
 }
@@ -36,10 +44,12 @@ interface RubricRowProps {
   description: string
   turnover?: number
   tax?: number
+  turnoverWhole?: number
+  taxWhole?: number
   highlight?: boolean
 }
 
-function RubricRow({ code, description, turnover, tax, highlight }: RubricRowProps) {
+function RubricRow({ code, description, turnover, tax, turnoverWhole, taxWhole, highlight }: RubricRowProps) {
   return (
     <div className={clsx(
       'flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 sm:px-4 sm:py-3 rounded-lg border transition-colors',
@@ -59,14 +69,14 @@ function RubricRow({ code, description, turnover, tax, highlight }: RubricRowPro
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-slate-400 sm:hidden">Omzet:</span>
             <span className="font-mono text-xs sm:text-sm text-slate-300 font-medium">{fmt.currency(turnover)}</span>
-            <CopyButton value={turnover} />
+            <CopyButton value={turnover} wholeValue={turnoverWhole} />
           </div>
         )}
         {tax !== undefined && (
           <div className="flex items-center gap-1.5 ml-auto sm:ml-0">
             <span className="text-[11px] text-slate-400 sm:hidden">Btw:</span>
             <span className="font-mono text-xs sm:text-sm text-brand-300 font-bold">{fmt.currency(tax)}</span>
-            <CopyButton value={tax} />
+            <CopyButton value={tax} wholeValue={taxWhole} />
           </div>
         )}
       </div>
@@ -203,6 +213,8 @@ export default function TaxReturn() {
                       description={r.description}
                       turnover={r.turnover}
                       tax={r.tax}
+                      turnoverWhole={r.turnover_whole}
+                      taxWhole={r.tax_whole}
                     />
                   )
                 })}
@@ -223,6 +235,30 @@ export default function TaxReturn() {
                       description={r.description}
                       turnover={r.turnover}
                       tax={r.tax}
+                      turnoverWhole={r.turnover_whole}
+                      taxWhole={r.tax_whole}
+                    />
+                  )
+                })}
+              </div>
+
+              {/* Section 4 */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">
+                  Sectie 4 — Prestaties uit het buitenland aan u verleend (Btw verlegd)
+                </h3>
+                {['4a', '4b'].map(k => {
+                  const r = btw.rubrics[k]
+                  if (!r) return null
+                  return (
+                    <RubricRow
+                      key={k}
+                      code={r.code}
+                      description={r.description}
+                      turnover={r.turnover}
+                      tax={r.tax}
+                      turnoverWhole={r.turnover_whole}
+                      taxWhole={r.tax_whole}
                     />
                   )
                 })}
@@ -248,7 +284,7 @@ export default function TaxReturn() {
                         <span className="text-[11px] text-slate-400 sm:hidden">Voorbelasting:</span>
                         <div className="flex items-center gap-1.5">
                           <span className="font-mono text-sm font-bold text-emerald-400">{fmt.currency(r.tax)}</span>
-                          <CopyButton value={r.tax} />
+                          <CopyButton value={r.tax} wholeValue={r.tax_whole ?? btw.voorbelasting_whole} />
                         </div>
                       </div>
                     </div>

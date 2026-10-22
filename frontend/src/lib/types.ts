@@ -166,6 +166,8 @@ export interface BtwRubric {
   description: string
   turnover: number
   tax: number
+  turnover_whole?: number
+  tax_whole?: number
 }
 
 export interface BtwAangifte {
@@ -175,6 +177,8 @@ export interface BtwAangifte {
   rubrics: Record<string, BtwRubric>
   voorbelasting: number
   te_betalen: number
+  voorbelasting_whole?: number
+  te_betalen_whole?: number
 }
 
 export interface IcpItem {
