@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
 import { Bird, Menu, Plus, User as UserIcon, LogOut } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
+import { useI18n } from '@/lib/i18n'
+import LanguageSwitcher from '@/components/LanguageSwitcher'
 
 interface MobileHeaderProps {
   onOpenMenu: () => void
@@ -8,37 +10,40 @@ interface MobileHeaderProps {
 
 export default function MobileHeader({ onOpenMenu }: MobileHeaderProps) {
   const { user, logout } = useAuth()
+  const { t } = useI18n()
 
   return (
-    <header className="md:hidden sticky top-0 z-20 flex items-center justify-between px-3.5 h-14 bg-slate-900/90 backdrop-blur-md border-b border-slate-800">
-      <div className="flex items-center gap-2.5">
+    <header className="md:hidden sticky top-0 z-20 flex items-center justify-between px-3 h-14 bg-slate-900/90 backdrop-blur-md border-b border-slate-800">
+      <div className="flex items-center gap-2">
         <button
           onClick={onOpenMenu}
-          className="p-1.5 -ml-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-          aria-label="Open menu"
+          className="p-1.5 -ml-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+          aria-label={t('nav.menu', 'Menu')}
         >
-          <Menu size={22} />
+          <Menu size={20} />
         </button>
 
-        <Link to="/" className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-brand-600 flex items-center justify-center shadow-md shadow-brand-600/30">
-            <Bird className="w-4 h-4 text-white" />
+        <Link to="/" className="flex items-center gap-1.5">
+          <div className="w-6 h-6 rounded-lg bg-brand-600 flex items-center justify-center shadow-md shadow-brand-600/30">
+            <Bird className="w-3.5 h-3.5 text-white" />
           </div>
           <span className="font-bold text-slate-100 text-sm">AliBirds</span>
         </Link>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
+        <LanguageSwitcher variant="compact" />
+
         <Link
           to="/invoices/new"
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold shadow-sm transition-all active:scale-95"
+          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold shadow-sm transition-all active:scale-95"
         >
-          <Plus size={14} />
-          <span>Factuur</span>
+          <Plus size={13} />
+          <span className="text-[11px]">{t('nav.new_invoice_short', 'Factuur')}</span>
         </Link>
 
         {user ? (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <Link
               to="/settings"
               className="w-7 h-7 rounded-full bg-brand-600/30 border border-brand-500/50 flex items-center justify-center text-xs font-bold text-brand-300"
@@ -49,17 +54,17 @@ export default function MobileHeader({ onOpenMenu }: MobileHeaderProps) {
             <button
               onClick={() => logout()}
               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-              title="Uitloggen"
-              aria-label="Uitloggen"
+              title={t('nav.logout', 'Uitloggen')}
+              aria-label={t('nav.logout', 'Uitloggen')}
             >
-              <LogOut size={16} />
+              <LogOut size={15} />
             </button>
           </div>
         ) : (
           <Link
             to="/auth"
             className="p-1.5 rounded-lg text-slate-400 hover:text-white"
-            title="Inloggen"
+            title={t('nav.login', 'Inloggen')}
           >
             <UserIcon size={18} />
           </Link>

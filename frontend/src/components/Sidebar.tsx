@@ -6,20 +6,10 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/lib/auth'
+import { useI18n } from '@/lib/i18n'
 import { useQuery } from '@tanstack/react-query'
 import { settingsApi } from '@/lib/api'
-
-export const NAV = [
-  { to: '/',            icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/invoices',    icon: FileText,        label: 'Facturen' },
-  { to: '/quotations',  icon: FileCheck,       label: 'Offertes' },
-  { to: '/clients',     icon: Users,           label: 'Klanten' },
-  { to: '/bank',        icon: Building2,       label: 'Bankafschriften' },
-  { to: '/tax',         icon: TrendingUp,      label: 'Btw-aangifte' },
-  { to: '/expenses',    icon: Receipt,         label: 'Kosten' },
-  { to: '/recurring',   icon: RefreshCw,       label: 'Herhaalfacturen' },
-  { to: '/settings',    icon: Settings,        label: 'Instellingen' },
-]
+import LanguageSwitcher from '@/components/LanguageSwitcher'
 
 interface SidebarProps {
   isOpen?: boolean
@@ -29,6 +19,19 @@ interface SidebarProps {
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { pathname } = useLocation()
   const { user, logout, sessionInfo } = useAuth()
+  const { t } = useI18n()
+
+  const navItems = [
+    { to: '/',            icon: LayoutDashboard, label: t('nav.dashboard', 'Dashboard') },
+    { to: '/invoices',    icon: FileText,        label: t('nav.invoices', 'Facturen') },
+    { to: '/quotations',  icon: FileCheck,       label: t('nav.quotations', 'Offertes') },
+    { to: '/clients',     icon: Users,           label: t('nav.clients', 'Klanten') },
+    { to: '/bank',        icon: Building2,       label: t('nav.bank', 'Bankafschriften') },
+    { to: '/tax',         icon: TrendingUp,      label: t('nav.tax', 'Btw-aangifte') },
+    { to: '/expenses',    icon: Receipt,         label: t('nav.expenses', 'Kosten') },
+    { to: '/recurring',   icon: RefreshCw,       label: t('nav.recurring', 'Herhaalfacturen') },
+    { to: '/settings',    icon: Settings,        label: t('nav.settings', 'Instellingen') },
+  ]
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -59,30 +62,33 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         )}
       >
         {/* Header / Logo */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center shadow-lg shadow-brand-600/30">
+        <div className="flex items-center justify-between px-3.5 py-4 border-b border-slate-800">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center shadow-lg shadow-brand-600/30 shrink-0">
               <Bird className="w-4.5 h-4.5 text-white" size={18} />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="font-bold text-slate-100 text-sm leading-none">AliBirds</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">ZZP Boekhouding</div>
+              <div className="text-[10px] text-slate-400 mt-0.5 truncate">{t('app.tagline', 'ZZP Boekhouding')}</div>
             </div>
           </div>
 
-          {/* Mobile close button */}
-          <button
-            onClick={onClose}
-            className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-            aria-label="Sluit menu"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <LanguageSwitcher />
+            {/* Mobile close button */}
+            <button
+              onClick={onClose}
+              className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              aria-label={t('nav.close_menu', 'Sluit menu')}
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Nav links */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
-          {NAV.map(({ to, icon: Icon, label }) => {
+          {navItems.map(({ to, icon: Icon, label }) => {
             const active = to === '/' ? pathname === '/' : pathname.startsWith(to)
             return (
               <Link
@@ -129,13 +135,13 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 />
                 <span className="text-[10px] font-mono text-slate-300 truncate">
                   {sessionInfo.type === 'CLOUD'
-                    ? 'Cloud Sessie Actief'
+                    ? t('app.cloud_session', 'Cloud Sessie Actief')
                     : sessionInfo.type === 'DEMO'
-                    ? 'Demo Sessie'
-                    : 'Lokale Sessie'}
+                    ? t('app.demo_session', 'Demo Sessie')
+                    : t('app.local_session', 'Lokale Sessie')}
                 </span>
               </div>
-              <span className="text-[9px] font-mono text-slate-500 uppercase">Beveiligd</span>
+              <span className="text-[9px] font-mono text-slate-500 uppercase">{t('app.secured', 'Beveiligd')}</span>
             </div>
             <button
               onClick={() => {
@@ -145,7 +151,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               className="w-full flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-all active:scale-98"
             >
               <LogOut size={13} />
-              <span>Uitloggen</span>
+              <span>{t('nav.logout', 'Uitloggen')}</span>
             </button>
           </div>
         ) : (
@@ -155,7 +161,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               onClick={onClose}
               className="w-full btn-primary justify-center text-xs py-1.5"
             >
-              Inloggen
+              {t('nav.login', 'Inloggen')}
             </Link>
           </div>
         )}

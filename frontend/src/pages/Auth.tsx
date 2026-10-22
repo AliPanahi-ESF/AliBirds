@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/lib/auth'
+import { useI18n } from '@/lib/i18n'
+import LanguageSwitcher from '@/components/LanguageSwitcher'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { clsx } from 'clsx'
 
@@ -15,6 +17,7 @@ interface AuthPageProps {
 
 export default function AuthPage({ initialMode }: AuthPageProps = {}) {
   const navigate = useNavigate()
+  const { t } = useI18n()
   const {
     login, registerUser, loginDemo,
     isRecoveryMode, setIsRecoveryMode,
@@ -240,6 +243,11 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
       <div className="absolute -top-40 -left-40 w-96 h-96 bg-brand-600/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
 
+      {/* Language Switcher pill in top right corner */}
+      <div className="absolute top-4 right-4 z-20">
+        <LanguageSwitcher />
+      </div>
+
       <div className="max-w-md w-full space-y-6 relative z-10">
         {/* Brand header */}
         <div className="text-center space-y-2">
@@ -248,7 +256,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-100 tracking-tight">AliBirds</h1>
           <p className="text-xs sm:text-sm text-slate-400">
-            Zelf-gehoste facturatie & btw-aangifte voor Nederlandse ZZP'ers
+            {t('app.subtitle', "Zelf-gehoste facturatie & btw-aangifte voor Nederlandse ZZP'ers")}
           </p>
         </div>
 
@@ -309,7 +317,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                     : 'text-slate-400 hover:text-slate-200'
                 )}
               >
-                Inloggen
+                {t('auth.login_tab', 'Inloggen')}
               </button>
               <button
                 type="button"
@@ -321,7 +329,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                     : 'text-slate-400 hover:text-slate-200'
                 )}
               >
-                Account aanmaken
+                {t('auth.register_tab', 'Account aanmaken')}
               </button>
             </div>
           )}
@@ -333,14 +341,14 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                 <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center mx-auto border border-purple-500/30">
                   <KeyRound size={20} />
                 </div>
-                <h2 className="text-base font-bold text-slate-100">Nieuw wachtwoord instellen</h2>
+                <h2 className="text-base font-bold text-slate-100">{t('auth.reset_password_title', 'Nieuw wachtwoord instellen')}</h2>
                 <p className="text-xs text-slate-400">
-                  Kies een nieuw veilig wachtwoord voor uw AliBirds account.
+                  {t('auth.reset_password_desc', 'Kies een nieuw veilig wachtwoord voor uw AliBirds account.')}
                 </p>
               </div>
 
               <div className="space-y-1">
-                <label className="label">Nieuw wachtwoord *</label>
+                <label className="label">{t('auth.new_password', 'Nieuw wachtwoord')} *</label>
                 <div className="relative">
                   <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
@@ -349,14 +357,14 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                     minLength={6}
                     value={newPassword}
                     onChange={e => setNewPassword(e.target.value)}
-                    placeholder="Minimaal 6 tekens"
+                    placeholder={t('auth.min_chars', 'Minimaal 6 tekens')}
                     className="input pl-9 text-xs sm:text-sm font-mono"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="label">Bevestig nieuw wachtwoord *</label>
+                <label className="label">{t('auth.confirm_password', 'Bevestig nieuw wachtwoord')} *</label>
                 <div className="relative">
                   <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
@@ -365,7 +373,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                     minLength={6}
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="Herhaal wachtwoord"
+                    placeholder={t('auth.confirm_password', 'Herhaal wachtwoord')}
                     className="input pl-9 text-xs sm:text-sm font-mono"
                   />
                 </div>
@@ -376,7 +384,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                 disabled={loading}
                 className="w-full btn-primary bg-purple-600 hover:bg-purple-500 border-purple-500 justify-center py-2.5 text-xs sm:text-sm font-semibold shadow-lg shadow-purple-600/25 flex items-center gap-2"
               >
-                {loading ? 'Wachtwoord opslaan...' : 'Wachtwoord opslaan & Inloggen'}
+                {loading ? '...' : t('auth.save_and_login', 'Wachtwoord opslaan & Inloggen')}
                 <ArrowRight size={15} />
               </button>
 
@@ -388,7 +396,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                 }}
                 className="w-full text-center text-xs text-slate-400 hover:text-slate-200 py-1"
               >
-                Terug naar inloggen
+                {t('auth.back_to_login', 'Terug naar inloggen')}
               </button>
             </form>
           ) : mode === 'verify-code' ? (
@@ -398,14 +406,14 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                 <div className="w-10 h-10 rounded-xl bg-brand-600/20 text-brand-400 flex items-center justify-center mx-auto border border-brand-500/30">
                   <Check size={20} />
                 </div>
-                <h2 className="text-base font-bold text-slate-100">Verificatiecode invoeren</h2>
+                <h2 className="text-base font-bold text-slate-100">{t('auth.verify_code_title', 'Verificatiecode invoeren')}</h2>
                 <p className="text-xs text-slate-400">
-                  Voer de 6-cijferige code of het token uit de e-mail hieronder handmatig in.
+                  {t('auth.verify_code_desc', 'Voer de 6-cijferige code of het token uit de e-mail hieronder handmatig in.')}
                 </p>
               </div>
 
               <div className="space-y-1">
-                <label className="label">E-mailadres *</label>
+                <label className="label">{t('auth.email', 'E-mailadres')} *</label>
                 <div className="relative">
                   <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
@@ -413,14 +421,14 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                     required
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    placeholder="naam@uwstudio.nl"
+                    placeholder="name@studio.com"
                     className="input pl-9 text-xs sm:text-sm"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="label">Verificatiecode of Token *</label>
+                <label className="label">{t('auth.code_placeholder', 'Verificatiecode of Token')} *</label>
                 <div className="relative">
                   <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
@@ -428,7 +436,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                     required
                     value={verificationCode}
                     onChange={e => setVerificationCode(e.target.value)}
-                    placeholder="6 cijfers of token uit link"
+                    placeholder="123456"
                     className="input pl-9 text-xs sm:text-sm font-mono"
                   />
                 </div>
@@ -439,7 +447,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                 disabled={loading}
                 className="w-full btn-primary justify-center py-2.5 text-xs sm:text-sm font-semibold shadow-lg shadow-brand-600/25 flex items-center gap-2"
               >
-                {loading ? 'Verifiëren...' : 'Code verifiëren & Inloggen'}
+                {loading ? '...' : t('btn.verify_login', 'Code verifiëren & Inloggen')}
                 <ArrowRight size={15} />
               </button>
 
@@ -449,14 +457,14 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                   onClick={handleResendConfirmation}
                   className="text-brand-400 hover:underline"
                 >
-                  Nieuwe code sturen
+                  {t('auth.resend_confirmation', 'Nieuwe code sturen')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setMode('login')}
                   className="text-slate-400 hover:text-slate-200"
                 >
-                  Terug naar inloggen
+                  {t('auth.back_to_login', 'Terug naar inloggen')}
                 </button>
               </div>
             </form>
@@ -465,7 +473,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
             <form onSubmit={handleSubmit} className="space-y-3.5">
               {mode === 'register' && (
                 <div className="space-y-1">
-                  <label className="label">Uw volledige naam *</label>
+                  <label className="label">{t('auth.full_name', 'Uw volledige naam')} *</label>
                   <div className="relative">
                     <UserIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                     <input
@@ -473,7 +481,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                       required
                       value={name}
                       onChange={e => setName(e.target.value)}
-                      placeholder="bijv. Jan de Vries"
+                      placeholder="e.g. Alex van Dijk"
                       className="input pl-9 text-xs sm:text-sm"
                     />
                   </div>
@@ -481,7 +489,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
               )}
 
               <div className="space-y-1">
-                <label className="label">E-mailadres *</label>
+                <label className="label">{t('auth.email', 'E-mailadres')} *</label>
                 <div className="relative">
                   <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
@@ -489,7 +497,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                     required
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    placeholder="naam@uwstudio.nl"
+                    placeholder="alex@studio.nl"
                     className="input pl-9 text-xs sm:text-sm"
                   />
                 </div>
@@ -497,21 +505,21 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
 
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <label className="label">Wachtwoord *</label>
+                  <label className="label">{t('auth.password', 'Wachtwoord')} *</label>
                   {mode === 'login' && (
                     <div className="flex items-center gap-2">
                       <span
                         className="text-[11px] text-slate-400 hover:text-brand-300 hover:underline cursor-pointer"
                         onClick={handleResendConfirmation}
                       >
-                        Bevestiging opnieuw?
+                        {t('auth.resend_confirmation', 'Bevestiging opnieuw?')}
                       </span>
                       <span className="text-slate-600">·</span>
                       <span
                         className="text-[11px] text-brand-400 hover:underline cursor-pointer"
                         onClick={handleForgotPassword}
                       >
-                        Vergeten?
+                        {t('auth.forgot_password', 'Vergeten?')}
                       </span>
                     </div>
                   )}
@@ -534,7 +542,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                 disabled={loading}
                 className="w-full btn-primary justify-center py-2.5 text-xs sm:text-sm font-semibold mt-2 shadow-lg shadow-brand-600/25 flex items-center gap-2"
               >
-                {loading ? 'Verwerken...' : mode === 'login' ? 'Inloggen' : 'Registreren & Bedrijf instellen'}
+                {loading ? '...' : mode === 'login' ? t('auth.login_tab', 'Inloggen') : t('auth.register_tab', 'Registreren & Bedrijf instellen')}
                 <ArrowRight size={15} />
               </button>
 
@@ -546,7 +554,8 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                     onClick={() => setMode('verify-code')}
                     className="text-[11px] text-slate-400 hover:text-slate-200 hover:underline"
                   >
-                    Heeft u een verificatiecode ontvangen? <span className="text-brand-400 font-medium">Code invoeren</span>
+                    {t('auth.have_code', 'Heeft u een verificatiecode ontvangen?')}{' '}
+                    <span className="text-brand-400 font-medium">{t('auth.enter_code_link', 'Code invoeren')}</span>
                   </button>
                 </div>
               )}
@@ -559,7 +568,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
               <div className="relative">
                 <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-800" /></div>
                 <div className="relative flex justify-center text-[10px] uppercase tracking-wider text-slate-500 font-semibold bg-slate-900 px-2 w-max mx-auto">
-                  Of direct bekijken
+                  {t('auth.or_view_direct', 'Of direct bekijken')}
                 </div>
               </div>
 
@@ -569,14 +578,14 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
                 className="w-full py-2.5 px-3 rounded-xl text-xs font-semibold text-brand-300 hover:text-white bg-brand-600/15 hover:bg-brand-600/25 border border-brand-500/30 hover:border-brand-500/50 transition-all flex items-center justify-center gap-2 shadow-sm active:scale-98"
               >
                 <Sparkles size={14} className="text-brand-400" />
-                <span>1-Click Demo Studio (Zonder inloggen)</span>
+                <span>{t('btn.demo_studio', '1-Click Demo Studio (Zonder inloggen)')}</span>
               </button>
             </div>
           )}
 
           {/* Security note */}
           <p className="text-[11px] text-slate-500 text-center pt-1">
-            Uw gegevens zijn beveiligd en privé. Elke gebruiker heeft een eigen afgeschermd account.
+            {t('auth.security_notice', 'Uw gegevens zijn beveiligd en privé. Elke gebruiker heeft een eigen afgeschermd account.')}
           </p>
         </div>
 

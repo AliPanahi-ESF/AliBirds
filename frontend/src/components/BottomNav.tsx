@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { LayoutDashboard, FileText, TrendingUp, Receipt, Menu } from 'lucide-react'
 import { clsx } from 'clsx'
+import { useI18n } from '@/lib/i18n'
 
 interface BottomNavProps {
   onOpenMenu: () => void
@@ -8,12 +9,13 @@ interface BottomNavProps {
 
 export default function BottomNav({ onOpenMenu }: BottomNavProps) {
   const { pathname } = useLocation()
+  const { t } = useI18n()
 
   const tabs = [
-    { to: '/',         icon: LayoutDashboard, label: 'Overzicht' },
-    { to: '/invoices', icon: FileText,        label: 'Facturen' },
-    { to: '/tax',      icon: TrendingUp,      label: 'Btw' },
-    { to: '/expenses', icon: Receipt,         label: 'Kosten' },
+    { to: '/',         icon: LayoutDashboard, label: t('nav.overview', 'Overzicht') },
+    { to: '/invoices', icon: FileText,        label: t('nav.invoices', 'Facturen') },
+    { to: '/tax',      icon: TrendingUp,      label: t('nav.tax', 'Btw') },
+    { to: '/expenses', icon: Receipt,         label: t('nav.expenses', 'Kosten') },
   ]
 
   return (

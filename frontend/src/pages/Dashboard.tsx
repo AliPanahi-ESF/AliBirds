@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { dashboardApi, invoicesApi, fmt } from '@/lib/api'
 import { DashboardKPIs, Invoice } from '@/lib/types'
+import { useI18n } from '@/lib/i18n'
 import { clsx } from 'clsx'
 
 interface KPICardProps {
@@ -43,6 +44,7 @@ function KPICard({ title, value, sub, icon: Icon, color, loading }: KPICardProps
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useI18n()
   const map: Record<string, string> = {
     DRAFT: 'badge-gray',
     SENT: 'badge-blue',
@@ -51,14 +53,18 @@ function StatusBadge({ status }: { status: string }) {
     CANCELLED: 'badge-gray',
   }
   const labels: Record<string, string> = {
-    DRAFT: 'Concept', SENT: 'Verzonden', PAID: 'Betaald',
-    OVERDUE: 'Verlopen', CANCELLED: 'Geannuleerd',
+    DRAFT: t('filter.draft', 'Concept'),
+    SENT: t('filter.sent', 'Verzonden'),
+    PAID: t('filter.paid', 'Betaald'),
+    OVERDUE: t('filter.overdue', 'Verlopen'),
+    CANCELLED: t('filter.cancelled', 'Geannuleerd'),
   }
   return <span className={clsx(map[status] ?? 'badge-gray', 'text-[11px] px-2 py-0.5')}>{labels[status] ?? status}</span>
 }
 
 export default function Dashboard() {
   const nav = useNavigate()
+  const { locale, t } = useI18n()
   const { data: kpis, isLoading } = useQuery<DashboardKPIs>({
     queryKey: ['kpis'],
     queryFn: dashboardApi.kpis,
@@ -71,24 +77,25 @@ export default function Dashboard() {
   const today = new Date()
   const quarter = Math.ceil((today.getMonth() + 1) / 3)
   const year = today.getFullYear()
+  const dateLocale = locale === 'nl' ? 'nl-NL' : 'en-US'
 
   return (
     <div className="space-y-5 sm:space-y-6 w-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-100">Dashboard</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100">{t('dash.title', 'Dashboard')}</h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            {today.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            &nbsp;·&nbsp; Kwartaal {quarter} {year}
+            {today.toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            &nbsp;·&nbsp; {t('dash.quarter', 'Kwartaal')} {quarter} {year}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => nav('/bank')} className="btn-secondary text-xs sm:text-sm py-2 px-3">
-            <Upload size={14} /> <span className="hidden xs:inline">MT940</span> Bank
+            <Upload size={14} /> <span className="hidden xs:inline">MT940</span> {t('btn.import_bank', 'Bank')}
           </button>
           <button onClick={() => nav('/invoices/new')} className="btn-primary text-xs sm:text-sm py-2 px-3">
-            <Plus size={14} /> Nieuwe factuur
+            <Plus size={14} /> {t('btn.new_invoice', 'Nieuwe factuur')}
           </button>
         </div>
       </div>
@@ -96,31 +103,32 @@ export default function Dashboard() {
       {/* KPI Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KPICard
-          title="Openstaand"
+          title={t('dash.kpi.outstanding', 'Openstaand')}
           value={kpis ? fmt.currency(kpis.outstanding_revenue) : '—'}
           icon={Clock}
           color="blue"
           loading={isLoading}
         />
         <KPICard
-          title="Verlopen"
+          title={t('dash.kpi.overdue', 'Verlopen')}
           value={kpis ? fmt.currency(kpis.overdue_amount) : '—'}
-          sub="Te incasseren"
+          sub={t('dash.kpi.to_collect', 'Te incasseren')}
           icon={AlertTriangle}
           color="red"
           loading={isLoading}
         />
         <KPICard
-          title={`Btw Q${quarter} (geschat)`}
+          title={`${t('dash.kpi.vat_estimate', 'Btw')} Q${quarter}`}
           value={kpis ? fmt.currency(kpis.projected_vat_liability) : '—'}
-          sub="Te betalen aan BD"
+          sub={t('dash.kpi.to_pay_bd', 'Te betalen aan BD')}
           icon={TrendingUp}
           color="yellow"
           loading={isLoading}
         />
         <KPICard
-          title="Betaald deze maand"
+          title={t('dash.kpi.paid_this_quarter', 'Betaald dit kwartaal')}
           value={kpis ? fmt.currency(kpis.paid_this_month) : '—'}
+          sub={t('dash.kpi.received_net', 'Reeds ontvangen')}
           icon={Receipt}
           color="green"
           loading={isLoading}

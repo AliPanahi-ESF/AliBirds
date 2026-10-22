@@ -16,10 +16,13 @@ import {
   getDefaultPaymentLink, saveDefaultPaymentLink, sendTestEmail
 } from '@/lib/email'
 import { useAuth } from '@/lib/auth'
+import { useI18n } from '@/lib/i18n'
+import LanguageSwitcher from '@/components/LanguageSwitcher'
 
 export default function SettingsPage() {
   const qc = useQueryClient()
   const { user, updateUser, logout, sessionInfo, refreshSession } = useAuth()
+  const { t, locale } = useI18n()
   const [isRefreshingSession, setIsRefreshingSession] = useState(false)
   const [activeTab, setActiveTab] = useState<'profile' | 'account' | 'email'>('profile')
 
@@ -376,6 +379,17 @@ export default function SettingsPage() {
             </p>
           </div>
 
+          {/* Language Preference Card */}
+          <div className="card p-4 sm:p-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-100">{t('settings.language_title', 'Taal / Language')}</h3>
+                <p className="text-[11px] text-slate-400">{t('settings.language_desc', 'Kies uw gewenste weergavetaal voor AliBirds.')}</p>
+              </div>
+              <LanguageSwitcher />
+            </div>
+          </div>
+
           {/* Change Password Card */}
           <div className="card p-4 sm:p-6 space-y-4">
             <div className="flex items-center gap-2.5 pb-3 border-b border-slate-800">
@@ -383,22 +397,22 @@ export default function SettingsPage() {
                 <KeyRound size={16} />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-slate-100">Wachtwoord Wijzigen</h3>
-                <p className="text-[11px] text-slate-400">Stel direct een nieuw veilig wachtwoord in voor uw account</p>
+                <h3 className="text-sm font-semibold text-slate-100">{t('settings.change_password_title', 'Wachtwoord Wijzigen')}</h3>
+                <p className="text-[11px] text-slate-400">{t('settings.change_password_desc', 'Stel direct een nieuw veilig wachtwoord in voor uw account')}</p>
               </div>
             </div>
 
             <form onSubmit={handleChangePassword} className="space-y-3.5 max-w-md">
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Nieuw wachtwoord
+                  {t('auth.new_password', 'Nieuw wachtwoord')}
                 </label>
                 <div className="relative">
                   <input
                     type="password"
                     value={newPassword}
                     onChange={e => setNewPassword(e.target.value)}
-                    placeholder="Minimaal 6 tekens"
+                    placeholder={t('auth.min_chars', 'Minimaal 6 tekens')}
                     className="input-field w-full text-xs py-2 pl-8 pr-3"
                     disabled={isChangingPassword}
                   />
@@ -408,14 +422,14 @@ export default function SettingsPage() {
 
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Bevestig nieuw wachtwoord
+                  {t('auth.confirm_password', 'Bevestig nieuw wachtwoord')}
                 </label>
                 <div className="relative">
                   <input
                     type="password"
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="Herhaal nieuw wachtwoord"
+                    placeholder={t('auth.confirm_password', 'Herhaal nieuw wachtwoord')}
                     className="input-field w-full text-xs py-2 pl-8 pr-3"
                     disabled={isChangingPassword}
                   />
@@ -429,7 +443,7 @@ export default function SettingsPage() {
                 className="btn-primary text-xs py-2 px-4 flex items-center gap-2 disabled:opacity-50"
               >
                 <KeyRound size={14} />
-                <span>{isChangingPassword ? 'Wachtwoord bijwerken...' : 'Wachtwoord opslaan'}</span>
+                <span>{isChangingPassword ? '...' : t('btn.change_password', 'Wachtwoord opslaan')}</span>
               </button>
             </form>
           </div>
@@ -441,15 +455,13 @@ export default function SettingsPage() {
                 <ShieldCheck size={16} />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-slate-100">Privacy & Gegevensbescherming (AVG)</h3>
-                <p className="text-[11px] text-slate-400">Uw rechten op dataportabiliteit en wettelijke bewaarplicht</p>
+                <h3 className="text-sm font-semibold text-slate-100">{t('settings.gdpr_title', 'Privacy & Gegevensbescherming (AVG)')}</h3>
+                <p className="text-[11px] text-slate-400">{t('settings.gdpr_desc', 'Uw rechten op dataportabiliteit en wettelijke bewaarplicht')}</p>
               </div>
             </div>
 
             <p className="text-xs text-slate-400 leading-relaxed">
-              Conform de Algemene Verordening Gegevensbescherming (AVG/GDPR) heeft u te allen tijde het recht om
-              uw administratie en klantgegevens te exporteren. Let op: op grond van artikel 52 AWR geldt
-              voor ondernemers een fiscale bewaarplicht van 7 jaar.
+              {t('settings.gdpr_text', 'Conform de Algemene Verordening Gegevensbescherming (AVG/GDPR) heeft u te allen tijde het recht om uw administratie en klantgegevens te exporteren. Let op: op grond van artikel 52 AWR geldt voor ondernemers een fiscale bewaarplicht van 7 jaar.')}
             </p>
 
             <button
@@ -459,7 +471,7 @@ export default function SettingsPage() {
               className="btn-secondary text-xs py-2 px-3.5 flex items-center gap-2 disabled:opacity-50"
             >
               <Download size={14} />
-              <span>{isExporting ? 'Gegevens exporteren...' : 'Administratie exporteren (JSON)'}</span>
+              <span>{isExporting ? t('btn.exporting', 'Gegevens exporteren...') : t('btn.export_data', 'Administratie exporteren (JSON)')}</span>
             </button>
           </div>
 
@@ -467,7 +479,7 @@ export default function SettingsPage() {
           <div className="card p-4 sm:p-6 space-y-3 border border-red-500/10">
             <div className="flex items-center gap-2">
               <LogOut size={16} className="text-red-400" />
-              <h3 className="text-sm font-semibold text-slate-200">Uitloggen</h3>
+              <h3 className="text-sm font-semibold text-slate-200">{t('nav.logout', 'Uitloggen')}</h3>
             </div>
             <p className="text-xs text-slate-400">
               U wordt uitgelogd op dit apparaat. Uw gegevens blijven veilig opgeslagen in de cloud.
@@ -476,7 +488,7 @@ export default function SettingsPage() {
               onClick={() => logout()}
               className="btn-ghost text-xs text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-400/50 hover:bg-red-500/5 px-4 py-2"
             >
-              <LogOut size={14} /> Uitloggen
+              <LogOut size={14} /> {t('nav.logout', 'Uitloggen')}
             </button>
           </div>
         </div>
