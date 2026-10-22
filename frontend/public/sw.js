@@ -1,5 +1,5 @@
-// MoneyBirds Service Worker - PWA Offline Caching & Web Push Notifications
-const CACHE_NAME = 'moneybirds-cache-v1'
+// AliBirds Service Worker - PWA Offline Caching & Web Push Notifications
+const CACHE_NAME = 'alibirds-cache-v3'
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -7,7 +7,7 @@ const ASSETS_TO_CACHE = [
   '/favicon.svg',
 ]
 
-// 1. Install Event: Pre-cache core shell
+// 1. Install Event: Pre-cache core shell & activate immediately if requested
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -16,24 +16,35 @@ self.addEventListener('install', (event) => {
   )
 })
 
-// 2. Activate Event: Clean up old caches
+// 2. Activate Event: Clean up any old caches (including legacy moneybirds-cache-v1)
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
           .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
+          .map((name) => {
+            console.log('[SW] Purging outdated cache:', name)
+            return caches.delete(name)
+          })
       )
     }).then(() => self.clients.claim())
   )
 })
 
-// 3. Fetch Event: Stale-while-revalidate for static assets, network-first for APIs/auth
+// Support SKIP_WAITING message from client update toast
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
+})
+
+// 3. Fetch Event: Network-First for HTML navigations to ensure latest deployment is always served;
+//                 Stale-while-revalidate for static assets; bypass for API/Auth
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
 
-  // Bypass cache for Supabase, Netlify functions, or non-GET requests
+  // Bypass cache completely for Supabase REST/Auth, Netlify serverless functions, or non-GET
   if (
     event.request.method !== 'GET' ||
     url.hostname.includes('supabase.co') ||
@@ -43,10 +54,36 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
+  // A. Network-First for HTML navigation / document requests
+  // Ensures user always gets the freshest index.html with latest bundle hashes
+  const isHtml =
+    event.request.mode === 'navigate' ||
+    (event.request.headers.get('accept') && event.request.headers.get('accept').includes('text/html')) ||
+    url.pathname === '/' ||
+    url.pathname.endsWith('.html')
+
+  if (isHtml) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseClone = networkResponse.clone()
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone))
+          }
+          return networkResponse
+        })
+        .catch(() => {
+          return caches.match(event.request).then((cached) => cached || caches.match('/index.html'))
+        })
+    )
+    return
+  }
+
+  // B. Stale-While-Revalidate for static assets (images, fonts, scripts)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Fetch background update
+        // Fetch background update to keep cache fresh
         fetch(event.request)
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
@@ -56,6 +93,7 @@ self.addEventListener('fetch', (event) => {
           .catch(() => {})
         return cachedResponse
       }
+
       return fetch(event.request).then((networkResponse) => {
         if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
           return networkResponse
@@ -71,11 +109,11 @@ self.addEventListener('fetch', (event) => {
 // 4. Web Push Event: Display instant financial and tax alerts
 self.addEventListener('push', (event) => {
   let data = {
-    title: 'MoneyBirds NL',
-    body: 'مورد جدیدی در سیستم حسابداری شما ثبت شد.',
+    title: 'AliBirds NL',
+    body: 'Nieuwe melding in uw AliBirds administratie.',
     icon: '/favicon.svg',
     badge: '/favicon.svg',
-    tag: 'moneybirds-alert',
+    tag: 'alibirds-alert',
     url: '/',
   }
 
@@ -93,16 +131,14 @@ self.addEventListener('push', (event) => {
     icon: data.icon || '/favicon.svg',
     badge: data.badge || '/favicon.svg',
     tag: data.tag || 'general-notification',
-    dir: 'rtl',
-    lang: 'fa',
     vibrate: [100, 50, 100],
     data: {
       url: data.url || '/',
       timestamp: Date.now(),
     },
     actions: [
-      { action: 'open', title: 'مشاهده در برنامه' },
-      { action: 'dismiss', title: 'بستن' },
+      { action: 'open', title: 'Bekijken' },
+      { action: 'dismiss', title: 'Sluiten' },
     ],
   }
 

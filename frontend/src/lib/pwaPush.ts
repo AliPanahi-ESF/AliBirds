@@ -1,4 +1,6 @@
-// PWA & Web Push Notification Client Manager for MoneyBirds NL
+// PWA & Web Push Notification Client Manager for AliBirds NL
+import toast from 'react-hot-toast'
+import React from 'react'
 
 export interface PushSubscriptionState {
   isSupported: boolean
@@ -7,8 +9,58 @@ export interface PushSubscriptionState {
   subscription: PushSubscription | null
 }
 
+let isRefreshing = false
+
 /**
- * Register the Service Worker
+ * Display interactive notification when a new version of the app is available
+ */
+export function notifyNewVersionAvailable(registration: ServiceWorkerRegistration): void {
+  toast(
+    (t) => (
+      React.createElement('div', { className: 'flex items-center justify-between gap-3 w-full py-1' },
+        React.createElement('div', { className: 'flex flex-col text-left' },
+          React.createElement('span', { className: 'font-bold text-xs text-slate-100 flex items-center gap-1.5' },
+            '🚀 Nieuwe AliBirds versie beschikbaar!'
+          ),
+          React.createElement('span', { className: 'text-[11px] text-slate-400 mt-0.5' },
+            'Klik om bij te werken en de nieuwste functies te laden.'
+          )
+        ),
+        React.createElement('button', {
+          onClick: async () => {
+            if (registration.waiting) {
+              registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+            }
+            try {
+              if (typeof caches !== 'undefined') {
+                const names = await caches.keys()
+                await Promise.all(names.map((n) => caches.delete(n)))
+              }
+            } catch {}
+            toast.dismiss(t.id)
+            window.location.reload()
+          },
+          className: 'px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-lg transition-colors shadow-lg shadow-indigo-600/30 shrink-0 cursor-pointer',
+        }, 'Nu Updaten')
+      )
+    ),
+    {
+      duration: Infinity,
+      id: 'alibirds-app-update-toast',
+      style: {
+        background: '#0f172a',
+        border: '1px solid #38bdf8',
+        padding: '10px 14px',
+        color: '#f8fafc',
+        borderRadius: '12px',
+        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
+      },
+    }
+  )
+}
+
+/**
+ * Register the Service Worker and listen for new deployment versions
  */
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
@@ -20,6 +72,42 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
       scope: '/',
     })
     console.log('[PWA] ServiceWorker registered successfully:', registration.scope)
+
+    // 1. Detect when a new service worker is installing
+    registration.addEventListener('updatefound', () => {
+      const installingWorker = registration.installing
+      if (!installingWorker) return
+
+      installingWorker.addEventListener('statechange', () => {
+        if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          console.log('[PWA] New version installed and waiting!')
+          notifyNewVersionAvailable(registration)
+        }
+      })
+    })
+
+    // 2. If a new version is already waiting from a previous visit
+    if (registration.waiting && navigator.serviceWorker.controller) {
+      notifyNewVersionAvailable(registration)
+    }
+
+    // 3. When new worker takes control, reload cleanly once
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!isRefreshing) {
+        isRefreshing = true
+        window.location.reload()
+      }
+    })
+
+    // 4. Periodically check for updates (every 5 minutes) and on window focus
+    setInterval(() => {
+      registration.update().catch(() => {})
+    }, 5 * 60 * 1000)
+
+    window.addEventListener('focus', () => {
+      registration.update().catch(() => {})
+    })
+
     return registration
   } catch (error) {
     console.error('[PWA] ServiceWorker registration failed:', error)
