@@ -23,7 +23,14 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
 
   const [mode, setMode] = useState<'login' | 'register' | 'update-password' | 'verify-code'>(() => {
     if (initialMode) return initialMode
-    if (isRecoveryMode || (typeof window !== 'undefined' && window.location.hash.includes('type=recovery'))) {
+    if (
+      isRecoveryMode ||
+      (typeof window !== 'undefined' && (
+        window.location.hash.includes('type=recovery') ||
+        window.location.search.includes('type=recovery') ||
+        window.location.pathname === '/reset-password'
+      ))
+    ) {
       return 'update-password'
     }
     return 'login'
@@ -124,7 +131,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
       clearAuthError()
 
       // Clean URL parameters
-      if (window.location.hash) {
+      if (typeof window !== 'undefined' && (window.location.hash || window.location.search)) {
         window.history.replaceState(null, '', window.location.pathname)
       }
 
@@ -148,6 +155,7 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
     setLoading(true)
     try {
       // First attempt: signup verification
+      let isRecovery = false
       let result = await supabase.auth.verifyOtp({
         email: email.trim(),
         token: cleanToken,
@@ -161,13 +169,22 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
           token: cleanToken,
           type: 'recovery',
         })
+        if (!result.error) {
+          isRecovery = true
+        }
       }
 
       if (result.error) throw result.error
 
-      toast.success('Verificatie geslaagd! U bent ingelogd.')
       clearAuthError()
-      navigate('/')
+      if (isRecovery) {
+        toast.success('Verificatiecode akkoord! Kies nu uw nieuwe wachtwoord.')
+        setIsRecoveryMode(true)
+        setMode('update-password')
+      } else {
+        toast.success('Verificatie geslaagd! U bent ingelogd.')
+        navigate('/')
+      }
     } catch (err: any) {
       toast.error(err.message || 'Ongeldige of verlopen verificatiecode. Vraag een nieuwe link/code aan.')
     } finally {
@@ -176,7 +193,8 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
   }
 
   const handleForgotPassword = async () => {
-    if (!email) {
+    const cleanEmail = email.trim()
+    if (!cleanEmail) {
       toast.error('Voer eerst uw e-mailadres in.')
       return
     }
@@ -185,11 +203,11 @@ export default function AuthPage({ initialMode }: AuthPageProps = {}) {
       return
     }
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
         redirectTo: getAuthRedirectUrl(),
       })
       if (error) throw error
-      toast.success('Wachtwoord reset link verstuurd naar uw e-mail!')
+      toast.success('Wachtwoord reset link verstuurd naar uw e-mail! Controleer uw inbox of spammap.')
     } catch (err: any) {
       toast.error(err.message || 'Kan reset e-mail niet versturen.')
     }

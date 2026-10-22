@@ -3,14 +3,14 @@ import { useForm } from 'react-hook-form'
 import {
   Save, Settings as SettingsIcon, Mail, Building2,
   CheckCircle2, ExternalLink, User as UserIcon, LogOut, ShieldCheck, Send,
-  RefreshCw, Clock, Radio, Shield
+  RefreshCw, Clock, Radio, Shield, KeyRound, Lock, Download, Database
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { settingsApi } from '@/lib/api'
 import { BusinessSettings } from '@/lib/types'
 import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
-import { isSupabaseConfigured } from '@/lib/supabase'
+import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import {
   getResendKey, saveResendConfig, getResendSender, isResendConfigured,
   getDefaultPaymentLink, saveDefaultPaymentLink, sendTestEmail
@@ -22,6 +22,12 @@ export default function SettingsPage() {
   const { user, updateUser, logout, sessionInfo, refreshSession } = useAuth()
   const [isRefreshingSession, setIsRefreshingSession] = useState(false)
   const [activeTab, setActiveTab] = useState<'profile' | 'account' | 'email'>('profile')
+
+  // Password change & GDPR state
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   // Resend state
   const [resendApiKey, setResendApiKey] = useState('')
@@ -111,6 +117,56 @@ export default function SettingsPage() {
       toast.error(e.message || 'Verzenden van test e-mail mislukt.')
     } finally {
       setIsTestingEmail(false)
+    }
+  }
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newPassword || newPassword.length < 6) {
+      toast.error('Het nieuwe wachtwoord moet minimaal 6 tekens bevatten.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('De ingevoerde wachtwoorden komen niet overeen.')
+      return
+    }
+
+    setIsChangingPassword(true)
+    try {
+      if (isSupabaseConfigured()) {
+        const { error } = await supabase.auth.updateUser({ password: newPassword })
+        if (error) throw error
+      }
+      toast.success('Uw wachtwoord is succesvol gewijzigd!')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (err: any) {
+      toast.error(err.message || 'Wachtwoord wijzigen mislukt.')
+    } finally {
+      setIsChangingPassword(false)
+    }
+  }
+
+  const handleExportData = async () => {
+    setIsExporting(true)
+    try {
+      const exportObj = {
+        exportedAt: new Date().toISOString(),
+        user: { name: user?.name, email: user?.email },
+        settings: settings || {},
+      }
+      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportObj, null, 2))
+      const downloadAnchor = document.createElement('a')
+      downloadAnchor.setAttribute('href', dataStr)
+      downloadAnchor.setAttribute('download', `alibirds-export-${new Date().toISOString().slice(0, 10)}.json`)
+      document.body.appendChild(downloadAnchor)
+      downloadAnchor.click()
+      downloadAnchor.remove()
+      toast.success('Uw administratie is succesvol geëxporteerd!')
+    } catch {
+      toast.error('Export mislukt.')
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -320,96 +376,91 @@ export default function SettingsPage() {
             </p>
           </div>
 
-          {/* Session Management Card */}
-          <div className="card p-4 sm:p-6 space-y-4 border border-brand-500/20 bg-slate-900/80">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                  <Shield size={16} />
+          {/* Change Password Card */}
+          <div className="card p-4 sm:p-6 space-y-4">
+            <div className="flex items-center gap-2.5 pb-3 border-b border-slate-800">
+              <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                <KeyRound size={16} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-100">Wachtwoord Wijzigen</h3>
+                <p className="text-[11px] text-slate-400">Stel direct een nieuw veilig wachtwoord in voor uw account</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleChangePassword} className="space-y-3.5 max-w-md">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Nieuw wachtwoord
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    placeholder="Minimaal 6 tekens"
+                    className="input-field w-full text-xs py-2 pl-8 pr-3"
+                    disabled={isChangingPassword}
+                  />
+                  <Lock size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
                 </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-100">Sessiebeheer & Beveiliging</h3>
-                  <p className="text-[11px] text-slate-400">Actieve authenticatie- en synchronisatiestatus</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Bevestig nieuw wachtwoord
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    placeholder="Herhaal nieuw wachtwoord"
+                    className="input-field w-full text-xs py-2 pl-8 pr-3"
+                    disabled={isChangingPassword}
+                  />
+                  <Lock size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
                 </div>
               </div>
 
               <button
-                type="button"
-                onClick={async () => {
-                  setIsRefreshingSession(true)
-                  await refreshSession()
-                  setIsRefreshingSession(false)
-                }}
-                disabled={isRefreshingSession}
-                className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 self-start sm:self-auto disabled:opacity-50"
+                type="submit"
+                disabled={isChangingPassword || !newPassword}
+                className="btn-primary text-xs py-2 px-4 flex items-center gap-2 disabled:opacity-50"
               >
-                <RefreshCw size={13} className={isRefreshingSession ? 'animate-spin text-brand-400' : 'text-slate-400'} />
-                <span>{isRefreshingSession ? 'Sessie controleren...' : 'Sessie vernieuwen'}</span>
+                <KeyRound size={14} />
+                <span>{isChangingPassword ? 'Wachtwoord bijwerken...' : 'Wachtwoord opslaan'}</span>
               </button>
-            </div>
+            </form>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {/* Session Type */}
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
-                <div className="flex items-center gap-1.5 text-slate-400 text-xs">
-                  <Radio size={13} className="text-brand-400" />
-                  <span>Sessietype</span>
-                </div>
-                <div className="text-sm font-semibold text-slate-200">
-                  {sessionInfo.type === 'CLOUD'
-                    ? 'Supabase Cloud JWT'
-                    : sessionInfo.type === 'DEMO'
-                    ? 'AliBirds Demo Studio'
-                    : 'Lokale Sessie'}
-                </div>
-                <div className="text-[10px] text-slate-500">
-                  {sessionInfo.type === 'CLOUD' ? 'End-to-end beveiligde cloud token' : 'Geen cloud-authenticatie actief'}
-                </div>
+          {/* Privacy & Data Export Card (AVG / GDPR Compliant) */}
+          <div className="card p-4 sm:p-6 space-y-3 border border-slate-800">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-slate-800">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <ShieldCheck size={16} />
               </div>
-
-              {/* Heartbeat Status */}
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
-                <div className="flex items-center gap-1.5 text-slate-400 text-xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Heartbeat & Status</span>
-                </div>
-                <div className="text-sm font-semibold text-emerald-400">
-                  Actief & Verbonden
-                </div>
-                <div className="text-[10px] text-slate-500">
-                  {sessionInfo.lastChecked
-                    ? `Laatst gecontroleerd: ${sessionInfo.lastChecked.toLocaleTimeString('nl-NL')}`
-                    : 'Continu gemonitord'}
-                </div>
-              </div>
-
-              {/* Multi-Tab Sync */}
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1 sm:col-span-2 lg:col-span-1">
-                <div className="flex items-center gap-1.5 text-slate-400 text-xs">
-                  <CheckCircle2 size={13} className="text-emerald-400" />
-                  <span>Multi-Tab Synchronisatie</span>
-                </div>
-                <div className="text-sm font-semibold text-slate-200">
-                  Realtime Actief
-                </div>
-                <div className="text-[10px] text-slate-500">
-                  Uitloggen of inloggen synchroniseert direct over alle tabbladen
-                </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-100">Privacy & Gegevensbescherming (AVG)</h3>
+                <p className="text-[11px] text-slate-400">Uw rechten op dataportabiliteit en wettelijke bewaarplicht</p>
               </div>
             </div>
 
-            {sessionInfo.expiresAt && (
-              <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/80">
-                <Clock size={14} className="text-brand-400 shrink-0" />
-                <span>
-                  Huidige access-token geldig tot:{' '}
-                  <strong className="text-slate-200 font-mono">
-                    {sessionInfo.expiresAt.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
-                  </strong>
-                  . Token wordt automatisch stil op de achtergrond verlengd.
-                </span>
-              </div>
-            )}
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Conform de Algemene Verordening Gegevensbescherming (AVG/GDPR) heeft u te allen tijde het recht om
+              uw administratie en klantgegevens te exporteren. Let op: op grond van artikel 52 AWR geldt
+              voor ondernemers een fiscale bewaarplicht van 7 jaar.
+            </p>
+
+            <button
+              type="button"
+              onClick={handleExportData}
+              disabled={isExporting}
+              className="btn-secondary text-xs py-2 px-3.5 flex items-center gap-2 disabled:opacity-50"
+            >
+              <Download size={14} />
+              <span>{isExporting ? 'Gegevens exporteren...' : 'Administratie exporteren (JSON)'}</span>
+            </button>
           </div>
 
           {/* Logout card */}

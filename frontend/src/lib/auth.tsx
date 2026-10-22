@@ -231,11 +231,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Check for Supabase Auth hash / search parameters (errors or recovery tokens)
     if (window.location.hash || window.location.search) {
       try {
-        const raw = (window.location.hash || '').replace(/^#/, '') || (window.location.search || '').replace(/^\?/, '')
-        const params = new URLSearchParams(raw)
-        const type = params.get('type')
-        const errorCode = params.get('error_code')
-        const errorDesc = params.get('error_description')
+        const searchParams = new URLSearchParams(window.location.search)
+        const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''))
+        const type = searchParams.get('type') || hashParams.get('type')
+        const errorCode = searchParams.get('error_code') || hashParams.get('error_code')
+        const errorDesc = searchParams.get('error_description') || hashParams.get('error_description')
 
         if (type === 'recovery') {
           setIsRecoveryMode(true)
@@ -279,6 +279,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setIsRecoveryMode(true)
+        if (session?.user) {
+          cleanupDemoStorage()
+          updateSessionInfoFromSbSession(session)
+          const baseUser = supabaseUserToAppUser(session.user)
+          syncOnboardingIfCompleted(baseUser, session.user).then(syncedUser => {
+            setUser(syncedUser)
+          }).catch(() => {
+            setUser(baseUser)
+          })
+        }
       } else if (event === 'SIGNED_OUT') {
         setUser(null)
         setIsRecoveryMode(false)
