@@ -495,6 +495,34 @@ test('PDF Export', 'canSharePdf helper returns boolean safely in any runtime env
   assertEquals(typeof result, 'boolean', 'canSharePdf should return boolean without throwing')
 })
 
+test('PDF Export', 'PDF dynamically overrides stale cached subtotal and computes exact totals from line items', () => {
+  const staleInvoice: any = {
+    id: 'inv-stale',
+    invoice_number: 'RF47QG3N3DZX-1',
+    issue_date: '2026-10-23',
+    due_date: '2026-11-06',
+    delivery_date: '2026-10-30',
+    calculation_mode: 'EXCLUSIVE',
+    line_items: [
+      {
+        description: 'Redesign Website Project #3',
+        quantity: 1,
+        unit_price: 1450.0,
+        vat_rate: '0',
+        line_total_excl: 1450.0,
+      },
+    ],
+    subtotal_excl: 1440.0, // Stale stored total
+    total_vat: 0.0,
+    total_incl: 1440.0,
+  }
+
+  const doc = generateInvoicePdf(staleInvoice)
+  assert(doc !== null && typeof doc === 'object', 'Should generate PDF')
+  const pdfString = doc.output()
+  assert(pdfString.includes('1.450,00'), 'PDF must include dynamically computed line item total € 1.450,00')
+})
+
 // ── 10. JTBD: INVOICE SENDING & PARTIAL UPDATE INTEGRITY ────────────────────
 console.log('\nSECTION 10: JTBD Invoice Dispatch & Price Preservation')
 

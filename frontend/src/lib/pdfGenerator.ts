@@ -116,29 +116,32 @@ export function generateInvoicePdf(
   doc.setFontSize(9)
   doc.setTextColor(71, 85, 105)
 
-  doc.text(`Factuurnummer:`, pageWidth - margin - 35, rightY)
+  const metaLabelX = pageWidth - margin - 65
+  const metaValX = pageWidth - margin
+
+  doc.text('Factuurnummer:', metaLabelX, rightY)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(15, 23, 42)
-  doc.text(invoice.invoice_number, pageWidth - margin, rightY, { align: 'right' })
+  doc.text(invoice.invoice_number, metaValX, rightY, { align: 'right' })
 
   rightY += 4.5
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(71, 85, 105)
-  doc.text(`Factuurdatum:`, pageWidth - margin - 35, rightY)
-  doc.text(fmt.date(invoice.issue_date), pageWidth - margin, rightY, { align: 'right' })
+  doc.text('Factuurdatum:', metaLabelX, rightY)
+  doc.text(fmt.date(invoice.issue_date), metaValX, rightY, { align: 'right' })
 
   rightY += 4.5
-  doc.text(`Vervaldatum:`, pageWidth - margin - 35, rightY)
+  doc.text('Vervaldatum:', metaLabelX, rightY)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(r, g, b)
-  doc.text(fmt.date(invoice.due_date), pageWidth - margin, rightY, { align: 'right' })
+  doc.text(fmt.date(invoice.due_date), metaValX, rightY, { align: 'right' })
 
   if (invoice.delivery_date) {
     rightY += 4.5
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(71, 85, 105)
-    doc.text(`Leverdatum:`, pageWidth - margin - 35, rightY)
-    doc.text(fmt.date(invoice.delivery_date), pageWidth - margin, rightY, { align: 'right' })
+    doc.text('Leverdatum:', metaLabelX, rightY)
+    doc.text(fmt.date(invoice.delivery_date), metaValX, rightY, { align: 'right' })
   }
 
   y = Math.max(y, rightY) + 8
@@ -230,11 +233,11 @@ export function generateInvoicePdf(
   doc.setTextColor(71, 85, 105)
 
   const colX = {
-    desc: margin + 2,
-    qty: margin + 95,
-    price: margin + 115,
-    vat: margin + 140,
-    total: pageWidth - margin - 2,
+    desc: margin + 2,             // 22mm
+    qty: margin + 82,             // 102mm (center)
+    price: margin + 114,          // 134mm (right)
+    vat: margin + 132,            // 152mm (center)
+    total: pageWidth - margin - 2 // 188mm (right)
   }
 
   doc.text('OMSCHRIJVING', colX.desc, y + 5)
@@ -276,21 +279,24 @@ export function generateInvoicePdf(
     const lineExcl = Number(it.line_total_excl ?? (price * qty))
     const vatRate = it.vat_rate === 'REVERSE_CHARGE' ? 'Verlegd' : `${it.vat_rate}%`
 
+    const descLines = doc.splitTextToSize(it.description || 'Dienst / Product', 72)
+    const rowHeight = Math.max(6.5, descLines.length * 4.2 + 2.3)
+
     // Zebra background
     if (idx % 2 === 1) {
       doc.setFillColor(248, 250, 252)
-      doc.rect(margin, y - 3.5, contentWidth, 7, 'F')
+      doc.rect(margin, y - 3.5, contentWidth, rowHeight, 'F')
     }
 
     doc.setFont('helvetica', 'normal')
-    doc.text(it.description || 'Dienst / Product', colX.desc, y + 1)
+    doc.text(descLines, colX.desc, y + 1)
     doc.text(String(qty), colX.qty, y + 1, { align: 'center' })
     doc.text(fmt.currency(price), colX.price, y + 1, { align: 'right' })
     doc.text(vatRate, colX.vat, y + 1, { align: 'center' })
     doc.setFont('helvetica', 'bold')
     doc.text(fmt.currency(lineExcl), colX.total, y + 1, { align: 'right' })
 
-    y += 6.5
+    y += rowHeight
   })
 
   y += 2
@@ -305,21 +311,16 @@ export function generateInvoicePdf(
   }
 
   // ── Multi-rate VAT Breakdown & Totals Box (Dutch Tax Compliant) ────────────
-  const subtotalExcl = Number(
-    invoice.subtotal_excl ??
-    invoice.subtotal_excl_vat ??
-    items.reduce((s, it) => s + (Number(it.line_total_excl) || 0), 0)
-  )
-  const totalVat = Number(
-    invoice.total_vat ??
-    invoice.total_vat_amount ??
-    items.reduce((s, it) => s + (Number(it.vat_amount) || 0), 0)
-  )
-  const totalIncl = Number(
-    invoice.total_incl ??
-    invoice.total_incl_vat ??
-    (subtotalExcl + totalVat)
-  )
+  const itemsSumExcl = items.reduce((s, it) => s + (Number(it.line_total_excl ?? (Number(it.quantity || 1) * Number(it.unit_price || 0))) || 0), 0)
+  const itemsSumVat = items.reduce((s, it) => {
+    const rate = String(it.vat_rate || '21')
+    const excl = Number(it.line_total_excl ?? (Number(it.quantity || 1) * Number(it.unit_price || 0))) || 0
+    return s + (Number(it.vat_amount ?? (rate === 'REVERSE_CHARGE' ? 0 : Math.round(excl * (Number(rate) / 100) * 100) / 100)) || 0)
+  }, 0)
+
+  const subtotalExcl = items.length > 0 ? itemsSumExcl : Number(invoice.subtotal_excl ?? invoice.subtotal_excl_vat ?? 0)
+  const totalVat = items.length > 0 ? itemsSumVat : Number(invoice.total_vat ?? invoice.total_vat_amount ?? 0)
+  const totalIncl = subtotalExcl + totalVat
 
   // Compute breakdown per VAT tariff (Art. 35a lid 1 sub i Wet OB)
   const vatBreakdown: Record<string, { base: number; vat: number }> = {}
@@ -334,13 +335,15 @@ export function generateInvoicePdf(
 
   // Left side: Btw-specificatie table (Legal Requirement)
   const vatTableX = margin
+  const vatBaseX = margin + 55
+  const vatAmountX = margin + 78
   let vatTableY = y
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(7.5)
   doc.setTextColor(100, 116, 139)
   doc.text('BTW-SPECIFICATIE', vatTableX, vatTableY)
-  doc.text('GRONDSLAG', vatTableX + 35, vatTableY, { align: 'right' })
-  doc.text('BTW', vatTableX + 55, vatTableY, { align: 'right' })
+  doc.text('GRONDSLAG', vatBaseX, vatTableY, { align: 'right' })
+  doc.text('BTW', vatAmountX, vatTableY, { align: 'right' })
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7.5)
@@ -357,8 +360,8 @@ export function generateInvoicePdf(
   Object.entries(vatBreakdown).forEach(([rate, data]) => {
     const label = rateLabels[rate] || `Tarief ${rate}%`
     doc.text(label, vatTableX, vatTableY)
-    doc.text(fmt.currency(data.base), vatTableX + 35, vatTableY, { align: 'right' })
-    doc.text(fmt.currency(data.vat), vatTableX + 55, vatTableY, { align: 'right' })
+    doc.text(fmt.currency(data.base), vatBaseX, vatTableY, { align: 'right' })
+    doc.text(fmt.currency(data.vat), vatAmountX, vatTableY, { align: 'right' })
     vatTableY += 3.5
   })
 
@@ -628,22 +631,25 @@ export function generateQuotationPdf(
   doc.setFontSize(9)
   doc.setTextColor(71, 85, 105)
 
-  doc.text('Offertenummer:', pageWidth - margin - 35, rightY)
+  const metaLabelX = pageWidth - margin - 65
+  const metaValX = pageWidth - margin
+
+  doc.text('Offertenummer:', metaLabelX, rightY)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(15, 23, 42)
-  doc.text(quotation.quotation_number, pageWidth - margin, rightY, { align: 'right' })
+  doc.text(quotation.quotation_number, metaValX, rightY, { align: 'right' })
 
   rightY += 4.5
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(71, 85, 105)
-  doc.text('Offertedatum:', pageWidth - margin - 35, rightY)
-  doc.text(fmt.date(quotation.issue_date), pageWidth - margin, rightY, { align: 'right' })
+  doc.text('Offertedatum:', metaLabelX, rightY)
+  doc.text(fmt.date(quotation.issue_date), metaValX, rightY, { align: 'right' })
 
   rightY += 4.5
-  doc.text('Geldig tot:', pageWidth - margin - 35, rightY)
+  doc.text('Geldig tot:', metaLabelX, rightY)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(r, g, b)
-  doc.text(fmt.date(quotation.valid_until_date), pageWidth - margin, rightY, { align: 'right' })
+  doc.text(fmt.date(quotation.valid_until_date), metaValX, rightY, { align: 'right' })
 
   y = Math.max(y, rightY) + 8
 
@@ -696,11 +702,11 @@ export function generateQuotationPdf(
   doc.setTextColor(71, 85, 105)
 
   const colX = {
-    desc: margin + 2,
-    qty: margin + 95,
-    price: margin + 115,
-    vat: margin + 140,
-    total: pageWidth - margin - 2,
+    desc: margin + 2,             // 22mm
+    qty: margin + 82,             // 102mm (center)
+    price: margin + 114,          // 134mm (right)
+    vat: margin + 132,            // 152mm (center)
+    total: pageWidth - margin - 2 // 188mm (right)
   }
 
   doc.text('OMSCHRIJVING', colX.desc, y + 5)
@@ -716,29 +722,45 @@ export function generateQuotationPdf(
     if (y > 235) {
       doc.addPage()
       y = 20
+      doc.setFillColor(248, 250, 252)
+      doc.rect(margin, y, contentWidth, 7, 'F')
+      doc.setDrawColor(226, 232, 240)
+      doc.line(margin, y + 7, pageWidth - margin, y + 7)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(8)
+      doc.setTextColor(71, 85, 105)
+      doc.text('OMSCHRIJVING', colX.desc, y + 5)
+      doc.text('AANTAL', colX.qty, y + 5, { align: 'center' })
+      doc.text('PRIJS EXCL.', colX.price, y + 5, { align: 'right' })
+      doc.text('BTW', colX.vat, y + 5, { align: 'center' })
+      doc.text('TOTAAL EXCL.', colX.total, y + 5, { align: 'right' })
+      y += 9
     }
     const qty = Number(it.quantity) || 1
     const price = Number(it.unit_price) || 0
     const lineExcl = Number(it.line_total_excl ?? (price * qty))
     const vatRate = it.vat_rate === 'REVERSE_CHARGE' ? 'Verlegd' : `${it.vat_rate}%`
 
+    const descLines = doc.splitTextToSize(it.description || 'Dienst / Product', 72)
+    const rowHeight = Math.max(6.5, descLines.length * 4.2 + 2.3)
+
     if (idx % 2 === 1) {
       doc.setFillColor(248, 250, 252)
-      doc.rect(margin, y - 3.5, contentWidth, 7, 'F')
+      doc.rect(margin, y - 3.5, contentWidth, rowHeight, 'F')
     }
 
     doc.setFont('helvetica', 'normal')
-    doc.text(it.description || 'Dienst / Product', colX.desc, y + 1)
+    doc.text(descLines, colX.desc, y + 1)
     doc.text(String(qty), colX.qty, y + 1, { align: 'center' })
     doc.text(fmt.currency(price), colX.price, y + 1, { align: 'right' })
     doc.text(vatRate, colX.vat, y + 1, { align: 'center' })
     doc.setFont('helvetica', 'bold')
     doc.text(fmt.currency(lineExcl), colX.total, y + 1, { align: 'right' })
 
-    y += 6.5
+    y += rowHeight
   })
 
-  y += 4
+  y += 2
   doc.setDrawColor(226, 232, 240)
   doc.line(margin, y, pageWidth - margin, y)
   y += 6
@@ -747,15 +769,26 @@ export function generateQuotationPdf(
   const totalsLabelX = pageWidth - margin - 60
   const totalsValX = pageWidth - margin
 
+  const quoteSumExcl = items.reduce((s, it) => s + (Number(it.line_total_excl ?? (Number(it.quantity || 1) * Number(it.unit_price || 0))) || 0), 0)
+  const quoteSumVat = items.reduce((s, it) => {
+    const rate = String(it.vat_rate || '21')
+    const excl = Number(it.line_total_excl ?? (Number(it.quantity || 1) * Number(it.unit_price || 0))) || 0
+    return s + (Number(it.vat_amount ?? (rate === 'REVERSE_CHARGE' ? 0 : Math.round(excl * (Number(rate) / 100) * 100) / 100)) || 0)
+  }, 0)
+
+  const subtotalExcl = items.length > 0 ? quoteSumExcl : (Number(quotation.subtotal_excl) || 0)
+  const totalVat = items.length > 0 ? quoteSumVat : (Number(quotation.total_vat) || 0)
+  const totalIncl = subtotalExcl + totalVat
+
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(71, 85, 105)
   doc.text('Subtotaal excl. btw:', totalsLabelX, y)
-  doc.text(fmt.currency(Number(quotation.subtotal_excl) || 0), totalsValX, y, { align: 'right' })
+  doc.text(fmt.currency(subtotalExcl), totalsValX, y, { align: 'right' })
   y += 5
 
   doc.text('Totaal btw bedrag:', totalsLabelX, y)
-  doc.text(fmt.currency(Number(quotation.total_vat) || 0), totalsValX, y, { align: 'right' })
+  doc.text(fmt.currency(totalVat), totalsValX, y, { align: 'right' })
   y += 6
 
   doc.setFillColor(r, g, b)
@@ -764,7 +797,7 @@ export function generateQuotationPdf(
   doc.setFontSize(10)
   doc.setTextColor(255, 255, 255)
   doc.text('Totaal incl. btw:', totalsLabelX, y + 2)
-  doc.text(fmt.currency(Number(quotation.total_amount) || 0), totalsValX, y + 2, { align: 'right' })
+  doc.text(fmt.currency(totalIncl), totalsValX, y + 2, { align: 'right' })
 
   // Footer note
   doc.setFont('helvetica', 'italic')
