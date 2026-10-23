@@ -402,6 +402,99 @@ test('Payment Reference', 'Auto-matches bank statement with Betalingskenmerk dir
   assertEquals(matchResults[0].score, 100, 'Match score should be 100% via Betalingskenmerk')
 })
 
+// ── 9. VECTOR PDF GENERATION & RESILIENT CLIENT EXTRACTION ──────────────────
+console.log('\nSECTION 9: Vector PDF Generation & Mobile Export Integrity')
+
+import { generateInvoicePdf, generateInvoicePdfBase64, generateQuotationPdf, canSharePdf } from '../src/lib/pdfGenerator'
+
+test('PDF Export', 'Correctly generates vector PDF with embedded array client (Supabase join)', () => {
+  const dummyInvoice: any = {
+    id: 'inv-test-1',
+    invoice_number: '2026-0001',
+    issue_date: '2026-10-23',
+    due_date: '2026-11-06',
+    status: 'SENT',
+    calculation_mode: 'EXCLUSIVE',
+    client_id: 'cli-1',
+    client: [
+      {
+        id: 'cli-1',
+        name: 'Vermeer Architecten B.V.',
+        contact_person: 'Dhr. J. Vermeer',
+        billing_address_street: 'Herengracht 450',
+        billing_address_city: 'Amsterdam',
+        billing_address_postcode: '1017 CA',
+        country_code: 'NL',
+        kvk_number: '87654321',
+        vat_number: 'NL876543210B01',
+      },
+    ],
+    line_items: [
+      {
+        description: 'Brand Identity Design',
+        quantity: 1,
+        unit_price: 2450.0,
+        vat_rate: '21',
+        vat_amount: 514.5,
+        line_total_excl: 2450.0,
+        line_total_incl: 2964.5,
+      },
+    ],
+    subtotal_excl: 2450.0,
+    total_vat: 514.5,
+    total_incl: 2964.5,
+  }
+
+  const dummySettings: any = {
+    company_name: 'Studio AliBirds',
+    address_street: 'Keizersgracht 100',
+    address_city: 'Amsterdam',
+    address_postcode: '1015 CR',
+    kvk_number: '12345678',
+    btw_id: 'NL123456789B01',
+    iban: 'NL99INGB0001234567',
+  }
+
+  const doc = generateInvoicePdf(dummyInvoice, undefined, dummySettings)
+  assert(doc !== null && typeof doc === 'object', 'generateInvoicePdf should return jsPDF document')
+  
+  const base64 = generateInvoicePdfBase64(dummyInvoice, undefined, dummySettings)
+  assert(typeof base64 === 'string' && base64.length > 100, 'generateInvoicePdfBase64 should return base64 string')
+})
+
+test('PDF Export', 'Generates valid quotation PDF document', () => {
+  const dummyQuote: any = {
+    id: 'quote-1',
+    quotation_number: 'OFF-2026-001',
+    issue_date: '2026-10-23',
+    valid_until_date: '2026-11-23',
+    status: 'SENT',
+    client: {
+      name: 'Rembrandt Media',
+    },
+    line_items: [
+      {
+        description: 'UI/UX Redesign',
+        quantity: 1,
+        unit_price: 1500.0,
+        vat_rate: '21',
+        line_total_excl: 1500.0,
+      },
+    ],
+    subtotal_excl: 1500.0,
+    total_vat: 315.0,
+    total_amount: 1815.0,
+  }
+
+  const doc = generateQuotationPdf(dummyQuote)
+  assert(doc !== null && typeof doc === 'object', 'generateQuotationPdf should return jsPDF document')
+})
+
+test('PDF Export', 'canSharePdf helper returns boolean safely in any runtime environment', () => {
+  const result = canSharePdf()
+  assertEquals(typeof result, 'boolean', 'canSharePdf should return boolean without throwing')
+})
+
 // ── SUMMARY REPORT ─────────────────────────────────────────────────────────
 console.log('\n=================================================================')
 const passedCount = results.filter(r => r.passed).length

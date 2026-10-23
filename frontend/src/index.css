@@ -357,3 +357,65 @@ bdi[dir="ltr"] {
 .recharts-cartesian-grid-vertical line {
   stroke: rgb(51 65 85 / 0.4) !important;
 }
+
+/* ── Print Media Optimization (Clean A4 Paper Output) ─────────────────────── */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    overflow: visible !important;
+    height: auto !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide app shell, loaders, banners, navigation and modal chrome */
+  header, nav, aside, footer, .m3-linear-loader, .print\:hidden,
+  button, .btn-primary, .btn-secondary, [role="tooltip"],
+  .toast, #toast-container {
+    display: none !important;
+  }
+
+  /* Override fixed modal overlay for print */
+  [role="dialog"] {
+    position: static !important;
+    inset: auto !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  [role="dialog"] > div {
+    position: static !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  #invoice-printable-sheet,
+  #quotation-printable-sheet {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+}

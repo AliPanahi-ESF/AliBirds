@@ -1,8 +1,12 @@
-import React from 'react'
-import { Printer, X, CheckCircle2, Calendar, FileCheck, ShieldCheck } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Printer, X, CheckCircle2, Calendar, FileCheck, ShieldCheck, Download, Share2, Loader2 } from 'lucide-react'
 import { Quotation, BusinessSettings, Client } from '@/lib/types'
 import { fmt, clientsApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
+import { downloadQuotationPdf, shareQuotationPdf, canSharePdf } from '@/lib/pdfGenerator'
+import { triggerHaptic } from '@/lib/haptics'
+import { useI18n } from '@/lib/i18n'
+import toast from 'react-hot-toast'
 
 interface QuotationPrintModalProps {
   quotation: Quotation
@@ -17,8 +21,45 @@ export default function QuotationPrintModal({
   settings,
   onClose,
 }: QuotationPrintModalProps) {
+  const { t } = useI18n()
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+  const [canShare, setCanShare] = useState(false)
+
+  useEffect(() => {
+    setCanShare(canSharePdf())
+  }, [])
+
   const handlePrint = () => {
+    triggerHaptic('light')
     window.print()
+  }
+
+  const handleDownloadPdf = async () => {
+    try {
+      setIsDownloading(true)
+      triggerHaptic('medium')
+      await downloadQuotationPdf(quotation, client, settings)
+      toast.success(t('quote.toast_pdf_downloaded', 'Offerte PDF succesvol gedownload!'))
+    } catch (err) {
+      console.error('Download Quote PDF error:', err)
+      toast.error(t('quote.toast_pdf_error', 'Kon offerte PDF niet exporteren'))
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleSharePdf = async () => {
+    try {
+      setIsSharing(true)
+      triggerHaptic('medium')
+      await shareQuotationPdf(quotation, client, settings)
+    } catch (err) {
+      console.error('Share Quote PDF error:', err)
+      toast.error(t('quote.toast_pdf_error', 'Kon offerte PDF niet exporteren'))
+    } finally {
+      setIsSharing(false)
+    }
   }
 
   const { data: allClients = [] } = useQuery<Client[]>({
@@ -62,19 +103,42 @@ export default function QuotationPrintModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in print:p-0 print:bg-white print:static print:inset-auto">
       <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] print:max-h-none print:border-0 print:shadow-none print:bg-white print:text-black">
         {/* Modal Action Bar (Hidden during print) */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/90 print:hidden">
-          <div className="flex items-center gap-2 text-slate-300">
-            <FileCheck size={18} className="text-brand-400" />
-            <span className="text-sm font-semibold">Offerte Voorbeeld: {quotation.quotation_number}</span>
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-slate-800 bg-slate-900/90 print:hidden gap-2">
+          <div className="flex items-center gap-2 text-slate-300 min-w-0">
+            <FileCheck size={18} className="text-brand-400 flex-shrink-0" />
+            <span className="text-xs sm:text-sm font-semibold truncate">Offerte: {quotation.quotation_number}</span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handlePrint}
-              className="btn-primary py-1.5 px-3.5 text-xs flex items-center gap-1.5"
-            >
-              <Printer size={14} />
-              <span>Afdrukken / Opslaan als PDF</span>
-            </button>
+            <div className="hidden sm:flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                disabled={isDownloading || isSharing}
+                className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5 m3-state-layer disabled:opacity-50"
+              >
+                {isDownloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                <span>{t('quote.download_pdf', 'Download PDF')}</span>
+              </button>
+              {canShare && (
+                <button
+                  type="button"
+                  onClick={handleSharePdf}
+                  disabled={isDownloading || isSharing}
+                  className="py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5 m3-state-layer disabled:opacity-50"
+                >
+                  {isSharing ? <Loader2 size={13} className="animate-spin" /> : <Share2 size={13} />}
+                  <span>{t('quote.share_pdf', 'Delen')}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center gap-1.5 m3-state-layer"
+              >
+                <Printer size={13} />
+                <span>{t('quote.print', 'Afdrukken')}</span>
+              </button>
+            </div>
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
@@ -255,6 +319,37 @@ export default function QuotationPrintModal({
               </div>
             </div>
           )}
+        </div>
+
+        {/* Mobile Sticky Bottom Action Bar */}
+        <div className="sm:hidden sticky bottom-0 z-20 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 p-2.5 safe-area-pb flex items-center gap-2 print:hidden">
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={isDownloading || isSharing}
+            className="flex-1 py-2.5 px-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all disabled:opacity-50 m3-state-layer"
+          >
+            {isDownloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+            <span>{t('quote.download_pdf', 'Download PDF')}</span>
+          </button>
+          {canShare && (
+            <button
+              type="button"
+              onClick={handleSharePdf}
+              disabled={isDownloading || isSharing}
+              className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all disabled:opacity-50 m3-state-layer"
+            >
+              {isSharing ? <Loader2 size={15} className="animate-spin" /> : <Share2 size={15} />}
+              <span>{t('quote.share_pdf', 'Delen')}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs flex items-center justify-center gap-1.5 border border-slate-700 active:scale-95 transition-all m3-state-layer"
+          >
+            <Printer size={15} />
+          </button>
         </div>
       </div>
     </div>

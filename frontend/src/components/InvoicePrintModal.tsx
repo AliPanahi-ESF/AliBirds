@@ -1,10 +1,12 @@
-import React, { useState } from 'react'
-import { Printer, Download, X, Building2, CheckCircle2, Calendar, CreditCard, Copy, Check } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Printer, Download, X, Share2, Loader2, Copy, Check } from 'lucide-react'
 import { Invoice, BusinessSettings, Client } from '@/lib/types'
 import { fmt, clientsApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 import { generateRfReference } from '@/lib/paymentReference'
 import { triggerHaptic } from '@/lib/haptics'
+import { downloadInvoicePdf, shareInvoicePdf, canSharePdf } from '@/lib/pdfGenerator'
+import { useI18n } from '@/lib/i18n'
 import toast from 'react-hot-toast'
 
 interface InvoicePrintModalProps {
@@ -15,8 +17,18 @@ interface InvoicePrintModalProps {
 }
 
 export default function InvoicePrintModal({ invoice, client: propClient, settings, onClose }: InvoicePrintModalProps) {
+  const { t } = useI18n()
   const [copiedRef, setCopiedRef] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+  const [canShare, setCanShare] = useState(false)
+
+  useEffect(() => {
+    setCanShare(canSharePdf())
+  }, [])
+
   const handlePrint = () => {
+    triggerHaptic('light')
     window.print()
   }
 
@@ -42,6 +54,36 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
   const [priceMode, setPriceMode] = React.useState<'EXCLUSIVE' | 'INCLUSIVE'>(
     invoice.calculation_mode === 'INCLUSIVE' ? 'INCLUSIVE' : 'EXCLUSIVE'
   )
+
+  const handleDownloadPdf = async () => {
+    try {
+      setIsDownloading(true)
+      triggerHaptic('medium')
+      await downloadInvoicePdf(invoice, client, settings)
+      toast.success(t('inv.toast_pdf_downloaded', 'Factuur PDF succesvol gedownload!'))
+    } catch (err) {
+      console.error('Download PDF error:', err)
+      toast.error(t('inv.toast_pdf_error', 'Kon PDF niet downloaden'))
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleSharePdf = async () => {
+    try {
+      setIsSharing(true)
+      triggerHaptic('medium')
+      const shared = await shareInvoicePdf(invoice, client, settings)
+      if (shared) {
+        toast.success(t('inv.toast_pdf_shared', 'Factuur PDF gedeeld!'))
+      }
+    } catch (err) {
+      console.error('Share PDF error:', err)
+      toast.error(t('inv.toast_pdf_error', 'Kon PDF niet delen'))
+    } finally {
+      setIsSharing(false)
+    }
+  }
 
   // Safe totals calculation with multiple fallbacks
   const subtotalExcl = Number(
@@ -83,32 +125,34 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex justify-center p-2 sm:p-4 md:p-6 print:p-0 print:bg-white print:static"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-sm flex justify-center p-2 sm:p-4 md:p-6 print:p-0 print:bg-white print:static"
       role="dialog"
       aria-modal="true"
       aria-label={`Factuur ${invoice.invoice_number} preview`}
     >
-      <div className="relative w-full max-w-4xl bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden print:shadow-none print:rounded-none print:w-full print:max-w-none">
+      <div className="relative w-full max-w-4xl bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col print:shadow-none print:rounded-none print:w-full print:max-w-none">
         
         {/* Top Action Bar (Hidden when printing) */}
-        <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between px-4 sm:px-6 py-3 bg-slate-900 text-white border-b border-slate-800 print:hidden gap-3">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-sm">Factuur Preview & PDF Export</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+        <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 bg-slate-900 text-white border-b border-slate-800 print:hidden gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-semibold text-xs sm:text-sm truncate">
+              {t('inv.export_pdf', 'Factuur Preview & PDF Export')}
+            </span>
+            <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono flex-shrink-0">
               {invoice.invoice_number}
             </span>
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             {/* Price display mode toggle */}
-            <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-lg border border-slate-700">
-              <span className="text-[11px] text-slate-400 pl-1 font-medium">Prijzen:</span>
+            <div className="flex items-center gap-1 bg-slate-800 p-0.5 sm:p-1 rounded-lg border border-slate-700">
+              <span className="text-[10px] sm:text-[11px] text-slate-400 pl-1 font-medium hidden xs:inline">Prijzen:</span>
               <button
                 type="button"
                 onClick={() => setPriceMode('EXCLUSIVE')}
-                className={`px-2 py-0.5 rounded text-xs font-semibold transition-colors ${
+                className={`px-1.5 sm:px-2 py-0.5 rounded text-[11px] sm:text-xs font-semibold transition-colors ${
                   priceMode === 'EXCLUSIVE'
-                    ? 'bg-indigo-600 text-white shadow-sm'
+                    ? 'bg-brand-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -117,9 +161,9 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
               <button
                 type="button"
                 onClick={() => setPriceMode('INCLUSIVE')}
-                className={`px-2 py-0.5 rounded text-xs font-semibold transition-colors ${
+                className={`px-1.5 sm:px-2 py-0.5 rounded text-[11px] sm:text-xs font-semibold transition-colors ${
                   priceMode === 'INCLUSIVE'
-                    ? 'bg-indigo-600 text-white shadow-sm'
+                    ? 'bg-brand-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -127,16 +171,46 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
               </button>
             </div>
 
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md active:scale-95 transition-all"
-            >
-              <Printer size={15} />
-              <span>Afdrukken / Opslaan als PDF</span>
-            </button>
+            {/* Desktop Actions */}
+            <div className="hidden sm:flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                disabled={isDownloading || isSharing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold shadow-md active:scale-95 transition-all disabled:opacity-50 m3-state-layer"
+                title={t('inv.download_pdf', 'Download PDF')}
+              >
+                {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                <span>{isDownloading ? t('inv.exporting', 'Downloaden...') : t('inv.download_pdf', 'Download PDF')}</span>
+              </button>
+
+              {canShare && (
+                <button
+                  type="button"
+                  onClick={handleSharePdf}
+                  disabled={isDownloading || isSharing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md active:scale-95 transition-all disabled:opacity-50 m3-state-layer"
+                  title={t('inv.share_pdf', 'Delen / Opslaan')}
+                >
+                  {isSharing ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
+                  <span>{t('inv.share_pdf', 'Delen')}</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 active:scale-95 transition-all m3-state-layer"
+                title={t('inv.print', 'Afdrukken')}
+              >
+                <Printer size={14} />
+                <span>{t('inv.print', 'Afdrukken')}</span>
+              </button>
+            </div>
+
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-1 sm:p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors ml-1"
               title="Sluiten"
             >
               <X size={18} />
@@ -389,6 +463,41 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
             )}
           </div>
 
+        </div>
+
+        {/* Mobile Sticky Bottom Action Bar (Thumb ergonomic zone) */}
+        <div className="sm:hidden sticky bottom-0 z-20 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 p-2.5 safe-area-pb flex items-center gap-2 print:hidden">
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={isDownloading || isSharing}
+            className="flex-1 py-2.5 px-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all disabled:opacity-50 m3-state-layer"
+          >
+            {isDownloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+            <span>{isDownloading ? t('inv.exporting', 'Downloaden...') : t('inv.download_pdf', 'Download PDF')}</span>
+          </button>
+
+          {canShare && (
+            <button
+              type="button"
+              onClick={handleSharePdf}
+              disabled={isDownloading || isSharing}
+              className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all disabled:opacity-50 m3-state-layer"
+              title="Deel via WhatsApp of Bewaar in Bestanden"
+            >
+              {isSharing ? <Loader2 size={15} className="animate-spin" /> : <Share2 size={15} />}
+              <span>{t('inv.share_pdf', 'Delen')}</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs flex items-center justify-center gap-1.5 border border-slate-700 active:scale-95 transition-all m3-state-layer"
+            title={t('inv.print', 'Afdrukken')}
+          >
+            <Printer size={15} />
+          </button>
         </div>
       </div>
     </div>

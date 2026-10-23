@@ -315,8 +315,8 @@ export default function InvoiceList() {
                         triggerHaptic('light')
                         setPrintInvoice(inv)
                       }}
-                      className="flex-1 py-2 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-brand-300 text-xs font-medium flex items-center justify-center gap-1.5 border border-slate-700/50 min-h-[40px] active:scale-95 transition-all"
-                      title={t('inv.action_pdf', 'PDF bekijken of downloaden')}
+                      className="flex-1 py-2 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-brand-300 text-xs font-medium flex items-center justify-center gap-1.5 border border-slate-700/50 min-h-[40px] active:scale-95 transition-all m3-state-layer"
+                      title={t('inv.action_pdf_preview', 'PDF bekijken of exporteren')}
                     >
                       <Download size={13} />
                       <span>{t('inv.action_pdf', 'PDF')}</span>
@@ -424,9 +424,12 @@ export default function InvoiceList() {
                         <Eye size={14} />
                       </button>
                       <button
-                        onClick={() => setPrintInvoice(inv)}
-                        className="btn-ghost p-1.5 rounded-lg text-brand-400 hover:text-brand-300"
-                        title="Afdrukken / PDF"
+                        onClick={() => {
+                          triggerHaptic('light')
+                          setPrintInvoice(inv)
+                        }}
+                        className="btn-ghost p-1.5 rounded-lg text-brand-400 hover:text-brand-300 m3-state-layer"
+                        title={t('inv.action_pdf_preview', 'PDF bekijken, downloaden of afdrukken')}
                         aria-label={`Factuur ${inv.invoice_number} afdrukken als PDF`}
                       >
                         <Download size={14} />

@@ -290,11 +290,11 @@ function getCredentials(): { url: string; key: string } {
 const creds = getCredentials()
 
 export function isSupabaseConfigured(): boolean {
-  return true
+  return Boolean(creds.url && creds.key)
 }
 
-const safeUrl = creds.url
-const safeKey = creds.key
+const safeUrl = creds.url || 'https://placeholder-alibirds.supabase.co'
+const safeKey = creds.key || 'placeholder-anon-key'
 
 // Single shared client — auth session is persisted automatically by the SDK
 export const supabase = createClient(safeUrl, safeKey, {
