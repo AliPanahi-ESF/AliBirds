@@ -123,15 +123,24 @@ export default function PublicQuoteReview() {
 
         {/* Signed Success Alert Banner */}
         {isSigned && (
-          <div className="card p-5 border-emerald-500/30 bg-emerald-950/20 text-emerald-300 flex items-center gap-3.5 print:hidden">
-            <CheckCircle2 size={24} className="text-emerald-400 shrink-0" />
-            <div className="text-xs sm:text-sm">
-              <span className="font-bold">Hartelijk dank voor uw akkoord!</span> Deze offerte is rechtsgeldig
-              digitaal ondertekend door <span className="font-semibold text-emerald-200">{quote.signed_by_name}</span> op{' '}
-              <span className="font-semibold text-emerald-200">
-                {quote.signed_at ? new Date(quote.signed_at).toLocaleString('nl-NL') : ''}
-              </span>.
+          <div className="card p-5 border-emerald-500/30 bg-emerald-950/20 text-emerald-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
+            <div className="flex items-center gap-3.5">
+              <CheckCircle2 size={24} className="text-emerald-400 shrink-0" />
+              <div className="text-xs sm:text-sm">
+                <span className="font-bold">Hartelijk dank voor uw akkoord!</span> Deze offerte is rechtsgeldig
+                digitaal ondertekend door <span className="font-semibold text-emerald-200">{quote.signed_by_name}</span> op{' '}
+                <span className="font-semibold text-emerald-200">
+                  {quote.signed_at ? new Date(quote.signed_at).toLocaleString('nl-NL') : ''}
+                </span>.
+              </div>
             </div>
+            <button
+              onClick={handlePrint}
+              className="btn-secondary py-2 px-3.5 text-xs flex items-center justify-center gap-1.5 shrink-0 bg-emerald-900/30 border-emerald-500/30 text-emerald-200 hover:bg-emerald-800/40 active:scale-95 transition-all min-h-[40px]"
+            >
+              <Printer size={15} />
+              <span>Getekend exemplaar (PDF)</span>
+            </button>
           </div>
         )}
 
