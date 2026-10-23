@@ -1,10 +1,11 @@
 import { useState, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/lib/auth'
-import { I18nProvider } from '@/lib/i18n'
+import { I18nProvider, useI18n } from '@/lib/i18n'
 import Sidebar from '@/components/Sidebar'
 import MobileHeader from '@/components/MobileHeader'
 import BottomNav from '@/components/BottomNav'
+import M3LinearLoader from '@/components/M3LinearLoader'
 
 // Lazy-loaded routes for optimal bundle code-splitting
 const Dashboard = lazy(() => import('@/pages/Dashboard'))
@@ -24,21 +25,22 @@ const OnboardingPage = lazy(() => import('@/pages/Onboarding'))
 
 function PageFallback() {
   return (
-    <div className="space-y-4 animate-pulse max-w-5xl py-4" role="status" aria-label="Pagina laden...">
-      <div className="h-8 w-48 bg-slate-800/80 rounded-lg" />
-      <div className="h-4 w-72 bg-slate-800/50 rounded" />
+    <div className="space-y-4 max-w-5xl py-4 m3-fade-through" role="status" aria-label="Pagina laden...">
+      <div className="h-8 w-48 m3-skeleton-shimmer rounded-xl" />
+      <div className="h-4 w-72 m3-skeleton-shimmer rounded-lg" />
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
-        <div className="h-24 bg-slate-900 border border-slate-800/60 rounded-xl" />
-        <div className="h-24 bg-slate-900 border border-slate-800/60 rounded-xl" />
-        <div className="h-24 bg-slate-900 border border-slate-800/60 rounded-xl" />
+        <div className="h-28 m3-skeleton-shimmer border border-slate-800/60 rounded-2xl" />
+        <div className="h-28 m3-skeleton-shimmer border border-slate-800/60 rounded-2xl" />
+        <div className="h-28 m3-skeleton-shimmer border border-slate-800/60 rounded-2xl" />
       </div>
-      <div className="h-64 bg-slate-900 border border-slate-800/60 rounded-xl mt-4" />
+      <div className="h-72 m3-skeleton-shimmer border border-slate-800/60 rounded-2xl mt-4" />
     </div>
   )
 }
 
 function AppContent() {
   const { user, isLoading, isRecoveryMode } = useAuth()
+  const { locale } = useI18n()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -119,15 +121,21 @@ function AppContent() {
   // Main application layout with Sidebar, Mobile Header & Bottom Navigation
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100 flex-col md:flex-row">
+      {/* Google Material 3 Indeterminate Top Linear Progress Bar */}
+      <M3LinearLoader />
+
       {/* Responsive Sidebar (off-canvas drawer on mobile, fixed left on desktop) */}
       <Sidebar isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
 
       {/* Mobile Sticky Header */}
       <MobileHeader onOpenMenu={() => setMobileMenuOpen(true)} />
 
-      {/* Main Content Area */}
-      <main className="flex-1 md:ml-[260px] min-h-[calc(100vh-3.5rem)] md:min-h-screen pb-[calc(90px+env(safe-area-inset-bottom,0px))] md:pb-8">
-        <div className="p-3.5 sm:p-5 md:p-8 max-w-[1800px] mx-auto w-full animate-fade-in">
+      {/* Main Content Area: Keyed with locale to instantly update all pages upon language switch */}
+      <main
+        key={locale}
+        className="flex-1 md:ml-[260px] min-h-[calc(100vh-3.5rem)] md:min-h-screen pb-[calc(90px+env(safe-area-inset-bottom,0px))] md:pb-8"
+      >
+        <div key={location.pathname} className="p-3.5 sm:p-5 md:p-8 max-w-[1800px] mx-auto w-full m3-fade-through">
           <Suspense fallback={<PageFallback />}>
             <Routes>
               <Route path="/" element={<Dashboard />} />

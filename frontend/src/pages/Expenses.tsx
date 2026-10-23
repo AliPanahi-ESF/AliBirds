@@ -245,18 +245,18 @@ export default function Expenses() {
   const totalIncl = filteredExpenses.reduce((s, e) => s + Number(e.amount_incl_vat), 0)
 
   return (
-    <div className="space-y-6 w-full animate-fade-in pb-12">
+    <div className="space-y-6 w-full m3-fade-through pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-100 flex items-center gap-2.5">
-            <span>{t('nav.expenses', 'Kosten & Uitgaven')}</span>
+            <span>{t('expenses.title', 'Kosten & Uitgaven')}</span>
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-medium">
               Smart Inbox
             </span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            {t('expenses.subtitle', 'Zakelijke uitgaven, automatische bonherkenning en aftrekbare voorbelasting (Rubriek 5b)')}
+            {t('expenses.subtitle', 'Beheer inkoopfacturen, bonnen en voorbelasting (Rubriek 5b)')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -266,10 +266,10 @@ export default function Expenses() {
               triggerHaptic('light')
               handleManualAdd()
             }}
-            className="btn-secondary text-xs sm:text-sm py-2 px-3.5 flex items-center gap-1.5 min-h-[44px] active:scale-95"
+            className="btn-secondary text-xs sm:text-sm py-2 px-3.5 flex items-center gap-1.5 min-h-[44px] active:scale-95 m3-state-layer"
           >
             <Plus size={15} />
-            <span>{t('btn.new_expense', 'Handmatig invoeren')}</span>
+            <span>{t('expenses.new_btn', 'Nieuwe uitgave')}</span>
           </button>
         </div>
       </div>
@@ -293,10 +293,10 @@ export default function Expenses() {
               <Sparkles size={20} className="absolute inset-0 m-auto text-purple-400 animate-pulse" />
             </div>
             <div className="text-sm font-bold text-slate-100 animate-pulse">
-              AI Vision analyseert bon & extraheert bedragen...
+              {t('expenses.ai_analyzing', 'AI analyseert bon...')}
             </div>
             <p className="text-xs text-slate-400">
-              Herkennen van leverancier, btw-tarief, datum en voorbelasting (5b)
+              {t('expenses.subtitle', 'Herkennen van leverancier, btw-tarief, datum en voorbelasting (5b)')}
             </p>
           </div>
         ) : (
@@ -307,13 +307,13 @@ export default function Expenses() {
 
             <div>
               <h3 className="text-sm sm:text-base font-bold text-slate-100 flex items-center justify-center gap-1.5">
-                <span>Sleep kassabonnen of facturen hierheen</span>
+                <span>{t('expenses.drag_drop_title', 'Sleep kassabonnen of facturen hierheen')}</span>
                 <span className="text-[10px] bg-purple-500/20 text-purple-300 font-mono px-1.5 py-0.5 rounded">
                   AI OCR
                 </span>
               </h3>
               <p className="text-xs text-slate-400 mt-1">
-                Ondersteunt JPG, PNG, WebP en PDF facturen tot 25MB
+                {t('expenses.drag_drop_sub', 'Ondersteunt JPG, PNG, WebP en PDF facturen tot 25MB')}
               </p>
             </div>
 
@@ -322,19 +322,19 @@ export default function Expenses() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="btn-primary bg-purple-600 hover:bg-purple-500 border-purple-500 py-2 px-4 text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/20"
+                className="btn-primary bg-purple-600 hover:bg-purple-500 border-purple-500 py-2 px-4 text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/20 m3-state-layer"
               >
                 <UploadCloud size={14} />
-                <span>Bestand selecteren</span>
+                <span>{t('expenses.select_file', 'Bestand selecteren')}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => cameraInputRef.current?.click()}
-                className="btn-secondary py-2 px-3.5 text-xs flex items-center gap-1.5 text-slate-300"
+                className="btn-secondary py-2 px-3.5 text-xs flex items-center gap-1.5 text-slate-300 m3-state-layer"
               >
                 <Camera size={14} />
-                <span>Foto maken (Mobiel)</span>
+                <span>{t('expenses.take_photo', 'Foto maken (Mobiel)')}</span>
               </button>
             </div>
 
@@ -369,29 +369,29 @@ export default function Expenses() {
       {/* Summary KPI Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
         <div className="card p-4 sm:p-5">
-          <div className="text-xs text-slate-400 font-medium">Totaal Uitgaven (excl)</div>
+          <div className="text-xs text-slate-400 font-medium">{t('expenses.kpi_total_excl', 'Totaal Uitgaven (excl. btw)')}</div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-slate-100 mt-1">
             {fmt.currency(totalExcl)}
           </div>
-          <div className="text-[11px] text-slate-500 mt-1">Netto bedrijfskosten</div>
+          <div className="text-[11px] text-slate-500 mt-1">{t('expenses.kpi_total_excl_sub', 'Netto bedrijfskosten')}</div>
         </div>
 
         <div className="card p-4 sm:p-5 border-emerald-500/20 bg-emerald-950/10">
           <div className="text-xs text-emerald-400 font-medium flex items-center gap-1">
-            <span>Voorbelasting (Rubriek 5b)</span>
+            <span>{t('expenses.kpi_input_tax', 'Voorbelasting (Rubriek 5b)')}</span>
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-400 mt-1">
             {fmt.currency(totalVat)}
           </div>
-          <div className="text-[11px] text-emerald-500/80 mt-1">Terug te vorderen van belastingdienst</div>
+          <div className="text-[11px] text-emerald-500/80 mt-1">{t('expenses.kpi_input_tax_sub', 'Terug te vorderen van belastingdienst')}</div>
         </div>
 
         <div className="card p-4 sm:p-5 col-span-2 sm:col-span-1">
-          <div className="text-xs text-slate-400 font-medium">Geregistreerde Posten</div>
+          <div className="text-xs text-slate-400 font-medium">{t('expenses.kpi_items', 'Geregistreerde Posten')}</div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-slate-100 mt-1">
             {expenses.length}
           </div>
-          <div className="text-[11px] text-slate-500 mt-1">{fmt.currency(totalIncl)} incl. btw</div>
+          <div className="text-[11px] text-slate-500 mt-1">{fmt.currency(totalIncl)} {t('expenses.kpi_items_sub', 'incl. btw')}</div>
         </div>
       </div>
 
@@ -412,23 +412,24 @@ export default function Expenses() {
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-100 text-sm sm:text-base flex items-center gap-2">
-                    <span>Kostenpost Invoeren</span>
+                    <span>{t('expenses.form_title', 'Kostenpost Invoeren')}</span>
                     {aiConfidence && (
                       <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 flex items-center gap-1">
                         <Sparkles size={11} />
-                        <span>AI Herkend ({Math.round(aiConfidence * 100)}%)</span>
+                        <span>{t('expenses.ai_recognized', 'AI Herkend')} ({Math.round(aiConfidence * 100)}%)</span>
                       </span>
                     )}
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Controleer en bevestig de gegevens van uw uitgave
+                    {t('expenses.form_subtitle', 'Controleer en bevestig de gegevens van uw uitgave')}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 m3-state-layer"
+                aria-label={t('btn.close', 'Sluiten')}
               >
                 <X size={18} />
               </button>
@@ -442,7 +443,7 @@ export default function Expenses() {
                   <div className="w-full flex items-center justify-between text-xs text-slate-400 pb-1">
                     <span className="font-medium flex items-center gap-1">
                       <Paperclip size={13} />
-                      <span>Originele Bijlage</span>
+                      <span>{t('expenses.original_receipt', 'Originele Bijlage')}</span>
                     </span>
                     <button
                       type="button"
@@ -450,7 +451,7 @@ export default function Expenses() {
                       className="text-purple-400 hover:underline flex items-center gap-1 text-[11px]"
                     >
                       <Eye size={12} />
-                      <span>Vergroten</span>
+                      <span>{t('expenses.view_full', 'Vergroten')}</span>
                     </button>
                   </div>
 
@@ -481,7 +482,7 @@ export default function Expenses() {
                 className={clsx('p-5 space-y-4', activeReceiptUrl ? 'md:col-span-7' : 'md:col-span-12')}
               >
                 <div>
-                  <label className="label text-xs">Leverancier / Begunstigde *</label>
+                  <label className="label text-xs">{t('expenses.vendor', 'Leverancier / Begunstigde')} *</label>
                   <input
                     className="input text-xs sm:text-sm"
                     placeholder="Bijv. Shell, Apple, Adobe, NS Zakelijk..."
@@ -492,7 +493,7 @@ export default function Expenses() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="label text-xs">Factuurdatum *</label>
+                    <label className="label text-xs">{t('expenses.date', 'Factuurdatum')} *</label>
                     <input
                       type="date"
                       className="input text-xs sm:text-sm font-mono"
@@ -500,7 +501,7 @@ export default function Expenses() {
                     />
                   </div>
                   <div>
-                    <label className="label text-xs">Categorie</label>
+                    <label className="label text-xs">{t('expenses.category', 'Categorie')}</label>
                     <select className="select text-xs sm:text-sm" {...register('category')}>
                       {CATEGORIES.map((c) => (
                         <option key={c} value={c}>
@@ -512,7 +513,7 @@ export default function Expenses() {
                 </div>
 
                 <div>
-                  <label className="label text-xs">Omschrijving</label>
+                  <label className="label text-xs">{t('expenses.desc', 'Omschrijving')}</label>
                   <input
                     className="input text-xs sm:text-sm"
                     placeholder="Bijv. Tankbeurt bedrijfswagen, Software licentie..."
@@ -522,31 +523,31 @@ export default function Expenses() {
 
                 {/* Calculation Mode */}
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs text-slate-400 font-medium">Invoermodus:</span>
+                  <span className="text-xs text-slate-400 font-medium">{t('inv.terms', 'Invoermodus')}:</span>
                   <div className="flex gap-1 bg-slate-800/80 p-0.5 rounded-lg border border-slate-700 text-xs">
                     <button
                       type="button"
                       onClick={() => setInputMode('excl')}
                       className={clsx(
-                        'px-2.5 py-1 rounded transition-colors',
+                        'px-2.5 py-1 rounded transition-colors m3-state-layer',
                         inputMode === 'excl'
                           ? 'bg-purple-600 text-white font-medium shadow-sm'
                           : 'text-slate-400 hover:text-slate-200'
                       )}
                     >
-                      Excl. btw
+                      {t('expenses.amount_excl', 'Excl. btw')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setInputMode('incl')}
                       className={clsx(
-                        'px-2.5 py-1 rounded transition-colors',
+                        'px-2.5 py-1 rounded transition-colors m3-state-layer',
                         inputMode === 'incl'
                           ? 'bg-purple-600 text-white font-medium shadow-sm'
                           : 'text-slate-400 hover:text-slate-200'
                       )}
                     >
-                      Incl. btw (Bon)
+                      {t('expenses.amount_incl', 'Incl. btw (Bon)')}
                     </button>
                   </div>
                 </div>
@@ -555,7 +556,7 @@ export default function Expenses() {
                 <div className="grid grid-cols-2 gap-3">
                   {inputMode === 'excl' ? (
                     <div>
-                      <label className="label text-xs">Bedrag excl. btw (€) *</label>
+                      <label className="label text-xs">{t('expenses.amount_excl', 'Bedrag excl. btw (€)')} *</label>
                       <input
                         type="number"
                         step="0.01"
@@ -567,7 +568,7 @@ export default function Expenses() {
                     </div>
                   ) : (
                     <div>
-                      <label className="label text-xs">Totaal incl. btw (€) *</label>
+                      <label className="label text-xs">{t('expenses.amount_incl', 'Totaal incl. btw (€)')} *</label>
                       <input
                         type="number"
                         step="0.01"
@@ -580,7 +581,7 @@ export default function Expenses() {
                   )}
 
                   <div>
-                    <label className="label text-xs">Btw-tarief</label>
+                    <label className="label text-xs">{t('expenses.vat_rate', 'Btw-tarief')}</label>
                     <select
                       className="select text-xs sm:text-sm"
                       {...register('vat_rate')}
@@ -594,10 +595,10 @@ export default function Expenses() {
                         }
                       }}
                     >
-                      <option value="21">21% (hoog)</option>
-                      <option value="9">9% (laag)</option>
-                      <option value="0">0% (nul)</option>
-                      <option value="REVERSE_CHARGE">Verlegd (0% / EU)</option>
+                      <option value="21">21% ({t('tax.rubric_1a', 'hoog')})</option>
+                      <option value="9">9% ({t('tax.rubric_1b', 'laag')})</option>
+                      <option value="0">0% ({t('tax.rubric_1e', 'nul')})</option>
+                      <option value="REVERSE_CHARGE">{t('inv.vat_reverse', 'Verlegd (0% / EU)')}</option>
                     </select>
                   </div>
                 </div>
@@ -605,17 +606,17 @@ export default function Expenses() {
                 {/* Live Preview Summary Widget */}
                 <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between text-xs font-mono">
                   <div>
-                    <span className="text-slate-500 block text-[10px]">Excl. btw:</span>
+                    <span className="text-slate-500 block text-[10px]">{t('expenses.th_excl', 'Excl. btw')}:</span>
                     <span className="text-slate-200 font-bold">{fmt.currency(Number(watch('amount_excl_vat')) || 0)}</span>
                   </div>
                   <div className="text-center">
                     <span className="text-slate-500 block text-[10px]">
-                      Btw ({rate === 'REVERSE_CHARGE' ? 'Verlegd' : `${rate}%`}):
+                      {t('expenses.th_vat', 'Btw')} ({rate === 'REVERSE_CHARGE' ? t('inv.vat_reverse', 'Verlegd') : `${rate}%`}):
                     </span>
                     <span className="text-purple-400 font-bold">{fmt.currency(Number(watch('vat_amount')) || 0)}</span>
                   </div>
                   <div className="text-right">
-                    <span className="text-slate-500 block text-[10px]">Totaal incl.:</span>
+                    <span className="text-slate-500 block text-[10px]">{t('expenses.th_total', 'Totaal incl.')}:</span>
                     <span className="text-emerald-400 font-bold text-sm">
                       {fmt.currency(Number(watch('amount_incl_vat')) || 0)}
                     </span>
@@ -627,17 +628,17 @@ export default function Expenses() {
                   <button
                     type="button"
                     onClick={() => setShowForm(false)}
-                    className="btn-secondary text-xs sm:text-sm py-2 px-3.5"
+                    className="btn-secondary text-xs sm:text-sm py-2 px-3.5 m3-state-layer"
                   >
-                    <span>Annuleren</span>
+                    <span>{t('btn.cancel', 'Annuleren')}</span>
                   </button>
                   <button
                     type="submit"
-                    className="btn-primary bg-purple-600 hover:bg-purple-500 border-purple-500 text-white text-xs sm:text-sm py-2 px-4 flex items-center gap-1.5 shadow-md shadow-purple-600/20"
+                    className="btn-primary bg-purple-600 hover:bg-purple-500 border-purple-500 text-white text-xs sm:text-sm py-2 px-4 flex items-center gap-1.5 shadow-md shadow-purple-600/20 m3-state-layer"
                     disabled={createMutation.isPending}
                   >
                     <CheckCircle2 size={15} />
-                    <span>{createMutation.isPending ? 'Opslaan...' : 'Kosten & Bon Opslaan'}</span>
+                    <span>{createMutation.isPending ? t('common.loading', 'Opslaan...') : t('btn.save', 'Kosten & Bon Opslaan')}</span>
                   </button>
                 </div>
               </form>
@@ -682,9 +683,9 @@ export default function Expenses() {
       {/* Quarter Filter & Summary Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-900 border border-slate-800 rounded-xl">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs text-slate-400 font-medium mr-1">Periode:</span>
+          <span className="text-xs text-slate-400 font-medium mr-1">{t('inv.terms', 'Periode')}:</span>
           {[
-            { id: 'ALL', label: 'Alle kosten' },
+            { id: 'ALL', label: t('expenses.filter_all', 'Alle kosten') },
             { id: 1, label: 'Q1' },
             { id: 2, label: 'Q2' },
             { id: 3, label: 'Q3' },
@@ -698,7 +699,7 @@ export default function Expenses() {
                 setSelectedQuarter(tab.id as any)
               }}
               className={clsx(
-                'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer min-h-[36px] active:scale-95',
+                'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer min-h-[36px] active:scale-95 m3-state-layer',
                 selectedQuarter === tab.id
                   ? 'bg-purple-600 text-white shadow-sm'
                   : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
@@ -711,10 +712,10 @@ export default function Expenses() {
 
         <div className="flex items-center gap-3 text-xs font-mono">
           <span className="text-slate-400">
-            Excl: <strong className="text-slate-200">{fmt.currency(totalExcl)}</strong>
+            {t('expenses.th_excl', 'Excl. btw')}: <strong className="text-slate-200">{fmt.currency(totalExcl)}</strong>
           </span>
           <span className="text-emerald-400">
-            Voorbelasting (5b): <strong>+{fmt.currency(totalVat)}</strong>
+            {t('expenses.kpi_input_tax', 'Voorbelasting (5b)')}: <strong>+{fmt.currency(totalVat)}</strong>
           </span>
         </div>
       </div>
@@ -724,7 +725,7 @@ export default function Expenses() {
         {isLoading ? (
           <CardSkeleton count={4} />
         ) : filteredExpenses.length === 0 ? (
-          <div className="card text-center py-10 text-xs text-slate-500">Geen kosten gevonden voor deze periode</div>
+          <div className="card text-center py-10 text-xs text-slate-500">{t('expenses.empty', 'Geen kosten gevonden voor deze periode')}</div>
         ) : (
           filteredExpenses.map((exp) => (
             <div key={exp.id} className="card p-3.5 space-y-2">
@@ -736,7 +737,7 @@ export default function Expenses() {
                       <button
                         onClick={() => setPreviewReceiptModal({ url: exp.receipt_url!, title: exp.vendor_name })}
                         className="text-purple-400 hover:text-purple-300"
-                        title="Bekijk bon"
+                        title={t('expenses.original_receipt', 'Bekijk bon')}
                       >
                         <Paperclip size={13} />
                       </button>
@@ -756,7 +757,7 @@ export default function Expenses() {
                   <Calendar size={12} className="text-slate-500" />
                   <span>{fmt.date(exp.expense_date)}</span>
                   <span className="text-slate-600">·</span>
-                  <span>{exp.vat_rate}% btw</span>
+                  <span>{exp.vat_rate === 'REVERSE_CHARGE' ? t('inv.vat_reverse', 'Verlegd') : `${exp.vat_rate}%`}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="text-right">
@@ -764,7 +765,7 @@ export default function Expenses() {
                       {fmt.currency(Number(exp.amount_incl_vat))}
                     </span>
                     <span className="text-[10px] text-emerald-400 block font-mono">
-                      +{fmt.currency(Number(exp.vat_amount))} btw
+                      +{fmt.currency(Number(exp.vat_amount))} {t('expenses.th_vat', 'btw')}
                     </span>
                   </div>
                   <button
@@ -772,8 +773,8 @@ export default function Expenses() {
                       triggerHaptic('warning')
                       setDeletingExpense(exp)
                     }}
-                    className="p-2 rounded-xl text-red-400/80 hover:text-red-300 bg-red-500/10 border border-red-500/20 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 ml-1 transition-all"
-                    title="Uitgave verwijderen"
+                    className="p-2 rounded-xl text-red-400/80 hover:text-red-300 bg-red-500/10 border border-red-500/20 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 ml-1 transition-all m3-state-layer"
+                    title={t('expenses.delete_confirm_title', 'Uitgave verwijderen')}
                     aria-label={`Uitgave van ${exp.vendor_name} verwijderen`}
                   >
                     <Trash2 size={15} />
@@ -790,15 +791,15 @@ export default function Expenses() {
         <table className="w-full text-left border-collapse text-sm">
           <thead>
             <tr className="border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
-              <th className="p-3.5 font-medium">Datum</th>
-              <th className="p-3.5 font-medium">Leverancier</th>
-              <th className="p-3.5 font-medium">Omschrijving</th>
-              <th className="p-3.5 font-medium">Categorie</th>
-              <th className="p-3.5 font-medium">Bijlage</th>
-              <th className="p-3.5 font-medium">Btw%</th>
-              <th className="p-3.5 font-medium text-right">Excl. btw</th>
-              <th className="p-3.5 font-medium text-right">Btw (5b)</th>
-              <th className="p-3.5 font-medium text-right">Incl. btw</th>
+              <th className="p-3.5 font-medium">{t('expenses.th_date', 'Datum')}</th>
+              <th className="p-3.5 font-medium">{t('expenses.vendor', 'Leverancier')}</th>
+              <th className="p-3.5 font-medium">{t('expenses.desc', 'Omschrijving')}</th>
+              <th className="p-3.5 font-medium">{t('expenses.category', 'Categorie')}</th>
+              <th className="p-3.5 font-medium">{t('expenses.th_receipt', 'Bijlage')}</th>
+              <th className="p-3.5 font-medium">{t('expenses.vat_rate', 'Btw%')}</th>
+              <th className="p-3.5 font-medium text-right">{t('expenses.th_excl', 'Excl. btw')}</th>
+              <th className="p-3.5 font-medium text-right">{t('expenses.kpi_input_tax', 'Btw (5b)')}</th>
+              <th className="p-3.5 font-medium text-right">{t('expenses.th_total', 'Incl. btw')}</th>
               <th className="p-3.5 text-right font-medium" />
             </tr>
           </thead>
@@ -808,7 +809,7 @@ export default function Expenses() {
             ) : filteredExpenses.length === 0 ? (
               <tr>
                 <td colSpan={10} className="text-center py-10 text-slate-500">
-                  Geen kosten gevonden voor deze periode. Sleep een bon in de Smart Inbox hierboven!
+                  {t('expenses.empty', 'Geen kosten gevonden voor deze periode.')}
                 </td>
               </tr>
             ) : (
@@ -833,18 +834,18 @@ export default function Expenses() {
                     {exp.receipt_url ? (
                       <button
                         onClick={() => setPreviewReceiptModal({ url: exp.receipt_url!, title: exp.vendor_name })}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-purple-500/15 text-purple-400 hover:bg-purple-500/25 border border-purple-500/30 transition-colors"
-                        title="Bekijk originele bon"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-purple-500/15 text-purple-400 hover:bg-purple-500/25 border border-purple-500/30 transition-colors m3-state-layer"
+                        title={t('expenses.original_receipt', 'Bekijk originele bon')}
                       >
                         <Paperclip size={12} />
-                        <span>Bon</span>
+                        <span>{t('expenses.th_receipt', 'Bon')}</span>
                       </button>
                     ) : (
                       <span className="text-slate-600 text-xs">—</span>
                     )}
                   </td>
                   <td className="p-3.5 text-slate-400 text-xs">
-                    {exp.vat_rate === 'REVERSE_CHARGE' ? 'Verlegd' : `${exp.vat_rate}%`}
+                    {exp.vat_rate === 'REVERSE_CHARGE' ? t('inv.vat_reverse', 'Verlegd') : `${exp.vat_rate}%`}
                   </td>
                   <td className="p-3.5 text-right font-mono text-xs text-slate-300">
                     {fmt.currency(Number(exp.amount_excl_vat))}
@@ -858,8 +859,8 @@ export default function Expenses() {
                   <td className="p-3.5 text-right">
                     <button
                       onClick={() => setDeletingExpense(exp)}
-                      className="btn-danger p-1.5 rounded-lg text-red-400 opacity-80 group-hover:opacity-100"
-                      title="Uitgave verwijderen"
+                      className="btn-danger p-1.5 rounded-lg text-red-400 opacity-80 group-hover:opacity-100 m3-state-layer"
+                      title={t('expenses.delete_confirm_title', 'Uitgave verwijderen')}
                       aria-label={`Uitgave van ${exp.vendor_name} verwijderen`}
                     >
                       <Trash2 size={13} />
@@ -875,19 +876,15 @@ export default function Expenses() {
       {/* Delete Confirmation Modal */}
       <ConfirmDialog
         isOpen={Boolean(deletingExpense)}
-        title="Uitgave verwijderen"
+        title={t('expenses.delete_confirm_title', 'Uitgave verwijderen')}
         description={
           <span>
-            Weet u zeker dat u de uitgave van{' '}
-            <strong className="text-slate-200">{deletingExpense?.vendor_name}</strong> ter waarde van{' '}
-            <strong className="text-slate-200">
-              {fmt.currency(Number(deletingExpense?.amount_incl_vat))}
-            </strong>{' '}
-            wilt verwijderen?
+            {t('expenses.delete_confirm_msg', 'Weet u zeker dat u de uitgave wilt verwijderen van')}{' '}
+            <strong className="text-slate-200">{deletingExpense?.vendor_name}</strong> ({fmt.currency(Number(deletingExpense?.amount_incl_vat))})?
           </span>
         }
-        confirmLabel="Uitgave wissen"
-        cancelLabel="Annuleren"
+        confirmLabel={t('btn.delete', 'Uitgave wissen')}
+        cancelLabel={t('btn.cancel', 'Annuleren')}
         variant="danger"
         isLoading={deleteMutation.isPending}
         onConfirm={() => {

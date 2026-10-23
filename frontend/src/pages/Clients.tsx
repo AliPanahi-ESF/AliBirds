@@ -12,14 +12,17 @@ import { triggerHaptic } from '@/lib/haptics'
 import { useI18n } from '@/lib/i18n'
 
 const COUNTRIES = [
-  { code: 'NL', name: 'Nederland' }, { code: 'BE', name: 'België' },
-  { code: 'DE', name: 'Duitsland' }, { code: 'FR', name: 'Frankrijk' },
-  { code: 'GB', name: 'Verenigd Koninkrijk' }, { code: 'US', name: 'Verenigde Staten' },
+  { code: 'NL', nl: 'Nederland', en: 'Netherlands' },
+  { code: 'BE', nl: 'België', en: 'Belgium' },
+  { code: 'DE', nl: 'Duitsland', en: 'Germany' },
+  { code: 'FR', nl: 'Frankrijk', en: 'France' },
+  { code: 'GB', nl: 'Verenigd Koninkrijk', en: 'United Kingdom' },
+  { code: 'US', nl: 'Verenigde Staten', en: 'United States' },
 ]
 
 export default function Clients() {
   const qc = useQueryClient()
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<Client | null>(null)
   const [deletingClient, setDeletingClient] = useState<Client | null>(null)
@@ -68,13 +71,13 @@ export default function Clients() {
     mutationFn: (data: Partial<Client>) => clientsApi.create(data),
     onSuccess: () => {
       triggerHaptic('success')
-      toast.success('Klant aangemaakt')
+      toast.success(t('clients.toast_created', 'Klant aangemaakt'))
       qc.invalidateQueries({ queryKey: ['clients'] })
       reset(); setShowForm(false)
     },
     onError: () => {
       triggerHaptic('warning')
-      toast.error('Opslaan mislukt')
+      toast.error(t('clients.toast_save_err', 'Opslaan mislukt'))
     },
   })
 
@@ -82,14 +85,14 @@ export default function Clients() {
     mutationFn: ({ id, data }: { id: string; data: Partial<Client> }) => clientsApi.update(id, data),
     onSuccess: () => {
       triggerHaptic('success')
-      toast.success('Klant bijgewerkt')
+      toast.success(t('clients.toast_updated', 'Klant bijgewerkt'))
       qc.invalidateQueries({ queryKey: ['clients'] })
       setEditing(null)
       setShowForm(false)
     },
     onError: () => {
       triggerHaptic('warning')
-      toast.error('Opslaan mislukt')
+      toast.error(t('clients.toast_save_err', 'Opslaan mislukt'))
     },
   })
 
@@ -97,13 +100,13 @@ export default function Clients() {
     mutationFn: clientsApi.remove,
     onSuccess: () => {
       triggerHaptic('success')
-      toast.success('Klant verwijderd')
+      toast.success(t('clients.toast_deleted', 'Klant verwijderd'))
       setDeletingClient(null)
       qc.invalidateQueries({ queryKey: ['clients'] })
     },
     onError: () => {
       triggerHaptic('warning')
-      toast.error('Verwijderen mislukt')
+      toast.error(t('clients.toast_del_err', 'Verwijderen mislukt'))
     },
   })
 
@@ -141,10 +144,10 @@ export default function Clients() {
         notes: parsed.iban ? `IBAN: ${parsed.iban}${parsed.reference ? ' | Ref: ' + parsed.reference : ''}` : (parsed.reference || ''),
       })
       setShowForm(true)
-      toast.success(`Klantgegevens uitgelezen: ${name}`, { icon: '✨', duration: 4000 })
+      toast.success(`${t('clients.toast_pdf_success', 'Klantgegevens uitgelezen:')} ${name}`, { icon: '✨', duration: 4000 })
     } catch (err) {
       console.warn('PDF parsing error:', err)
-      toast.error('Kon PDF niet automatisch uitlezen')
+      toast.error(t('clients.toast_pdf_error', 'Kon PDF niet automatisch uitlezen'))
     } finally {
       setIsParsingPdf(false)
       if (e.target) e.target.value = ''
@@ -152,7 +155,7 @@ export default function Clients() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-5 w-full">
+    <div className="space-y-4 sm:space-y-5 w-full m3-fade-through">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -171,11 +174,11 @@ export default function Clients() {
             type="button"
             disabled={isParsingPdf}
             onClick={() => fileInputRef.current?.click()}
-            className="btn-secondary text-xs sm:text-sm py-2 px-3 flex items-center gap-1.5"
-            title="Klantgegevens automatisch uitlezen uit factuur of banktransactie PDF"
+            className="btn-secondary text-xs sm:text-sm py-2 px-3 flex items-center gap-1.5 m3-state-layer"
+            title={t('clients.btn_pdf_title', 'Klantgegevens automatisch uitlezen uit factuur of banktransactie PDF')}
           >
             <Upload size={14} className="text-brand-400" />
-            <span>{isParsingPdf ? 'PDF lezen...' : 'Klant uit PDF'}</span>
+            <span>{isParsingPdf ? t('clients.reading_pdf', 'PDF lezen...') : t('clients.from_pdf', 'Klant uit PDF')}</span>
           </button>
           <button
             type="button"
@@ -194,23 +197,23 @@ export default function Clients() {
                 setShowForm(true)
               }
             }}
-            className="btn-primary text-xs sm:text-sm py-2 px-3.5 flex items-center gap-1.5"
+            className="btn-primary text-xs sm:text-sm py-2 px-3.5 flex items-center gap-1.5 m3-state-layer shadow-md"
           >
             {showForm ? <X size={15} /> : <Plus size={15} />}
-            <span>{showForm ? 'Sluiten' : 'Klant toevoegen'}</span>
+            <span>{showForm ? t('clients.close', 'Sluiten') : t('clients.add_client', 'Klant toevoegen')}</span>
           </button>
         </div>
       </div>
 
       {/* Discovered from Bank Statement Banner */}
       {discoveredCandidates.length > 0 && (
-        <div className="card p-3.5 sm:p-4 bg-gradient-to-r from-brand-950/40 via-slate-900 to-slate-900 border border-brand-500/30 animate-fade-in">
+        <div className="card p-3.5 sm:p-4 bg-gradient-to-r from-brand-950/40 via-slate-900 to-slate-900 border border-brand-500/30 m3-fade-through">
           <div className="flex items-center gap-2 text-brand-400 font-medium text-xs sm:text-sm mb-1.5">
             <Sparkles size={16} />
-            <span>Ontdekt uit MT940 bankafschrift ({discoveredCandidates.length})</span>
+            <span>{t('clients.discovered_title', 'Ontdekt uit MT940 bankafschrift')} ({discoveredCandidates.length})</span>
           </div>
           <p className="text-xs text-slate-400 mb-2.5">
-            Onderstaande betalers zijn herkend uit bijschrijvingen in uw banktransacties maar nog niet toegevoegd als klant:
+            {t('clients.discovered_sub', 'Onderstaande betalers zijn herkend uit bijschrijvingen in uw banktransacties maar nog niet toegevoegd als klant:')}
           </p>
           <div className="flex flex-wrap gap-2">
             {discoveredCandidates.map(c => (
@@ -234,8 +237,8 @@ export default function Clients() {
                   })
                   setShowForm(true)
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600/20 hover:bg-brand-600/30 border border-brand-500/30 text-xs text-brand-200 transition-colors"
-                title="Klantgegevens automatisch invullen"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600/20 hover:bg-brand-600/30 border border-brand-500/30 text-xs text-brand-200 transition-colors m3-state-layer"
+                title={t('clients.discovered_tooltip', 'Klantgegevens automatisch invullen')}
               >
                 <Plus size={13} className="text-brand-400" />
                 <span className="font-semibold">{c.name}</span>
@@ -251,7 +254,7 @@ export default function Clients() {
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
         <input
           className="input pl-9 pr-9 text-xs sm:text-sm h-11 sm:h-9 w-full"
-          placeholder="Zoek opdrachtgever..."
+          placeholder={t('clients.search_placeholder', 'Zoek opdrachtgever...')}
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
@@ -262,7 +265,7 @@ export default function Clients() {
               setSearch('')
             }}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1.5 rounded-full active:scale-90 transition-transform"
-            aria-label="Zoekopdracht wissen"
+            aria-label={t('clients.clear_search', 'Zoekopdracht wissen')}
           >
             <X size={14} />
           </button>
@@ -271,73 +274,77 @@ export default function Clients() {
 
       {/* Form */}
       {showForm && (
-        <div className="card p-4 sm:p-5 animate-fade-in border-brand-600/30">
+        <div className="card p-4 sm:p-5 m3-fade-through border-brand-600/30">
           <h2 className="text-sm font-semibold text-slate-200 mb-3">
-            {editing ? `Klant bewerken: ${editing.name}` : 'Nieuwe klant toevoegen'}
+            {editing ? `${t('clients.form_edit', 'Klant bewerken:')} ${editing.name}` : t('clients.form_new', 'Nieuwe klant toevoegen')}
           </h2>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-3 sm:space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <div>
-                <label className="label">Bedrijfsnaam *</label>
+                <label className="label">{t('clients.company_name', 'Bedrijfsnaam *')}</label>
                 <input className="input text-xs sm:text-sm" {...register('name', { required: true })} />
               </div>
               <div>
-                <label className="label">Contactpersoon</label>
+                <label className="label">{t('clients.contact_person', 'Contactpersoon')}</label>
                 <input className="input text-xs sm:text-sm" {...register('contact_person')} />
               </div>
               <div>
-                <label className="label">E-mail</label>
+                <label className="label">{t('clients.email', 'E-mail')}</label>
                 <input type="email" className="input text-xs sm:text-sm" {...register('email')} />
               </div>
               <div>
-                <label className="label">BTW-nummer</label>
+                <label className="label">{t('clients.vat_number', 'BTW-nummer')}</label>
                 <input className="input text-xs sm:text-sm font-mono" placeholder="NL...B01" {...register('vat_number')} />
               </div>
               <div>
-                <label className="label">KVK-nummer</label>
+                <label className="label">{t('clients.kvk_number', 'KVK-nummer')}</label>
                 <input className="input text-xs sm:text-sm font-mono" {...register('kvk_number')} />
               </div>
               <div>
-                <label className="label">Betalingstermijn (dagen)</label>
+                <label className="label">{t('clients.payment_term', 'Betalingstermijn (dagen)')}</label>
                 <input type="number" className="input text-xs sm:text-sm" {...register('default_payment_term_days', { valueAsNumber: true })} />
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               <div className="sm:col-span-2">
-                <label className="label">Straat + huisnummer</label>
+                <label className="label">{t('clients.street', 'Straat + huisnummer')}</label>
                 <input className="input text-xs sm:text-sm" {...register('billing_address_street')} />
               </div>
               <div>
-                <label className="label">Postcode</label>
+                <label className="label">{t('clients.postcode', 'Postcode')}</label>
                 <input className="input text-xs sm:text-sm" {...register('billing_address_postcode')} />
               </div>
               <div>
-                <label className="label">Plaats</label>
+                <label className="label">{t('clients.city', 'Plaats')}</label>
                 <input className="input text-xs sm:text-sm" {...register('billing_address_city')} />
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="label">Land</label>
+                <label className="label">{t('clients.country', 'Land')}</label>
                 <select className="select text-xs sm:text-sm" {...register('country_code')}>
-                  {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+                  {COUNTRIES.map(c => (
+                    <option key={c.code} value={c.code}>
+                      {locale === 'nl' ? c.nl : c.en}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="sm:col-span-2">
-                <label className="label">Notities</label>
-                <input className="input text-xs sm:text-sm" placeholder="Bijv. vaste factuurafspraken" {...register('notes')} />
+                <label className="label">{t('clients.notes', 'Notities')}</label>
+                <input className="input text-xs sm:text-sm" placeholder={t('clients.notes_placeholder', 'Bijv. vaste factuurafspraken')} {...register('notes')} />
               </div>
             </div>
 
             <div className="flex gap-2 justify-end pt-2">
-              <button type="button" onClick={() => { setShowForm(false); setEditing(null) }} className="btn-secondary text-xs sm:text-sm py-2 px-3">
-                <span>Annuleren</span>
+              <button type="button" onClick={() => { setShowForm(false); setEditing(null) }} className="btn-secondary text-xs sm:text-sm py-2 px-3 m3-state-layer">
+                <span>{t('clients.cancel', 'Annuleren')}</span>
               </button>
-              <button type="submit" className="btn-primary text-xs sm:text-sm py-2 px-4 flex items-center gap-1.5">
+              <button type="submit" className="btn-primary text-xs sm:text-sm py-2 px-4 flex items-center gap-1.5 m3-state-layer shadow-md">
                 <Users size={14} />
-                <span>{editing ? 'Bijwerken' : 'Opslaan'}</span>
+                <span>{editing ? t('clients.update', 'Bijwerken') : t('clients.save', 'Opslaan')}</span>
               </button>
             </div>
           </form>
@@ -349,7 +356,7 @@ export default function Clients() {
         {isLoading ? (
           <CardSkeleton count={4} />
         ) : clients.length === 0 ? (
-          <div className="card text-center py-10 text-xs text-slate-500">Geen klanten gevonden</div>
+          <div className="card text-center py-10 text-xs text-slate-500">{t('clients.empty', 'Geen klanten gevonden')}</div>
         ) : (
           clients.map(c => (
             <div key={c.id} className="card p-3.5 space-y-2.5">
@@ -389,16 +396,16 @@ export default function Clients() {
               </div>
 
               <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-xs text-slate-500">
-                <span>Termijn: {c.default_payment_term_days} dagen</span>
+                <span>{t('clients.term_prefix', 'Termijn:')} {c.default_payment_term_days} {t('clients.days', 'dagen')}</span>
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => {
                       triggerHaptic('light')
                       openEdit(c)
                     }}
-                    className="p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800/50 border border-slate-800 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 transition-all"
-                    title="Klant bewerken"
-                    aria-label={`Klant ${c.name} bewerken`}
+                    className="p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800/50 border border-slate-800 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 transition-all m3-state-layer"
+                    title={t('clients.edit', 'Klant bewerken')}
+                    aria-label={`${t('clients.edit', 'Klant bewerken')} ${c.name}`}
                   >
                     <Edit2 size={15} />
                   </button>
@@ -407,9 +414,9 @@ export default function Clients() {
                       triggerHaptic('warning')
                       setDeletingClient(c)
                     }}
-                    className="p-2 rounded-xl text-red-400/80 hover:text-red-300 bg-red-500/10 border border-red-500/20 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 transition-all"
-                    title="Klant verwijderen"
-                    aria-label={`Klant ${c.name} verwijderen`}
+                    className="p-2 rounded-xl text-red-400/80 hover:text-red-300 bg-red-500/10 border border-red-500/20 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 transition-all m3-state-layer"
+                    title={t('clients.delete', 'Klant verwijderen')}
+                    aria-label={`${t('clients.delete', 'Klant verwijderen')} ${c.name}`}
                   >
                     <Trash2 size={15} />
                   </button>
@@ -425,20 +432,20 @@ export default function Clients() {
         <table className="w-full text-left border-collapse text-sm">
           <thead>
             <tr className="border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
-              <th className="p-3.5 font-medium">Naam</th>
-              <th className="p-3.5 font-medium">Contactpersoon</th>
-              <th className="p-3.5 font-medium">E-mail</th>
-              <th className="p-3.5 font-medium">Land</th>
-              <th className="p-3.5 font-medium">BTW-nr</th>
-              <th className="p-3.5 font-medium">Termijn</th>
-              <th className="p-3.5 text-right font-medium">Acties</th>
+              <th className="p-3.5 font-medium">{t('clients.th_name', 'Naam')}</th>
+              <th className="p-3.5 font-medium">{t('clients.th_contact', 'Contactpersoon')}</th>
+              <th className="p-3.5 font-medium">{t('clients.th_email', 'E-mail')}</th>
+              <th className="p-3.5 font-medium">{t('clients.th_country', 'Land')}</th>
+              <th className="p-3.5 font-medium">{t('clients.th_vat', 'BTW-nr')}</th>
+              <th className="p-3.5 font-medium">{t('clients.th_term', 'Termijn')}</th>
+              <th className="p-3.5 text-right font-medium">{t('clients.th_actions', 'Acties')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60">
             {isLoading ? (
               <TableRowSkeleton cols={7} rows={5} />
             ) : clients.length === 0 ? (
-              <tr><td colSpan={7} className="text-center py-10 text-slate-500">Geen klanten gevonden</td></tr>
+              <tr><td colSpan={7} className="text-center py-10 text-slate-500">{t('clients.empty', 'Geen klanten gevonden')}</td></tr>
             ) : clients.map(c => (
               <tr key={c.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="p-3.5">
@@ -465,17 +472,17 @@ export default function Clients() {
                   <div className="flex gap-1 justify-end">
                     <button
                       onClick={() => openEdit(c)}
-                      className="btn-ghost p-1.5 rounded-lg text-slate-400 hover:text-slate-200"
-                      title="Klant bewerken"
-                      aria-label={`Klant ${c.name} bewerken`}
+                      className="btn-ghost p-1.5 rounded-lg text-slate-400 hover:text-slate-200 m3-state-layer"
+                      title={t('clients.edit', 'Klant bewerken')}
+                      aria-label={`${t('clients.edit', 'Klant bewerken')} ${c.name}`}
                     >
                       <Edit2 size={13} />
                     </button>
                     <button
                       onClick={() => setDeletingClient(c)}
-                      className="btn-danger p-1.5 rounded-lg text-red-400"
-                      title="Klant verwijderen"
-                      aria-label={`Klant ${c.name} verwijderen`}
+                      className="btn-danger p-1.5 rounded-lg text-red-400 m3-state-layer"
+                      title={t('clients.delete', 'Klant verwijderen')}
+                      aria-label={`${t('clients.delete', 'Klant verwijderen')} ${c.name}`}
                     >
                       <Trash2 size={13} />
                     </button>
@@ -490,14 +497,15 @@ export default function Clients() {
       {/* Client Delete Confirmation Modal */}
       <ConfirmDialog
         isOpen={Boolean(deletingClient)}
-        title="Klant verwijderen"
+        title={t('clients.confirm_del_title', 'Klant verwijderen')}
         description={
           <span>
-            Weet u zeker dat u klant <strong className="text-slate-200">{deletingClient?.name}</strong> definitief wilt verwijderen? Eerder aangemaakte facturen blijven behouden.
+            {t('clients.confirm_del_desc', 'Weet u zeker dat u deze klant definitief wilt verwijderen? Eerder aangemaakte facturen blijven behouden.')}{' '}
+            <strong className="text-slate-200">{deletingClient?.name}</strong>
           </span>
         }
-        confirmLabel="Klant wissen"
-        cancelLabel="Annuleren"
+        confirmLabel={t('clients.confirm_del_btn', 'Klant wissen')}
+        cancelLabel={t('clients.cancel', 'Annuleren')}
         variant="danger"
         isLoading={removeMutation.isPending}
         onConfirm={() => {

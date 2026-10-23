@@ -52,7 +52,8 @@ export default function SettingsPage() {
   const saveMutation = useMutation({
     mutationFn: (data: Partial<BusinessSettings>) => settingsApi.update(data),
     onSuccess: (saved) => {
-      toast.success('Bedrijfsgegevens succesvol opgeslagen!')
+      triggerHaptic('success')
+      toast.success(t('settings.toast_saved', 'Bedrijfsgegevens succesvol opgeslagen!'))
       if (saved) {
         reset(saved)
       }
@@ -67,18 +68,21 @@ export default function SettingsPage() {
       qc.invalidateQueries({ queryKey: ['settings'] })
     },
     onError: (err: any) => {
+      triggerHaptic('warning')
       console.error('Settings save error:', err)
-      toast.error(err?.message || 'Opslaan mislukt. Probeer het opnieuw.')
+      toast.error(err?.message || t('settings.toast_save_err', 'Opslaan mislukt. Probeer het opnieuw.'))
     },
   })
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newPassword || newPassword.length < 6) {
-      toast.error('Het nieuwe wachtwoord moet minimaal 6 tekens bevatten.')
+      triggerHaptic('warning')
+      toast.error(t('auth.min_chars', 'Minimaal 6 tekens'))
       return
     }
     if (newPassword !== confirmPassword) {
+      triggerHaptic('warning')
       toast.error('De ingevoerde wachtwoorden komen niet overeen.')
       return
     }
@@ -89,10 +93,12 @@ export default function SettingsPage() {
         const { error } = await supabase.auth.updateUser({ password: newPassword })
         if (error) throw error
       }
+      triggerHaptic('success')
       toast.success('Uw wachtwoord is succesvol gewijzigd!')
       setNewPassword('')
       setConfirmPassword('')
     } catch (err: any) {
+      triggerHaptic('warning')
       toast.error(err.message || 'Wachtwoord wijzigen mislukt.')
     } finally {
       setIsChangingPassword(false)
@@ -114,31 +120,33 @@ export default function SettingsPage() {
       document.body.appendChild(downloadAnchor)
       downloadAnchor.click()
       downloadAnchor.remove()
-      toast.success('Uw administratie is succesvol geëxporteerd!')
+      triggerHaptic('success')
+      toast.success(t('settings.toast_exported', 'Uw administratie is succesvol geëxporteerd!'))
     } catch {
-      toast.error('Export mislukt.')
+      triggerHaptic('warning')
+      toast.error(t('settings.toast_export_err', 'Export mislukt.'))
     } finally {
       setIsExporting(false)
     }
   }
 
-  if (isLoading) return <div className="text-slate-500 text-xs py-8">Instellingen laden...</div>
+  if (isLoading) return <div className="text-slate-500 text-xs py-8">{t('settings.loading', 'Instellingen laden...')}</div>
 
   return (
-    <div className="w-full max-w-5xl space-y-4 sm:space-y-6">
+    <div className="w-full max-w-5xl space-y-4 sm:space-y-6 m3-fade-through">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-100">Instellingen</h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">Bedrijfsprofiel en accountbeheer</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100">{t('settings.title', 'Instellingen')}</h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{t('settings.subtitle', 'Bedrijfsprofiel en accountbeheer')}</p>
         </div>
         {activeTab === 'profile' && (
           <button
             onClick={handleSubmit(d => saveMutation.mutate(d))}
-            className="btn-primary text-xs sm:text-sm py-2 px-4 self-start sm:self-auto"
+            className="btn-primary text-xs sm:text-sm py-2 px-4 self-start sm:self-auto m3-state-layer shadow-md"
             disabled={saveMutation.isPending}
           >
-            <Save size={14} /> {saveMutation.isPending ? 'Opslaan...' : 'Opslaan'}
+            <Save size={14} /> {saveMutation.isPending ? t('settings.saving', 'Opslaan...') : t('settings.save', 'Opslaan')}
           </button>
         )}
       </div>
@@ -146,87 +154,93 @@ export default function SettingsPage() {
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-800 pb-1 flex-wrap">
         <button
-          onClick={() => setActiveTab('profile')}
+          onClick={() => {
+            triggerHaptic('selection')
+            setActiveTab('profile')
+          }}
           className={clsx(
-            'flex items-center gap-2 px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors',
+            'flex items-center gap-2 px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors m3-state-layer',
             activeTab === 'profile'
               ? 'bg-brand-600/15 text-brand-400 border border-brand-500/30'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
           )}
         >
           <Building2 size={16} />
-          <span>Bedrijfsprofiel & Factuur</span>
+          <span>{t('settings.tab_profile', 'Bedrijfsprofiel & Factuur')}</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('account')}
+          onClick={() => {
+            triggerHaptic('selection')
+            setActiveTab('account')
+          }}
           className={clsx(
-            'flex items-center gap-2 px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors',
+            'flex items-center gap-2 px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors m3-state-layer',
             activeTab === 'account'
               ? 'bg-brand-600/15 text-brand-400 border border-brand-500/30'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
           )}
         >
           <UserIcon size={16} />
-          <span>Account & Beveiliging</span>
+          <span>{t('settings.tab_account', 'Account & Beveiliging')}</span>
         </button>
       </div>
 
       {/* TAB 1: Profile & Invoice Settings */}
       {activeTab === 'profile' && (
-        <form onSubmit={handleSubmit(d => saveMutation.mutate(d))} className="space-y-4 sm:space-y-5">
+        <form onSubmit={handleSubmit(d => saveMutation.mutate(d))} className="space-y-4 sm:space-y-5 m3-fade-through">
           {/* Company info */}
           <div className="card p-3.5 sm:p-5 space-y-3 sm:space-y-4">
             <div className="flex items-center gap-2 mb-1">
               <Building2 size={16} className="text-brand-400" />
-              <h2 className="text-sm font-semibold text-slate-200">Bedrijfsgegevens (Wettelijk vereist)</h2>
+              <h2 className="text-sm font-semibold text-slate-200">{t('settings.company_info_title', 'Bedrijfsgegevens (Wettelijk vereist)')}</h2>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="label">Bedrijfsnaam (statutair) *</label>
+                <label className="label">{t('settings.company_name', 'Bedrijfsnaam (statutair) *')}</label>
                 <input className="input text-xs sm:text-sm" {...register('company_name')} />
               </div>
               <div>
-                <label className="label">Handelsnaam</label>
+                <label className="label">{t('settings.trade_name', 'Handelsnaam')}</label>
                 <input className="input text-xs sm:text-sm" {...register('trade_name')} />
               </div>
               <div>
-                <label className="label">KVK-nummer (8 cijfers)</label>
+                <label className="label">{t('settings.kvk_number', 'KVK-nummer (8 cijfers)')}</label>
                 <input className="input text-xs sm:text-sm font-mono" placeholder="12345678" {...register('kvk_number')} />
               </div>
               <div>
-                <label className="label">BTW-identificatienummer</label>
+                <label className="label">{t('settings.btw_id', 'BTW-identificatienummer')}</label>
                 <input className="input text-xs sm:text-sm font-mono" placeholder="NL123456789B01" {...register('btw_id')} />
               </div>
               <div>
-                <label className="label">Zakelijk IBAN</label>
+                <label className="label">{t('settings.iban', 'Zakelijk IBAN')}</label>
                 <input className="input text-xs sm:text-sm font-mono" placeholder="NL91 BUNQ 2049 1827 41" {...register('iban')} />
               </div>
               <div>
-                <label className="label">BIC / SWIFT</label>
+                <label className="label">{t('settings.bic', 'BIC / SWIFT')}</label>
                 <input className="input text-xs sm:text-sm font-mono" placeholder="BUNQNL2A" {...register('bic')} />
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <div className="sm:col-span-2">
-                <label className="label">Straat + huisnummer</label>
+                <label className="label">{t('settings.street', 'Straat + huisnummer')}</label>
                 <input className="input text-xs sm:text-sm" placeholder="bijv. Keizersgracht 421" {...register('address_street')} />
               </div>
               <div>
-                <label className="label">Postcode</label>
+                <label className="label">{t('settings.postcode', 'Postcode')}</label>
                 <input className="input text-xs sm:text-sm" placeholder="1016 EK" {...register('address_postcode')} />
               </div>
               <div>
-                <label className="label">Plaats</label>
+                <label className="label">{t('settings.city', 'Plaats')}</label>
                 <input className="input text-xs sm:text-sm" placeholder="Amsterdam" {...register('address_city')} />
               </div>
               <div>
-                <label className="label">Telefoonnummer</label>
+                <label className="label">{t('settings.phone', 'Telefoonnummer')}</label>
                 <input type="tel" className="input text-xs sm:text-sm font-mono" placeholder="+31 6 12345678" {...register('phone')} />
               </div>
               <div>
-                <label className="label">Website</label>
+                <label className="label">{t('settings.website', 'Website')}</label>
                 <input className="input text-xs sm:text-sm" placeholder="https://..." {...register('website')} />
               </div>
             </div>
@@ -236,19 +250,19 @@ export default function SettingsPage() {
           <div className="card p-3.5 sm:p-5 space-y-3 sm:space-y-4">
             <div className="flex items-center gap-2 mb-1">
               <SettingsIcon size={16} className="text-brand-400" />
-              <h2 className="text-sm font-semibold text-slate-200">Factuurinstellingen</h2>
+              <h2 className="text-sm font-semibold text-slate-200">{t('settings.invoice_settings_title', 'Factuurinstellingen')}</h2>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="label">Factuurprefix</label>
+                <label className="label">{t('settings.invoice_prefix', 'Factuurprefix')}</label>
                 <input className="input text-xs sm:text-sm font-mono" placeholder="2026-" {...register('invoice_prefix')} />
               </div>
               <div>
-                <label className="label">Betaaltermijn (dagen)</label>
+                <label className="label">{t('settings.payment_term', 'Betaaltermijn (dagen)')}</label>
                 <input type="number" className="input text-xs sm:text-sm" {...register('default_payment_term_days', { valueAsNumber: true })} />
               </div>
               <div>
-                <label className="label">Accentkleur</label>
+                <label className="label">{t('settings.accent_color', 'Accentkleur')}</label>
                 <div className="flex gap-2">
                   <input type="color" className="h-9 w-12 rounded cursor-pointer bg-slate-800 border border-slate-700 p-0.5" {...register('accent_color')} />
                   <input className="input text-xs sm:text-sm flex-1 font-mono" {...register('accent_color')} />
@@ -256,19 +270,19 @@ export default function SettingsPage() {
               </div>
             </div>
             <div>
-              <label className="label">Standaard factuurnota</label>
+              <label className="label">{t('settings.invoice_notes_default', 'Standaard factuurnota')}</label>
               <textarea className="textarea text-xs sm:text-sm" rows={2} placeholder="Tekst die standaard onderaan elke factuur verschijnt..."
                 {...register('invoice_notes_default')} />
             </div>
             <div>
-              <label className="label">Directe Betaallink (iDEAL / Bunq / Tikkie / Stripe)</label>
+              <label className="label">{t('settings.payment_link_title', 'Directe Betaallink (iDEAL / Bunq / Tikkie / Stripe)')}</label>
               <input
                 className="input text-xs sm:text-sm font-mono"
                 placeholder="https://bunq.me/uwbedrijf of https://tikkie.me/..."
                 {...register('payment_link')}
               />
               <p className="text-[11px] text-slate-400 mt-1">
-                Wordt gesynchroniseerd over al uw apparaten en automatisch toegevoegd aan factuur-e-mails.
+                {t('settings.payment_link_sub', 'Wordt gesynchroniseerd over al uw apparaten en automatisch toegevoegd aan factuur-e-mails.')}
               </p>
             </div>
           </div>
@@ -277,7 +291,7 @@ export default function SettingsPage() {
 
       {/* TAB 2: Account */}
       {activeTab === 'account' && (
-        <div className="space-y-4">
+        <div className="space-y-4 m3-fade-through">
           {/* User info card */}
           <div className="card p-4 sm:p-6 space-y-4">
             <div className="flex items-center gap-3">
@@ -293,18 +307,17 @@ export default function SettingsPage() {
             {/* Status badges */}
             <div className="flex flex-wrap gap-2">
               <span className="badge-green text-xs flex items-center gap-1.5 py-1 px-2.5">
-                <CheckCircle2 size={13} /> Ingelogd
+                <CheckCircle2 size={13} /> {t('settings.logged_in', 'Ingelogd')}
               </span>
               {isSupabaseConfigured() && (
                 <span className="badge-green text-xs flex items-center gap-1.5 py-1 px-2.5">
-                  <ShieldCheck size={13} /> Cloud sync actief
+                  <ShieldCheck size={13} /> {t('settings.cloud_active', 'Cloud sync actief')}
                 </span>
               )}
             </div>
 
             <p className="text-xs text-slate-400 leading-relaxed">
-              Uw gegevens zijn privé en afgeschermd. Andere gebruikers kunnen uw facturen, klanten
-              en uitgaven niet zien. U blijft ingelogd op al uw apparaten totdat u uitlogt.
+              {t('settings.privacy_statement', 'Uw gegevens zijn privé en afgeschermd. Andere gebruikers kunnen uw facturen, klanten en uitgaven niet zien. U blijft ingelogd op al uw apparaten totdat u uitlogt.')}
             </p>
           </div>
 
@@ -369,7 +382,7 @@ export default function SettingsPage() {
               <button
                 type="submit"
                 disabled={isChangingPassword || !newPassword}
-                className="btn-primary text-xs py-2 px-4 flex items-center gap-2 disabled:opacity-50"
+                className="btn-primary text-xs py-2 px-4 flex items-center gap-2 disabled:opacity-50 m3-state-layer shadow-md"
               >
                 <KeyRound size={14} />
                 <span>{isChangingPassword ? '...' : t('btn.change_password', 'Wachtwoord opslaan')}</span>
@@ -397,7 +410,7 @@ export default function SettingsPage() {
               type="button"
               onClick={handleExportData}
               disabled={isExporting}
-              className="btn-secondary text-xs py-2 px-3.5 flex items-center gap-2 disabled:opacity-50"
+              className="btn-secondary text-xs py-2 px-3.5 flex items-center gap-2 disabled:opacity-50 m3-state-layer"
             >
               <Download size={14} />
               <span>{isExporting ? t('btn.exporting', 'Gegevens exporteren...') : t('btn.export_data', 'Administratie exporteren (JSON)')}</span>
@@ -411,11 +424,11 @@ export default function SettingsPage() {
               <h3 className="text-sm font-semibold text-slate-200">{t('nav.logout', 'Uitloggen')}</h3>
             </div>
             <p className="text-xs text-slate-400">
-              U wordt uitgelogd op dit apparaat. Uw gegevens blijven veilig opgeslagen in de cloud.
+              {t('settings.logout_warning', 'U wordt uitgelogd op dit apparaat. Uw gegevens blijven veilig opgeslagen in de cloud.')}
             </p>
             <button
               onClick={() => logout()}
-              className="btn-ghost text-xs text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-400/50 hover:bg-red-500/5 px-4 py-2"
+              className="btn-ghost text-xs text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-400/50 hover:bg-red-500/5 px-4 py-2 m3-state-layer"
             >
               <LogOut size={14} /> {t('nav.logout', 'Uitloggen')}
             </button>

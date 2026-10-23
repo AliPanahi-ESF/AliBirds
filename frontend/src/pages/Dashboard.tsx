@@ -140,19 +140,19 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Quick Actions */}
         <div className="liquid-glass-card space-y-2">
-          <h2 className="text-sm font-semibold text-slate-300 mb-3">Snelle acties</h2>
+          <h2 className="text-sm font-semibold text-slate-300 mb-3">{t('dash.quick_actions', 'Snelle acties')}</h2>
           {[
-            { label: 'Nieuwe factuur maken', to: '/invoices/new', icon: FileText, color: 'text-brand-400' },
-            { label: 'Bankafschrift koppelen', to: '/bank', icon: Upload, color: 'text-emerald-400' },
-            { label: 'Kosten invoeren', to: '/expenses', icon: Receipt, color: 'text-amber-400' },
-            { label: 'Btw-aangifte rubric overzicht', to: '/tax', icon: TrendingUp, color: 'text-purple-400' },
+            { label: t('dash.qa_new_inv', 'Nieuwe factuur maken'), to: '/invoices/new', icon: FileText, color: 'text-brand-400' },
+            { label: t('dash.qa_bank', 'Bankafschrift koppelen'), to: '/bank', icon: Upload, color: 'text-emerald-400' },
+            { label: t('dash.qa_expenses', 'Kosten invoeren'), to: '/expenses', icon: Receipt, color: 'text-amber-400' },
+            { label: t('dash.qa_tax', 'Btw-aangifte rubric overzicht'), to: '/tax', icon: TrendingUp, color: 'text-purple-400' },
           ].map(({ label, to, icon: Icon, color }) => (
             <button
               key={to}
               onClick={() => nav(to)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
                          hover:bg-slate-800 transition-colors text-xs sm:text-sm text-slate-300
-                         hover:text-slate-100 text-left group"
+                         hover:text-slate-100 text-left group m3-state-layer"
             >
               <Icon size={16} className={color} />
               <span className="flex-1">{label}</span>
@@ -164,9 +164,9 @@ export default function Dashboard() {
         {/* Recent Invoices */}
         <div className="liquid-glass-card col-span-1 lg:col-span-2">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-slate-300">Recente facturen</h2>
-            <button onClick={() => nav('/invoices')} className="btn-ghost btn-sm text-xs">
-              Alles zien <ArrowRight size={12} />
+            <h2 className="text-sm font-semibold text-slate-300">{t('dash.recent_invoices', 'Recente facturen')}</h2>
+            <button onClick={() => nav('/invoices')} className="btn-ghost btn-sm text-xs m3-state-layer">
+              {t('dash.view_all', 'Alles zien')} <ArrowRight size={12} />
             </button>
           </div>
           <div className="space-y-1.5">
@@ -176,12 +176,12 @@ export default function Dashboard() {
                 onClick={() => nav(`/invoices/${inv.id}/edit`)}
                 className="flex items-center justify-between gap-2 p-2.5 rounded-lg hover:bg-slate-800/80
                            border border-transparent hover:border-slate-700/50
-                           transition-colors cursor-pointer group"
+                           transition-colors cursor-pointer group m3-state-layer"
               >
                 <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
                   <span className="font-mono text-xs text-brand-400 font-medium shrink-0">{inv.invoice_number}</span>
                   <span className="text-xs sm:text-sm text-slate-200 truncate font-medium">
-                    {inv.client?.name ?? 'Onbekende klant'}
+                    {inv.client?.name ?? t('dash.unknown_client', 'Onbekende klant')}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -194,7 +194,7 @@ export default function Dashboard() {
             ))}
             {(!Array.isArray(recentInvoices) || recentInvoices.length === 0) && (
               <div className="text-sm text-slate-500 text-center py-8">
-                Nog geen facturen — maak er direct een aan!
+                {t('dash.empty_invoices', 'Nog geen facturen — maak er direct een aan!')}
               </div>
             )}
           </div>
@@ -206,7 +206,7 @@ export default function Dashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-sm font-semibold text-slate-300">Btw-aangifte schatting</h2>
+              <h2 className="text-sm font-semibold text-slate-300">{t('dash.vat_estimate_title', 'Btw-aangifte schatting')}</h2>
               {(() => {
                 const deadline = getVatDeadlineInfo(quarter, year)
                 return (
@@ -226,10 +226,10 @@ export default function Dashboard() {
                 )
               })()}
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">{year} — overzicht per kwartaal voor Belastingdienst</p>
+            <p className="text-xs text-slate-500 mt-0.5">{year} — {t('dash.vat_estimate_sub', 'overzicht per kwartaal voor Belastingdienst')}</p>
           </div>
-          <button onClick={() => nav('/tax')} className="btn-secondary btn-sm text-xs self-start sm:self-auto">
-            Aangifte openen <ArrowRight size={12} />
+          <button onClick={() => nav('/tax')} className="btn-secondary btn-sm text-xs self-start sm:self-auto m3-state-layer">
+            {t('dash.open_tax', 'Aangifte openen')} <ArrowRight size={12} />
           </button>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">

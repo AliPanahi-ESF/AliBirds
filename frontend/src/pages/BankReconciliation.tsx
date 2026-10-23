@@ -13,8 +13,9 @@ import { BankTransaction, Invoice, Client, Expense } from '@/lib/types'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { calculateInvoiceMatchScore, generateRfReference } from '@/lib/paymentReference'
 import { triggerHaptic } from '@/lib/haptics'
+import { useI18n } from '@/lib/i18n'
 
-const STATUS_INFO: Record<string, { label: string; icon: React.ElementType; cls: string }> = {
+const DEFAULT_STATUS_INFO: Record<string, { label: string; icon: React.ElementType; cls: string }> = {
   MATCHED:              { label: 'Gematcht',     icon: CheckCircle,  cls: 'badge-green' },
   UNMATCHED:            { label: 'Niet gematcht', icon: AlertCircle,  cls: 'badge-red' },
   PENDING_CONFIRMATION: { label: 'Bevestigen',   icon: Clock,        cls: 'badge-yellow' },
@@ -1060,10 +1061,18 @@ function AddExpenseFromTxnModal({
 
 export default function BankReconciliation() {
   const qc = useQueryClient()
+  const { t } = useI18n()
   const [matchModal, setMatchModal] = useState<BankTransaction | null>(null)
   const [clientModalTxn, setClientModalTxn] = useState<BankTransaction | null>(null)
   const [expenseModalTxn, setExpenseModalTxn] = useState<BankTransaction | null>(null)
   const [confirmClearAll, setConfirmClearAll] = useState(false)
+
+  const statusInfo = useMemo(() => ({
+    MATCHED:              { label: t('bank.status_matched', 'Gematcht'),     icon: CheckCircle,  cls: 'badge-green' },
+    UNMATCHED:            { label: t('bank.status_unmatched', 'Niet gematcht'), icon: AlertCircle,  cls: 'badge-red' },
+    PENDING_CONFIRMATION: { label: t('bank.status_pending', 'Bevestigen'),   icon: Clock,        cls: 'badge-yellow' },
+    MANUAL:               { label: t('bank.status_manual', 'Handmatig'),    icon: Link2,         cls: 'badge-purple' },
+  }), [t])
 
   const { data: transactions = [], isLoading } = useQuery<BankTransaction[]>({
     queryKey: ['bank-transactions'],
@@ -1176,33 +1185,33 @@ export default function BankReconciliation() {
   }, [transactions, invoices])
 
   return (
-    <div className="space-y-4 sm:space-y-5 w-full">
+    <div className="space-y-4 sm:space-y-5 w-full m3-fade-through">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-100">Bankafschriften</h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">MT940 / .STA afstemming van bunq, Rabobank, ING, ABN</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100">{t('bank.title', 'Bankafschriften & Afletteren')}</h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{t('bank.subtitle', 'MT940 / .STA afstemming van bunq, Rabobank, ING, ABN')}</p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
           {transactions.length > 0 && (
             <button
               onClick={() => setConfirmClearAll(true)}
               disabled={clearAllMutation.isPending}
-              className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-2 px-3 border border-red-500/20 flex items-center gap-1.5"
-              title="Alle transacties verwijderen"
+              className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-2 px-3 border border-red-500/20 flex items-center gap-1.5 m3-state-layer"
+              title={t('inv.action_clear_all', 'Alle transacties verwijderen')}
               aria-label="Alle banktransacties wissen"
             >
               <Trash2 size={14} />
-              <span>Wissen</span>
+              <span>{t('btn.delete', 'Wissen')}</span>
             </button>
           )}
           <button
             onClick={() => reconcileMutation.mutate()}
-            className="btn-secondary text-xs sm:text-sm py-2 px-3 flex items-center gap-1.5"
+            className="btn-secondary text-xs sm:text-sm py-2 px-3 flex items-center gap-1.5 m3-state-layer"
             disabled={reconcileMutation.isPending}
           >
             <RefreshCw size={14} className={reconcileMutation.isPending ? 'animate-spin' : ''} />
-            <span>Opnieuw afstemmen</span>
+            <span>{t('bank.btn_match', 'Opnieuw afstemmen')}</span>
           </button>
         </div>
       </div>
@@ -1210,9 +1219,9 @@ export default function BankReconciliation() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
         {[
-          { label: 'Gematcht', value: matched, cls: 'text-emerald-400' },
-          { label: 'Te bevestigen', value: pending, cls: 'text-amber-400' },
-          { label: 'Openstaand', value: unmatched, cls: 'text-red-400' },
+          { label: t('bank.status_matched', 'Gematcht'), value: matched, cls: 'text-emerald-400' },
+          { label: t('bank.status_pending', 'Te bevestigen'), value: pending, cls: 'text-amber-400' },
+          { label: t('bank.status_unmatched', 'Openstaand'), value: unmatched, cls: 'text-red-400' },
         ].map(s => (
           <div key={s.label} className="card p-3 sm:p-4 text-center">
             <div className={`text-xl sm:text-2xl font-bold font-mono ${s.cls}`}>{s.value}</div>
@@ -1230,13 +1239,13 @@ export default function BankReconciliation() {
             </div>
             <div>
               <h4 className="text-sm font-semibold text-slate-100 flex items-center gap-2 flex-wrap">
-                <span>{autoMatchable.length} betaling(en) automatisch herkend via Betalingskenmerk</span>
+                <span>{autoMatchable.length} {t('bank.auto_matched_banner', 'betaling(en) automatisch herkend via Betalingskenmerk')}</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-300 font-bold border border-emerald-500/40">
                   100% Match
                 </span>
               </h4>
               <p className="text-xs text-slate-400 mt-0.5">
-                SEPA ISO 11649 referentie of factuurnummer komt exact overeen. Koppel direct en markeer de facturen als Betaald.
+                {t('inv.payment_ref_desc', 'SEPA ISO 11649 referentie of factuurnummer komt exact overeen.')}
               </p>
             </div>
           </div>
@@ -1247,10 +1256,10 @@ export default function BankReconciliation() {
               reconcileMutation.mutate()
             }}
             disabled={reconcileMutation.isPending}
-            className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm py-2 px-4 flex items-center gap-2 shadow-md w-full sm:w-auto justify-center font-semibold shrink-0"
+            className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm py-2 px-4 flex items-center gap-2 shadow-md w-full sm:w-auto justify-center font-semibold shrink-0 m3-state-layer"
           >
             <Zap size={14} className={reconcileMutation.isPending ? 'animate-spin' : ''} />
-            <span>{reconcileMutation.isPending ? 'Koppelen...' : 'Alles direct koppelen & facturen op betaald zetten'}</span>
+            <span>{reconcileMutation.isPending ? t('common.loading', 'Koppelen...') : t('bank.btn_confirm_link', 'Alles direct koppelen')}</span>
           </button>
         </div>
       )}
@@ -1269,25 +1278,25 @@ export default function BankReconciliation() {
         <Upload size={24} className={clsx('mx-auto mb-2', isDragActive ? 'text-brand-400' : 'text-slate-500')} />
         <p className="text-xs sm:text-sm text-slate-300 font-medium">
           {uploadMutation.isPending
-            ? 'Bestand analyseren & importeren...'
+            ? t('common.loading', 'Bestand analyseren & importeren...')
             : isDragActive
-            ? 'Laat los om te uploaden'
-            : 'Sleep uw bunq / Rabo / ING MT940 export (.sta) hierheen of klik om te uploaden'}
+            ? t('bank.dropzone_title', 'Laat los om te uploaden')
+            : t('bank.dropzone_title', 'Sleep MT940 of CAMT.053 bankbestand hierheen')}
         </p>
         <p className="text-[11px] text-slate-500 mt-1">
-          Leest automatisch IBAN, tegenpartijnaam, factuurnummer in referentie, en bedragen uit
+          {t('bank.dropzone_sub', 'Ondersteunt ING, Rabobank, ABN AMRO, Bunq, Knab en Triodos (.940, .sta, .txt, .xml)')}
         </p>
       </div>
 
       {/* Mobile Transactions (< md) */}
       <div className="md:hidden space-y-2.5">
         {isLoading ? (
-          <div className="card text-center py-10 text-xs text-slate-500">Transacties laden...</div>
+          <div className="card text-center py-10 text-xs text-slate-500">{t('common.loading', 'Transacties laden...')}</div>
         ) : transactions.length === 0 ? (
-          <div className="card text-center py-10 text-xs text-slate-500">Geen transacties geregistreerd</div>
+          <div className="card text-center py-10 text-xs text-slate-500">{t('bank.empty_tx', 'Geen transacties geregistreerd')}</div>
         ) : (
           transactions.map(txn => {
-            const si = STATUS_INFO[txn.reconciliation_status] ?? STATUS_INFO.UNMATCHED
+            const si = statusInfo[txn.reconciliation_status] ?? statusInfo.UNMATCHED
             const matched_inv = invoices.find(i => i.id === txn.matched_invoice_id)
             const matched_exp = expenses.find(e => e.id === txn.matched_expense_id)
             const isMatched = !!(matched_inv || matched_exp)
@@ -1414,22 +1423,22 @@ export default function BankReconciliation() {
         <table className="w-full text-left border-collapse text-sm">
           <thead>
             <tr className="border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
-              <th className="p-3.5 font-medium">Datum</th>
-              <th className="p-3.5 font-medium">Type</th>
-              <th className="p-3.5 font-medium">Tegenpartij</th>
-              <th className="p-3.5 font-medium">Omschrijving / Referentie</th>
-              <th className="p-3.5 font-medium">Status</th>
-              <th className="p-3.5 font-medium text-right">Bedrag</th>
-              <th className="p-3.5 font-medium text-right">Acties</th>
+              <th className="p-3.5 font-medium">{t('bank.th_date', 'Datum')}</th>
+              <th className="p-3.5 font-medium">{t('common.actions', 'Type')}</th>
+              <th className="p-3.5 font-medium">{t('bank.th_counterpart', 'Tegenpartij')}</th>
+              <th className="p-3.5 font-medium">{t('bank.th_ref', 'Omschrijving / Referentie')}</th>
+              <th className="p-3.5 font-medium">{t('bank.th_status', 'Status')}</th>
+              <th className="p-3.5 font-medium text-right">{t('bank.th_amount', 'Bedrag')}</th>
+              <th className="p-3.5 font-medium text-right">{t('bank.th_action', 'Acties')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60">
             {isLoading ? (
-              <tr><td colSpan={7} className="text-center py-10 text-slate-500">Laden...</td></tr>
+              <tr><td colSpan={7} className="text-center py-10 text-slate-500">{t('common.loading', 'Laden...')}</td></tr>
             ) : transactions.length === 0 ? (
-              <tr><td colSpan={7} className="text-center py-10 text-slate-500">Geen transacties geregistreerd</td></tr>
+              <tr><td colSpan={7} className="text-center py-10 text-slate-500">{t('bank.empty_tx', 'Geen transacties geregistreerd')}</td></tr>
             ) : transactions.map(txn => {
-              const si = STATUS_INFO[txn.reconciliation_status] ?? STATUS_INFO.UNMATCHED
+              const si = statusInfo[txn.reconciliation_status] ?? statusInfo.UNMATCHED
               const matched_inv = invoices.find(i => i.id === txn.matched_invoice_id)
               const matched_exp = expenses.find(e => e.id === txn.matched_expense_id)
               const isMatched = !!(matched_inv || matched_exp)
@@ -1446,11 +1455,11 @@ export default function BankReconciliation() {
                   <td className="p-3.5">
                     {!isDebit ? (
                       <span className="flex items-center gap-1 text-emerald-400 text-xs font-medium">
-                        <TrendingUp size={12} /> Bijschrijving
+                        <TrendingUp size={12} /> {t('dash.kpi.received_net', 'Bijschrijving')}
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 text-red-400 text-xs font-medium">
-                        <TrendingDown size={12} /> Afschrijving
+                        <TrendingDown size={12} /> {t('expenses.title', 'Afschrijving')}
                       </span>
                     )}
                   </td>
