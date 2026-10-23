@@ -110,8 +110,14 @@ export function getSmartInvoiceIdOptions({
   const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0')
   const defaultPrefix = settings?.invoice_prefix || `${currentYear}-`
 
+  const existingSet = new Set(
+    invoices
+      .map(i => i.invoice_number?.trim())
+      .filter((n): n is string => Boolean(n))
+  )
+
   // 1. Calculate highest general sequence
-  let maxSeq = settings?.next_invoice_sequence || 1
+  let maxSeq = Number(settings?.next_invoice_sequence) || 1
   for (const inv of invoices) {
     if (inv.invoice_number && inv.invoice_number.startsWith(defaultPrefix)) {
       const match = inv.invoice_number.slice(defaultPrefix.length).match(/^(\d+)/)
@@ -121,7 +127,11 @@ export function getSmartInvoiceIdOptions({
       }
     }
   }
-  const globalSeqId = `${defaultPrefix}${String(maxSeq).padStart(4, '0')}`
+  let globalSeqId = `${defaultPrefix}${String(maxSeq).padStart(4, '0')}`
+  while (existingSet.has(globalSeqId)) {
+    maxSeq++
+    globalSeqId = `${defaultPrefix}${String(maxSeq).padStart(4, '0')}`
+  }
 
   // 2. Check previous invoice for this specific client
   const lastClientInvoice = selectedClient
@@ -130,17 +140,24 @@ export function getSmartInvoiceIdOptions({
 
   const options: InvoiceIdOption[] = []
 
-  // Option A: Client-based sequential (last invoice ID + 1)
+  // Option A: Client-based sequential (only if not already taken and safe)
   if (lastClientInvoice?.invoice_number) {
-    const clientNextId = incrementInvoiceNumber(lastClientInvoice.invoice_number)
-    options.push({
-      mode: 'CLIENT_SEQ',
-      id: clientNextId,
-      label: `Klant volgnummer (+1)`,
-      description: `Vorige factuur van ${selectedClient?.name}: ${lastClientInvoice.invoice_number} → Volgend: ${clientNextId}`,
-      isRecommended: true,
-      previousInvoiceNumber: lastClientInvoice.invoice_number,
-    })
+    const prevNum = lastClientInvoice.invoice_number.trim()
+    const clientNextId = incrementInvoiceNumber(prevNum)
+    const isTaken = existingSet.has(clientNextId)
+    const sharesGlobalPrefix = defaultPrefix && prevNum.startsWith(defaultPrefix)
+
+    if (!isTaken) {
+      const isRecommended = !sharesGlobalPrefix || clientNextId >= globalSeqId
+      options.push({
+        mode: 'CLIENT_SEQ',
+        id: clientNextId,
+        label: `Klant volgnummer (+1)`,
+        description: `Vorige factuur van ${selectedClient?.name}: ${prevNum} → Volgend: ${clientNextId}`,
+        isRecommended,
+        previousInvoiceNumber: prevNum,
+      })
+    }
   }
 
   // Option B: Standard Global Sequential
@@ -149,13 +166,12 @@ export function getSmartInvoiceIdOptions({
     id: globalSeqId,
     label: `Algemene reeks`,
     description: `Standaard opeenvolgend (${globalSeqId}) volgens uw bedrijfsinstellingen`,
-    isRecommended: !lastClientInvoice,
+    isRecommended: !options.some(o => o.isRecommended),
   })
 
   // Option C: Client Code based sequence
   if (selectedClient?.name) {
     const clientCode = generateClientCode(selectedClient.name)
-    // Find highest count with this client code
     let clientCodeSeq = 1
     const codePrefix = `${clientCode}-${currentYear}-`
     for (const inv of invoices) {
@@ -167,7 +183,11 @@ export function getSmartInvoiceIdOptions({
         }
       }
     }
-    const clientCodeId = `${codePrefix}${String(clientCodeSeq).padStart(2, '0')}`
+    let clientCodeId = `${codePrefix}${String(clientCodeSeq).padStart(2, '0')}`
+    while (existingSet.has(clientCodeId)) {
+      clientCodeSeq++
+      clientCodeId = `${codePrefix}${String(clientCodeSeq).padStart(2, '0')}`
+    }
     options.push({
       mode: 'CLIENT_CODE_SEQ',
       id: clientCodeId,
@@ -188,13 +208,23 @@ export function getSmartInvoiceIdOptions({
       }
     }
   }
-  const ymId = `${ymPrefix}${String(ymSeq).padStart(3, '0')}`
+  let ymId = `${ymPrefix}${String(ymSeq).padStart(3, '0')}`
+  while (existingSet.has(ymId)) {
+    ymSeq++
+    ymId = `${ymPrefix}${String(ymSeq).padStart(3, '0')}`
+  }
   options.push({
     mode: 'YEAR_MONTH_SEQ',
     id: ymId,
     label: `Jaar-Maand`,
     description: `Gestructureerd per factuurmaand: ${ymId}`,
   })
+
+  // Guarantee at least one recommended option
+  if (!options.some(o => o.isRecommended)) {
+    const fallback = options.find(o => o.mode === 'GLOBAL_SEQ') || options[0]
+    if (fallback) fallback.isRecommended = true
+  }
 
   return options
 }

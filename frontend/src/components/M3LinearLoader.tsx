@@ -16,7 +16,7 @@ export default function M3LinearLoader() {
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
-    let timeout: NodeJS.Timeout
+    let timeout: ReturnType<typeof setTimeout>
     if (active) {
       setVisible(true)
     } else {

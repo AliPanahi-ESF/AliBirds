@@ -15,6 +15,7 @@ import { getDefaultPaymentLink, saveDefaultPaymentLink } from '@/lib/email'
 import { useAuth } from '@/lib/auth'
 import { useI18n } from '@/lib/i18n'
 import LanguageSwitcher from '@/components/LanguageSwitcher'
+import { triggerHaptic } from '@/lib/haptics'
 
 export default function SettingsPage() {
   const qc = useQueryClient()

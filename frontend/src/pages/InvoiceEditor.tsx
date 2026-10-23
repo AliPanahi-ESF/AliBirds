@@ -63,8 +63,8 @@ export default function InvoiceEditor() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showQuickClientModal, setShowQuickClientModal] = useState(false)
 
-  // Smart Invoice ID state
-  const [invoiceNumber, setInvoiceNumber] = useState<string>('')
+  // Smart Invoice ID state: initialized immediately so it is never blank
+  const [invoiceNumber, setInvoiceNumber] = useState<string>(() => `${new Date().getFullYear()}-0001`)
   const [selectedNumberMode, setSelectedNumberMode] = useState<string>('AUTO')
   const [userEditedNumber, setUserEditedNumber] = useState<boolean>(false)
   const [userEditedPaymentRef, setUserEditedPaymentRef] = useState<boolean>(false)
@@ -530,8 +530,10 @@ export default function InvoiceEditor() {
                 )}
               </div>
 
-              <div className="relative">
+              <div className="relative flex items-center">
                 <input
+                  id="invoice-number-input"
+                  name="invoice_number"
                   type="text"
                   value={invoiceNumber}
                   onChange={(e) => {
@@ -540,9 +542,27 @@ export default function InvoiceEditor() {
                     setSelectedNumberMode('CUSTOM')
                   }}
                   placeholder="bijv. 2026-0001"
-                  className="w-full bg-slate-950/80 border border-white/15 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl px-3 py-2 pl-8 text-xs sm:text-sm font-mono font-bold text-brand-300 tracking-wide transition-all shadow-inner"
+                  className="w-full bg-slate-950/80 border border-white/15 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl px-3 py-2 pl-8 pr-16 text-xs sm:text-sm font-mono font-bold text-brand-300 tracking-wide transition-all shadow-inner"
                 />
-                <Hash size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                <Hash size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                <div className="absolute right-1.5 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const rec = smartIdOptions.find(o => o.isRecommended) || smartIdOptions[0]
+                      if (rec) {
+                        setInvoiceNumber(rec.id)
+                        setSelectedNumberMode(rec.mode)
+                        setUserEditedNumber(false)
+                        toast.success(`Suggestie toegepast: ${rec.id}`)
+                      }
+                    }}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-brand-300 hover:bg-slate-800 transition-colors"
+                    title="Herbereken volgens de hoogste reeks"
+                  >
+                    <RefreshCw size={13} />
+                  </button>
+                </div>
               </div>
 
               {/* Smart Options Pills */}
@@ -581,7 +601,7 @@ export default function InvoiceEditor() {
                   </div>
 
                   {/* Informative explanation banner */}
-                  {selectedClient && selectedNumberMode === 'CLIENT_SEQ' && (
+                  {selectedClient && selectedNumberMode === 'CLIENT_SEQ' && smartIdOptions.find(o => o.mode === 'CLIENT_SEQ')?.previousInvoiceNumber && (
                     <div className="text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 p-2 rounded-xl flex items-center gap-1.5 mt-1">
                       <Sparkles size={13} className="shrink-0 text-emerald-400" />
                       <span>
@@ -640,116 +660,67 @@ export default function InvoiceEditor() {
               <h2 className="text-sm font-semibold text-slate-200">Regelitems</h2>
             </div>
 
-            {/* Desktop Table View (>= 640px) */}
-            <div className="hidden sm:block overflow-x-auto">
-              <div className="min-w-[580px] space-y-2">
-                {/* Header row */}
-                <div className="grid grid-cols-[1fr_80px_110px_120px_40px] gap-2 px-1 text-xs text-slate-400 font-medium">
-                  <span>Omschrijving</span>
-                  <span>Aantal</span>
-                  <span>{mode === 'EXCLUSIVE' ? 'Prijs excl.' : 'Prijs incl.'}</span>
-                  <span>Btw-tarief</span>
-                  <span />
-                </div>
-
-                {fields.map((field, idx) => {
-                  const row = watchedItems?.[idx]
-                  const { excl, vat, incl } = row ? calcLine(row, mode) : { excl: 0, vat: 0, incl: 0 }
-                  return (
-                    <div key={field.id} className="p-2 bg-slate-950/40 rounded-lg border border-slate-800/80 space-y-1.5">
-                      <div className="grid grid-cols-[1fr_80px_110px_120px_40px] gap-2 items-center">
-                        <input
-                          className="input text-xs"
-                          placeholder="Omschrijving dienst of product"
-                          {...register(`line_items.${idx}.description`)}
-                        />
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          className="input text-xs text-right font-mono"
-                          {...register(`line_items.${idx}.quantity`, { valueAsNumber: true })}
-                        />
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="input text-xs text-right font-mono"
-                          {...register(`line_items.${idx}.unit_price`, { valueAsNumber: true })}
-                        />
-                        <select className="select text-xs" {...register(`line_items.${idx}.vat_rate`)}>
-                          {VAT_OPTIONS.map(o => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => remove(idx)}
-                          className="p-2 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center justify-center cursor-pointer"
-                          disabled={fields.length === 1}
-                          title="Regel verwijderen"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-
-                      {/* Line totals */}
-                      <div className="flex justify-end gap-3 text-[11px] font-mono text-slate-400 pr-10">
-                        <span>Excl: {fmt.currency(excl)}</span>
-                        <span>Btw: {fmt.currency(vat)}</span>
-                        <span className="text-brand-400 font-semibold">Totaal: {fmt.currency(incl)}</span>
-                      </div>
-                    </div>
-                  )
-                })}
+            {/* Unified Responsive Line Items */}
+            <div className="space-y-3">
+              {/* Desktop Header row (hidden on mobile) */}
+              <div className="hidden sm:grid grid-cols-[1fr_85px_115px_125px_36px] gap-2.5 px-3 text-xs text-slate-400 font-medium">
+                <span>Omschrijving</span>
+                <span className="text-right">Aantal</span>
+                <span className="text-right">{mode === 'EXCLUSIVE' ? 'Prijs excl.' : 'Prijs incl.'}</span>
+                <span>Btw-tarief</span>
+                <span />
               </div>
-            </div>
 
-            {/* Mobile Stacked Card View (< 640px) */}
-            <div className="block sm:hidden space-y-3">
               {fields.map((field, idx) => {
                 const row = watchedItems?.[idx]
                 const { excl, vat, incl } = row ? calcLine(row, mode) : { excl: 0, vat: 0, incl: 0 }
                 return (
                   <div
                     key={field.id}
-                    className="p-3 bg-slate-950/60 rounded-xl border border-white/10 space-y-2.5 shadow-sm"
+                    className="p-3 sm:p-2.5 bg-slate-950/50 rounded-xl sm:rounded-lg border border-slate-800/80 space-y-2.5 sm:space-y-1.5 transition-all shadow-sm"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-bold text-slate-400">Regel #{idx + 1}</span>
+                    {/* Mobile Card Header */}
+                    <div className="flex sm:hidden items-center justify-between pb-1 border-b border-white/5">
+                      <span className="text-xs font-bold text-slate-300">Regel #{idx + 1}</span>
                       <button
                         type="button"
                         onClick={() => remove(idx)}
-                        className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/15 transition-colors disabled:opacity-30 cursor-pointer"
                         disabled={fields.length === 1}
+                        className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-30 cursor-pointer"
+                        title="Regel verwijderen"
                         aria-label="Verwijder regel"
                       >
                         <Trash2 size={15} />
                       </button>
                     </div>
 
-                    <div>
-                      <label className="text-[10px] text-slate-400 mb-1 block">Omschrijving</label>
-                      <input
-                        className="input text-xs w-full"
-                        placeholder="Omschrijving dienst of product"
-                        {...register(`line_items.${idx}.description`)}
-                      />
-                    </div>
+                    {/* Responsive Grid - Exactly ONE set of inputs registered with RHF */}
+                    <div className="grid grid-cols-12 sm:grid-cols-[1fr_85px_115px_125px_36px] gap-2.5 items-center">
+                      {/* Description */}
+                      <div className="col-span-12 sm:col-auto">
+                        <label className="text-[10px] text-slate-400 mb-1 block sm:hidden">Omschrijving</label>
+                        <input
+                          className="input text-xs w-full"
+                          placeholder="Omschrijving dienst of product"
+                          {...register(`line_items.${idx}.description`)}
+                        />
+                      </div>
 
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="text-[10px] text-slate-400 mb-1 block">Aantal</label>
+                      {/* Quantity */}
+                      <div className="col-span-4 sm:col-auto">
+                        <label className="text-[10px] text-slate-400 mb-1 block sm:hidden">Aantal</label>
                         <input
                           type="number"
                           step="0.1"
                           min="0"
-                          className="input text-xs text-center font-mono w-full"
+                          className="input text-xs text-right font-mono w-full"
                           {...register(`line_items.${idx}.quantity`, { valueAsNumber: true })}
                         />
                       </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400 mb-1 block truncate">
+
+                      {/* Unit Price */}
+                      <div className="col-span-4 sm:col-auto">
+                        <label className="text-[10px] text-slate-400 mb-1 block sm:hidden truncate">
                           {mode === 'EXCLUSIVE' ? 'Prijs excl.' : 'Prijs incl.'}
                         </label>
                         <input
@@ -760,20 +731,37 @@ export default function InvoiceEditor() {
                           {...register(`line_items.${idx}.unit_price`, { valueAsNumber: true })}
                         />
                       </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400 mb-1 block">Btw</label>
-                        <select className="select text-xs w-full px-1" {...register(`line_items.${idx}.vat_rate`)}>
+
+                      {/* VAT Rate */}
+                      <div className="col-span-4 sm:col-auto">
+                        <label className="text-[10px] text-slate-400 mb-1 block sm:hidden">Btw</label>
+                        <select className="select text-xs w-full" {...register(`line_items.${idx}.vat_rate`)}>
                           {VAT_OPTIONS.map(o => (
-                            <option key={o.value} value={o.value}>{o.label.split(' ')[0]}</option>
+                            <option key={o.value} value={o.value}>{o.label}</option>
                           ))}
                         </select>
                       </div>
+
+                      {/* Desktop Delete button */}
+                      <div className="hidden sm:flex items-center justify-center">
+                        <button
+                          type="button"
+                          onClick={() => remove(idx)}
+                          disabled={fields.length === 1}
+                          className="p-1.5 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors disabled:opacity-30 flex items-center justify-center cursor-pointer"
+                          title="Regel verwijderen"
+                          aria-label="Verwijder regel"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-1.5 border-t border-white/5 text-[11px] font-mono">
-                      <span className="text-slate-400">Excl: {fmt.currency(excl)}</span>
-                      <span className="text-slate-400">Btw: {fmt.currency(vat)}</span>
-                      <span className="text-brand-300 font-bold">Totaal: {fmt.currency(incl)}</span>
+                    {/* Line totals */}
+                    <div className="flex justify-between sm:justify-end items-center gap-3 text-[11px] font-mono text-slate-400 pt-1 border-t sm:border-0 border-white/5 sm:pt-0 sm:pr-8">
+                      <span>Excl: {fmt.currency(excl)}</span>
+                      <span>Btw: {fmt.currency(vat)}</span>
+                      <span className="text-brand-400 font-semibold">Totaal: {fmt.currency(incl)}</span>
                     </div>
                   </div>
                 )

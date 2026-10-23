@@ -114,6 +114,15 @@ export default function TaxReturn() {
       toast.error('Geen aangiftegegevens beschikbaar om te kopiëren')
       return
     }
+    const r1a = btw.rubrics['1a']
+    const r1b = btw.rubrics['1b']
+    const r1e = btw.rubrics['1e']
+    const r3b = btw.rubrics['3b']
+    const r5a = btw.rubrics['5a']
+    const r5b = btw.rubrics['5b']
+    const r5c = btw.rubrics['5c']
+    const teBetalen = btw.te_betalen_whole ?? Math.round(btw.te_betalen)
+
     const reportText = [
       `==================================================`,
       `BELASTINGAANGIFTE OMZETBELASTING — OVERZICHT`,
@@ -124,31 +133,31 @@ export default function TaxReturn() {
       ``,
       `RUBRIEK 1: BINNENLANDSE PRESTATIES`,
       `  1a. Leveringen/diensten 21%`,
-      `      Omzet: ${fmt.currency(btw.rubric_1a_turnover)} (Geheel: €${btw.rubric_1a_turnover_whole})`,
-      `      Btw:   ${fmt.currency(btw.rubric_1a_tax)} (Geheel: €${btw.rubric_1a_tax_whole})`,
+      `      Omzet: ${fmt.currency(r1a?.turnover || 0)} (Geheel: €${r1a?.turnover_whole || 0})`,
+      `      Btw:   ${fmt.currency(r1a?.tax || 0)} (Geheel: €${r1a?.tax_whole || 0})`,
       `  1b. Leveringen/diensten 9%`,
-      `      Omzet: ${fmt.currency(btw.rubric_1b_turnover)} (Geheel: €${btw.rubric_1b_turnover_whole})`,
-      `      Btw:   ${fmt.currency(btw.rubric_1b_tax)} (Geheel: €${btw.rubric_1b_tax_whole})`,
+      `      Omzet: ${fmt.currency(r1b?.turnover || 0)} (Geheel: €${r1b?.turnover_whole || 0})`,
+      `      Btw:   ${fmt.currency(r1b?.tax || 0)} (Geheel: €${r1b?.tax_whole || 0})`,
       `  1e. Leveringen/diensten 0% of verlegd`,
-      `      Omzet: ${fmt.currency(btw.rubric_1e_turnover)} (Geheel: €${btw.rubric_1e_turnover_whole})`,
+      `      Omzet: ${fmt.currency(r1e?.turnover || 0)} (Geheel: €${r1e?.turnover_whole || 0})`,
       ``,
       `RUBRIEK 3: PRESTATIES NAAR HET BUITENLAND`,
       `  3b. Leveringen naar landen binnen de EU (ICP)`,
-      `      Omzet: ${fmt.currency(btw.rubric_3b_turnover)} (Geheel: €${btw.rubric_3b_turnover_whole})`,
+      `      Omzet: ${fmt.currency(r3b?.turnover || 0)} (Geheel: €${r3b?.turnover_whole || 0})`,
       ``,
       `RUBRIEK 5: BEREKENING OMZETBELASTING`,
       `  5a. Verschuldigde omzetbelasting:`,
-      `      Totaal: ${fmt.currency(btw.rubric_5a_tax)} (Geheel: €${btw.rubric_5a_tax_whole})`,
+      `      Totaal: ${fmt.currency(r5a?.tax || 0)} (Geheel: €${r5a?.tax_whole || 0})`,
       `  5b. Voorbelasting (aftrekbare btw):`,
-      `      Totaal: ${fmt.currency(btw.rubric_5b_tax)} (Geheel: €${btw.rubric_5b_tax_whole})`,
+      `      Totaal: ${fmt.currency(r5b?.tax || 0)} (Geheel: €${r5b?.tax_whole || 0})`,
       `  5c. Subtotaal (5a minus 5b):`,
-      `      Totaal: ${fmt.currency(btw.rubric_5c_tax)}`,
+      `      Totaal: ${fmt.currency(r5c?.tax || 0)}`,
       ``,
       `--------------------------------------------------`,
       `EINDBEDRAG RUBRIEK 5g:`,
-      btw.rubric_5g_tax_whole >= 0
-        ? `  TE BETALEN AAN BELASTINGDIENST: €${btw.rubric_5g_tax_whole}`
-        : `  TERUG TE ONTVANGEN VAN BELASTINGDIENST: €${Math.abs(btw.rubric_5g_tax_whole)}`,
+      teBetalen >= 0
+        ? `  TE BETALEN AAN BELASTINGDIENST: €${teBetalen}`
+        : `  TERUG TE ONTVANGEN VAN BELASTINGDIENST: €${Math.abs(teBetalen)}`,
       `--------------------------------------------------`,
       `Aangemaakt via AliBirds ZZP Facturatie op ${new Date().toLocaleDateString('nl-NL')}`
     ].join('\n')
