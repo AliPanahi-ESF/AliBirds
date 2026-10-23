@@ -19,8 +19,11 @@ export default function BottomNav({ onOpenMenu }: BottomNavProps) {
   ]
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 safe-area-pb">
-      <div className="grid grid-cols-5 h-16 items-center px-1">
+    <nav
+      aria-label="Mobiele navigatie"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-40 liquid-glass-dock safe-area-pb"
+    >
+      <div className="grid grid-cols-5 h-[62px] items-center px-1.5 max-w-lg mx-auto">
         {tabs.map(({ to, icon: Icon, label }) => {
           const active = to === '/' ? pathname === '/' : pathname.startsWith(to)
           return (
@@ -28,12 +31,24 @@ export default function BottomNav({ onOpenMenu }: BottomNavProps) {
               key={to}
               to={to}
               className={clsx(
-                'flex flex-col items-center justify-center gap-1 py-1 px-0.5 transition-colors',
-                active ? 'text-brand-400 font-semibold' : 'text-slate-400 hover:text-slate-200'
+                'relative flex flex-col items-center justify-center gap-1 py-1 px-1 rounded-2xl transition-all duration-200 active:scale-95 select-none',
+                active
+                  ? 'text-brand-400 font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
               )}
             >
-              <Icon size={20} className={active ? 'text-brand-400' : 'text-slate-400'} />
-              <span className="text-[10px] tracking-tight">{label}</span>
+              {active && (
+                <span className="absolute -top-1 w-6 h-0.5 rounded-full bg-gradient-to-r from-brand-500 to-indigo-400 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
+              )}
+              <div
+                className={clsx(
+                  'w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200',
+                  active ? 'bg-brand-500/15 text-brand-400 shadow-sm' : 'text-slate-400'
+                )}
+              >
+                <Icon size={19} className={clsx(active ? 'text-brand-400 scale-105' : 'text-slate-400')} />
+              </div>
+              <span className="text-[10px] tracking-tight leading-none">{label}</span>
             </Link>
           )
         })}
@@ -41,13 +56,15 @@ export default function BottomNav({ onOpenMenu }: BottomNavProps) {
         {/* Menu toggle button */}
         <button
           onClick={onOpenMenu}
-          className="flex flex-col items-center justify-center gap-1 py-1 px-0.5 text-slate-400 hover:text-slate-200 transition-colors"
+          className="flex flex-col items-center justify-center gap-1 py-1 px-1 text-slate-400 hover:text-slate-200 active:scale-95 transition-all select-none"
           aria-label="Open menu"
         >
-          <Menu size={20} />
-          <span className="text-[10px] tracking-tight">Menu</span>
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-white/[0.04] transition-colors">
+            <Menu size={19} />
+          </div>
+          <span className="text-[10px] tracking-tight leading-none">Menu</span>
         </button>
       </div>
-    </div>
+    </nav>
   )
 }

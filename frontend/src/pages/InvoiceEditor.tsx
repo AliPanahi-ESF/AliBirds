@@ -1,9 +1,13 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
-import { Plus, Trash2, Save, Send, Download, Eye, EyeOff, ChevronDown, RefreshCw, ArrowLeft, Mail } from 'lucide-react'
+import {
+  Plus, Trash2, Save, Send, Download, Eye, EyeOff, ChevronDown,
+  RefreshCw, ArrowLeft, Mail, Sparkles, Hash, CheckCircle
+} from 'lucide-react'
 import toast from 'react-hot-toast'
+import { clsx } from 'clsx'
 import { invoicesApi, clientsApi, settingsApi, fmt } from '@/lib/api'
 import { Client, Invoice, LineItem, BusinessSettings } from '@/lib/types'
 import InvoicePrintModal from '@/components/InvoicePrintModal'
@@ -11,6 +15,7 @@ import SendInvoiceModal from '@/components/SendInvoiceModal'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { sendInvoiceViaResend, generateMailtoUrl, isResendConfigured } from '@/lib/email'
 import { calculateLineItem } from '@/lib/vatCalculator'
+import { getSmartInvoiceIdOptions, InvoiceIdOption } from '@/lib/invoiceNumbering'
 
 interface LineItemRow {
   description: string
@@ -54,6 +59,11 @@ export default function InvoiceEditor() {
   const [liveCalc, setLiveCalc] = useState({ excl: 0, vat: 0, incl: 0 })
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
+  // Smart Invoice ID state
+  const [invoiceNumber, setInvoiceNumber] = useState<string>('')
+  const [selectedNumberMode, setSelectedNumberMode] = useState<string>('AUTO')
+  const [userEditedNumber, setUserEditedNumber] = useState<boolean>(false)
+
   const { data: settings } = useQuery<BusinessSettings>({
     queryKey: ['settings'],
     queryFn: () => settingsApi.get(),
@@ -63,6 +73,12 @@ export default function InvoiceEditor() {
     queryKey: ['clients'],
     queryFn: () => clientsApi.list(),
   })
+
+  const { data: allInvoices = [] } = useQuery<Invoice[]>({
+    queryKey: ['invoices'],
+    queryFn: () => invoicesApi.list(),
+  })
+
   const { data: existing } = useQuery<Invoice>({
     queryKey: ['invoice', id],
     queryFn: () => invoicesApi.get(id!),
@@ -89,6 +105,33 @@ export default function InvoiceEditor() {
   const watchedItems = watch('line_items')
   const mode = watch('calculation_mode')
   const selectedClientId = watch('client_id')
+  const selectedClient = clients.find(c => c.id === selectedClientId)
+
+  // Calculate smart invoice ID options dynamically
+  const smartIdOptions = useMemo(() => {
+    return getSmartInvoiceIdOptions({
+      selectedClient,
+      invoices: allInvoices,
+      settings,
+    })
+  }, [selectedClient, allInvoices, settings])
+
+  // Sync / Auto-suggest invoice number
+  useEffect(() => {
+    if (isEdit && existing?.invoice_number) {
+      setInvoiceNumber(existing.invoice_number)
+      setSelectedNumberMode('CUSTOM')
+      return
+    }
+
+    if (!userEditedNumber && smartIdOptions.length > 0) {
+      const recommended = smartIdOptions.find(o => o.isRecommended) || smartIdOptions[0]
+      if (recommended) {
+        setInvoiceNumber(recommended.id)
+        setSelectedNumberMode(recommended.mode)
+      }
+    }
+  }, [selectedClientId, existing, isEdit, userEditedNumber, smartIdOptions])
 
   // Pre-fill from existing invoice
   useEffect(() => {
@@ -210,12 +253,10 @@ export default function InvoiceEditor() {
     }
   }
 
-  const selectedClient = clients.find(c => c.id === selectedClientId)
-
   // Construct a live invoice that always reflects the currently chosen customer and line items
   const currentInvoice: Invoice = {
     id: existing?.id || 'new-invoice-preview',
-    invoice_number: existing?.invoice_number || `${settings?.invoice_prefix || '2026-'}${String(settings?.next_invoice_sequence || 1).padStart(4, '0')}`,
+    invoice_number: invoiceNumber.trim() || existing?.invoice_number || `${settings?.invoice_prefix || '2026-'}${String(settings?.next_invoice_sequence || 1).padStart(4, '0')}`,
     client_id: selectedClientId,
     client: selectedClient,
     issue_date: watch('issue_date') || today,
@@ -266,7 +307,7 @@ export default function InvoiceEditor() {
       }
     })
 
-    const invoiceNum = existing?.invoice_number || `${settings?.invoice_prefix || '2026-'}${String(settings?.next_invoice_sequence || 1).padStart(4, '0')}`
+    const invoiceNum = invoiceNumber.trim() || existing?.invoice_number || `${settings?.invoice_prefix || '2026-'}${String(settings?.next_invoice_sequence || 1).padStart(4, '0')}`
     const payload = {
       ...data,
       id: existing?.id,
@@ -357,7 +398,7 @@ export default function InvoiceEditor() {
         {/* Editor form */}
         <div className="space-y-4">
           {/* Client + Dates */}
-          <div className="card p-3.5 sm:p-5 space-y-4">
+          <div className="liquid-glass-card p-3.5 sm:p-5 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="label">Klant *</label>
@@ -394,6 +435,113 @@ export default function InvoiceEditor() {
                   <input type="date" className="input text-xs sm:text-sm" {...register('due_date')} />
                 </div>
               </div>
+            </div>
+
+            {/* Smart Factuurnummer (ID) Section */}
+            <div className="p-3.5 sm:p-4 rounded-xl liquid-glass-box space-y-2.5 border border-white/10">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center shrink-0">
+                    <Hash size={13} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
+                      Factuurnummer (ID) *
+                      {selectedNumberMode === 'CLIENT_SEQ' && (
+                        <span className="badge-green text-[10px] py-0 px-1.5 flex items-center gap-1">
+                          <Sparkles size={9} /> +1 van klant
+                        </span>
+                      )}
+                    </label>
+                    <span className="text-[10px] text-slate-400">Opeenvolgende Belastingdienst identificatie</span>
+                  </div>
+                </div>
+
+                {userEditedNumber && !isEdit && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserEditedNumber(false)
+                      const rec = smartIdOptions.find(o => o.isRecommended) || smartIdOptions[0]
+                      if (rec) {
+                        setInvoiceNumber(rec.id)
+                        setSelectedNumberMode(rec.mode)
+                      }
+                    }}
+                    className="text-[11px] text-brand-400 hover:text-brand-300 hover:underline flex items-center gap-1 self-start sm:self-auto cursor-pointer"
+                  >
+                    <RefreshCw size={11} />
+                    <span>Automatische suggestie herstellen</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <input
+                  type="text"
+                  value={invoiceNumber}
+                  onChange={(e) => {
+                    setInvoiceNumber(e.target.value)
+                    setUserEditedNumber(true)
+                    setSelectedNumberMode('CUSTOM')
+                  }}
+                  placeholder="bijv. 2026-0001"
+                  className="w-full bg-slate-950/80 border border-white/15 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl px-3 py-2 pl-8 text-xs sm:text-sm font-mono font-bold text-brand-300 tracking-wide transition-all shadow-inner"
+                />
+                <Hash size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              </div>
+
+              {/* Smart Options Pills */}
+              {!isEdit && smartIdOptions.length > 0 && (
+                <div className="space-y-1.5 pt-0.5">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold flex items-center gap-1">
+                    <span>Nummeropties:</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {smartIdOptions.map((opt) => {
+                      const isActive = invoiceNumber === opt.id
+                      return (
+                        <button
+                          key={opt.mode}
+                          type="button"
+                          onClick={() => {
+                            setInvoiceNumber(opt.id)
+                            setSelectedNumberMode(opt.mode)
+                            setUserEditedNumber(false)
+                          }}
+                          className={clsx(
+                            'px-2.5 py-1 rounded-xl text-xs font-mono font-medium transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer',
+                            isActive
+                              ? 'bg-brand-600/30 text-brand-300 border border-brand-500/50 shadow-sm'
+                              : 'bg-white/[0.04] text-slate-300 border border-white/10 hover:bg-white/[0.08]'
+                          )}
+                          title={opt.description}
+                        >
+                          {opt.isRecommended && <Sparkles size={11} className="text-amber-400 shrink-0" />}
+                          <span className="text-[11px] text-slate-400">{opt.label}:</span>
+                          <strong className="text-slate-100 font-bold">{opt.id}</strong>
+                          {isActive && <CheckCircle size={12} className="text-emerald-400 ml-0.5" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Informative explanation banner */}
+                  {selectedClient && selectedNumberMode === 'CLIENT_SEQ' && (
+                    <div className="text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 p-2 rounded-xl flex items-center gap-1.5 mt-1">
+                      <Sparkles size={13} className="shrink-0 text-emerald-400" />
+                      <span>
+                        Vorige factuur voor <strong>{selectedClient.name}</strong> was{' '}
+                        <code className="font-mono text-emerald-300 font-bold">
+                          {smartIdOptions.find(o => o.mode === 'CLIENT_SEQ')?.previousInvoiceNumber}
+                        </code>
+                        . Volgend volgnummer automatisch ingesteld op{' '}
+                        <code className="font-mono text-white font-bold">{invoiceNumber}</code> (+1).
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* VAT mode toggle */}
@@ -433,7 +581,7 @@ export default function InvoiceEditor() {
           </div>
 
           {/* Line items */}
-          <div className="card p-3.5 sm:p-5">
+          <div className="liquid-glass-card p-3.5 sm:p-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-slate-200">Regelitems</h2>
             </div>
@@ -530,7 +678,7 @@ export default function InvoiceEditor() {
           </div>
 
           {/* Notes & Reference */}
-          <div className="card p-3.5 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <div className="liquid-glass-card p-3.5 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
               <label className="label">Betalingskenmerk</label>
               <input className="input text-xs sm:text-sm" placeholder="bijv. RF82 2026 0001" {...register('payment_reference')} />
@@ -544,7 +692,7 @@ export default function InvoiceEditor() {
 
         {/* PDF Preview pane */}
         {showPreview && isEdit && (
-          <div className="card p-0 overflow-hidden h-[550px] sm:h-[700px] border border-slate-800">
+          <div className="liquid-glass-card p-0 overflow-hidden h-[550px] sm:h-[700px] border border-slate-800">
             <div className="bg-slate-850 px-4 py-2 text-xs text-slate-300 flex items-center justify-between border-b border-slate-800">
               <span className="flex items-center gap-2">
                 <Eye size={13} className="text-brand-400" /> PDF Preview — {existing?.invoice_number}

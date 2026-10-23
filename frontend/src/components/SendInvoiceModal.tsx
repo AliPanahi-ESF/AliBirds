@@ -216,27 +216,27 @@ export default function SendInvoiceModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-md flex items-end sm:items-center justify-center p-2.5 sm:p-4 pb-20 sm:pb-4 animate-fade-in"
       role="dialog"
       aria-modal="true"
       aria-labelledby="send-invoice-title"
     >
-      <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl shadow-2xl overflow-hidden p-5 sm:p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-lg liquid-glass-dialog p-4 sm:p-6 space-y-4 max-h-[88vh] overflow-y-auto animate-scale-in">
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="flex items-center justify-between border-b border-white/10 pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <div className="p-2 rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-md shadow-emerald-500/10">
               <Mail size={18} />
             </div>
             <div>
-              <h2 id="send-invoice-title" className="text-base font-bold text-slate-100">Factuur Verzenden</h2>
-              <p className="text-xs text-slate-400">Verstuur PDF-factuur {invoice.invoice_number} direct met betaallink</p>
+              <h2 id="send-invoice-title" className="text-base font-bold text-slate-100 tracking-tight">Factuur Verzenden</h2>
+              <p className="text-xs text-slate-300">Verstuur PDF-factuur {invoice.invoice_number} direct met betaallink</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
             aria-label="Sluiten"
           >
             <X size={18} />
@@ -244,7 +244,7 @@ export default function SendInvoiceModal({
         </div>
 
         {/* Invoice Summary Pill */}
-        <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800/80 flex items-center justify-between text-xs">
+        <div className="p-3 liquid-glass-box flex items-center justify-between text-xs">
           <div>
             <div className="font-semibold text-slate-200">{resolvedClient?.name || 'Klant'}</div>
             <div className="text-slate-400 font-mono text-[11px]">Factuurnummer: {invoice.invoice_number}</div>
@@ -265,12 +265,12 @@ export default function SendInvoiceModal({
             value={recipientEmail}
             onChange={(e) => setRecipientEmail(e.target.value)}
             placeholder="bijv. administratie@klant.nl"
-            className="w-full bg-slate-950 border border-slate-700 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-lg px-3 py-2 text-xs sm:text-sm text-slate-100 placeholder-slate-500 font-mono transition-all"
+            className="w-full bg-slate-950/60 border border-white/10 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 font-mono transition-all shadow-inner"
             autoFocus
           />
 
           {!resolvedClient?.email && (
-            <div className="flex items-center gap-1.5 text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/20 p-2 rounded-lg">
+            <div className="flex items-center gap-1.5 text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-xl">
               <AlertCircle size={13} className="shrink-0" />
               <span>Deze klant heeft nog geen e-mailadres in het adressenbestand.</span>
             </div>
@@ -282,7 +282,7 @@ export default function SendInvoiceModal({
                 type="checkbox"
                 checked={saveToProfile}
                 onChange={(e) => setSaveToProfile(e.target.checked)}
-                className="rounded border-slate-700 bg-slate-950 text-brand-600 focus:ring-brand-500 h-3.5 w-3.5"
+                className="rounded border-white/10 bg-slate-950 text-brand-600 focus:ring-brand-500 h-3.5 w-3.5"
               />
               <span className="text-xs text-slate-300">
                 E-mailadres opslaan in klantprofiel van <strong>{resolvedClient.name}</strong>
@@ -292,7 +292,7 @@ export default function SendInvoiceModal({
         </div>
 
         {/* Direct Payment Link Field */}
-        <div className="space-y-1.5 bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
+        <div className="space-y-2 liquid-glass-box p-3.5">
           <div className="flex items-center justify-between">
             <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
               <LinkIcon size={13} className="text-emerald-400" />
@@ -305,7 +305,7 @@ export default function SendInvoiceModal({
             value={paymentLink}
             onChange={(e) => setPaymentLink(e.target.value)}
             placeholder="bijv. https://bunq.me/uwbedrijf of https://tikkie.me/..."
-            className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 font-mono transition-all"
+            className="w-full bg-slate-950/60 border border-white/10 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 font-mono transition-all shadow-inner"
           />
           <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
             <span>Wordt als klikbare iDEAL-betaalknop meegestuurd in de e-mail.</span>
@@ -315,7 +315,7 @@ export default function SendInvoiceModal({
                   type="checkbox"
                   checked={savePayLinkAsDefault}
                   onChange={(e) => setSavePayLinkAsDefault(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-950 text-emerald-500 h-3 w-3"
+                  className="rounded border-white/10 bg-slate-950 text-emerald-500 h-3 w-3"
                 />
                 <span>Onthouden</span>
               </label>
@@ -324,10 +324,10 @@ export default function SendInvoiceModal({
         </div>
 
         {/* PDF Attachment Badge & Download Button */}
-        <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-              <FileText size={15} />
+        <div className="p-3 rounded-2xl liquid-glass-box flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-indigo-500/15 text-indigo-400 border border-indigo-500/25">
+              <FileText size={16} />
             </div>
             <div>
               <div className="font-semibold text-slate-200">Factuur-{invoice.invoice_number}.pdf</div>
@@ -337,10 +337,10 @@ export default function SendInvoiceModal({
           <button
             type="button"
             onClick={handleDownloadPdf}
-            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1.5 transition-colors border border-slate-700"
+            className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-slate-200 text-xs flex items-center gap-1.5 transition-colors border border-white/10 active:scale-95"
             title="Download PDF om handmatig toe te voegen of in te zien"
           >
-            <Download size={12} />
+            <Download size={13} />
             <span>Download PDF</span>
           </button>
         </div>
@@ -377,26 +377,26 @@ export default function SendInvoiceModal({
         )}
 
         {/* 1. Direct In-App Sending Option */}
-        <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-700/80 space-y-2.5">
+        <div className="p-4 rounded-2xl liquid-glass-box space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center">
+              <div className="w-7 h-7 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center">
                 <Send size={13} />
               </div>
               <span className="text-xs font-bold text-slate-100">Direct in de app verzenden</span>
             </div>
             {isResendConfigured() ? (
-              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-medium">
+              <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-semibold">
                 <Sparkles size={10} /> Klaar voor verzending
               </span>
             ) : (
-              <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-medium">
-                Sleutel vereist
+              <span className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-medium">
+                Resend actief
               </span>
             )}
           </div>
 
-          <p className="text-[11px] text-slate-400 leading-relaxed">
+          <p className="text-[11px] text-slate-300 leading-relaxed">
             Verstuur de factuur direct vanuit AliBirds inclusief officiële A4 PDF-bijlage en klikbare iDEAL-betaalknop.
           </p>
 
@@ -404,30 +404,15 @@ export default function SendInvoiceModal({
             type="button"
             onClick={handleSendViaResend}
             disabled={isSendingResend || !recipientEmail}
-            className="w-full btn-primary py-2.5 text-xs sm:text-sm flex items-center justify-center gap-2 font-semibold shadow-md shadow-brand-600/20 disabled:opacity-50"
+            className="w-full btn-primary py-2.5 text-xs sm:text-sm flex items-center justify-center gap-2 font-semibold shadow-lg shadow-brand-600/30 rounded-xl transition-all active:scale-[0.98] disabled:opacity-50"
           >
             <Send size={14} />
             <span>
               {isSendingResend
                 ? 'Factuur met PDF wordt verzonden...'
-                : isResendConfigured()
-                ? 'Verzend nu direct via AliBirds (inclusief PDF)'
-                : 'Direct verzenden (Resend sleutel vereist)'}
+                : 'Verzend nu direct via AliBirds (inclusief PDF)'}
             </span>
           </button>
-
-          {!isResendConfigured() && (
-            <div className="text-[11px] text-slate-400 pt-0.5 flex items-center justify-between">
-              <span>Nog geen Resend API-sleutel? (3.000 gratis mails/mnd)</span>
-              <a
-                href="/settings"
-                target="_blank"
-                className="text-brand-400 hover:underline font-medium flex items-center gap-1"
-              >
-                Instellen in 1 minuut <ExternalLink size={10} />
-              </a>
-            </div>
-          )}
         </div>
 
         {/* 2. External 1-Click Sending Options */}
@@ -441,9 +426,9 @@ export default function SendInvoiceModal({
             <button
               type="button"
               onClick={handleOpenGmail}
-              className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-700 hover:border-red-500/50 hover:bg-red-950/10 text-left transition-all flex items-center gap-2.5 group"
+              className="p-3 rounded-2xl liquid-glass-box hover:border-red-500/40 hover:bg-red-950/15 text-left transition-all flex items-center gap-2.5 group active:scale-[0.98]"
             >
-              <div className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 shrink-0 group-hover:scale-105 transition-transform">
+              <div className="w-8 h-8 rounded-xl bg-red-500/15 border border-red-500/25 flex items-center justify-center text-red-400 shrink-0 group-hover:scale-105 transition-transform">
                 <Mail size={16} />
               </div>
               <div className="truncate">
@@ -458,9 +443,9 @@ export default function SendInvoiceModal({
             <button
               type="button"
               onClick={handleOpenOutlook}
-              className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-700 hover:border-blue-500/50 hover:bg-blue-950/10 text-left transition-all flex items-center gap-2.5 group"
+              className="p-3 rounded-2xl liquid-glass-box hover:border-blue-500/40 hover:bg-blue-950/15 text-left transition-all flex items-center gap-2.5 group active:scale-[0.98]"
             >
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0 group-hover:scale-105 transition-transform">
+              <div className="w-8 h-8 rounded-xl bg-blue-500/15 border border-blue-500/25 flex items-center justify-center text-blue-400 shrink-0 group-hover:scale-105 transition-transform">
                 <Mail size={16} />
               </div>
               <div className="truncate">
@@ -477,7 +462,7 @@ export default function SendInvoiceModal({
             <button
               type="button"
               onClick={handleOpenMailto}
-              className="p-2 rounded-lg bg-slate-950/50 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs flex items-center justify-center gap-1.5 transition-colors"
+              className="p-2.5 rounded-xl liquid-glass-box hover:bg-white/[0.08] text-slate-300 hover:text-white text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95"
             >
               <ExternalLink size={13} />
               <span>Standaard mailapp</span>
@@ -487,7 +472,7 @@ export default function SendInvoiceModal({
             <button
               type="button"
               onClick={handleCopyText}
-              className="p-2 rounded-lg bg-slate-950/50 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs flex items-center justify-center gap-1.5 transition-colors"
+              className="p-2.5 rounded-xl liquid-glass-box hover:bg-white/[0.08] text-slate-300 hover:text-white text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95"
             >
               {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
               <span>{copied ? 'Gekopieerd!' : 'Kopieer e-mailtekst'}</span>
@@ -496,7 +481,7 @@ export default function SendInvoiceModal({
         </div>
 
         {/* Collapsible Short Email Preview */}
-        <div className="border-t border-slate-800/60 pt-2">
+        <div className="border-t border-white/10 pt-2">
           <button
             type="button"
             onClick={() => setShowPreview(p => !p)}
@@ -507,8 +492,8 @@ export default function SendInvoiceModal({
           </button>
 
           {showPreview && (
-            <div className="mt-2 p-3 bg-slate-950 rounded-lg border border-slate-800 text-[11px] text-slate-300 font-mono whitespace-pre-line max-h-44 overflow-y-auto leading-relaxed">
-              <div className="text-slate-400 font-bold mb-1 border-b border-slate-800 pb-1">
+            <div className="mt-2 p-3.5 liquid-glass-box text-[11px] text-slate-300 font-mono whitespace-pre-line max-h-44 overflow-y-auto leading-relaxed">
+              <div className="text-slate-400 font-bold mb-1 border-b border-white/10 pb-1">
                 Onderwerp: {subject}
               </div>
               {plainBody}

@@ -152,7 +152,7 @@ export default function InvoiceList() {
         {isLoading ? (
           <CardSkeleton count={4} />
         ) : filtered.length === 0 ? (
-          <div className="card text-center py-10 text-xs text-slate-500">Geen facturen gevonden</div>
+          <div className="liquid-glass-card text-center py-10 text-xs text-slate-500">Geen facturen gevonden</div>
         ) : (
           filtered.map(inv => {
             const s = STATUS_MAP[inv.status] ?? { label: inv.status, cls: 'badge-gray' }
@@ -161,7 +161,7 @@ export default function InvoiceList() {
               <div
                 key={inv.id}
                 onClick={() => nav(`/invoices/${inv.id}/edit`)}
-                className="card p-3.5 space-y-2.5 active:scale-[0.99] transition-transform cursor-pointer"
+                className="liquid-glass-card p-3.5 space-y-2.5 active:scale-[0.98] transition-all cursor-pointer"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>

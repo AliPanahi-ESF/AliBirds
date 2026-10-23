@@ -12,6 +12,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.json" />
+    <script>
+      // Automatically handle dynamic chunk updates when new deployments occur
+      window.addEventListener('vite:preloadError', function() {
+        var key = 'alibirds_chunk_reload_ts';
+        var last = Number(sessionStorage.getItem(key) || 0);
+        if (Date.now() - last > 6000) {
+          sessionStorage.setItem(key, String(Date.now()));
+          window.location.reload();
+        }
+      });
+    </script>
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-brand-500 selection:text-white">
     <div id="root"></div>

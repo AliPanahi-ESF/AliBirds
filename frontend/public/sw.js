@@ -1,5 +1,5 @@
 // AliBirds Service Worker - PWA Offline Caching & Web Push Notifications
-const CACHE_NAME = 'alibirds-cache-v3'
+const CACHE_NAME = 'alibirds-cache-v4'
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -16,7 +16,7 @@ self.addEventListener('install', (event) => {
   )
 })
 
-// 2. Activate Event: Clean up any old caches (including legacy moneybirds-cache-v1)
+// 2. Activate Event: Clean up any old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
   )
 })
 
-// Support SKIP_WAITING message from client update toast
+// Support SKIP_WAITING message from client update prompt
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting()
@@ -40,16 +40,17 @@ self.addEventListener('message', (event) => {
 })
 
 // 3. Fetch Event: Network-First for HTML navigations to ensure latest deployment is always served;
-//                 Stale-while-revalidate for static assets; bypass for API/Auth
+//                 Stale-while-revalidate for static assets; bypass for API/Auth & version.json
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
 
-  // Bypass cache completely for Supabase REST/Auth, Netlify serverless functions, or non-GET
+  // Bypass cache completely for Supabase REST/Auth, Netlify serverless functions, version.json, or non-GET
   if (
     event.request.method !== 'GET' ||
     url.hostname.includes('supabase.co') ||
     url.pathname.startsWith('/.netlify/') ||
-    url.pathname.startsWith('/api/')
+    url.pathname.startsWith('/api/') ||
+    url.pathname === '/version.json'
   ) {
     return
   }
@@ -64,7 +65,7 @@ self.addEventListener('fetch', (event) => {
 
   if (isHtml) {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: 'no-cache' })
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const responseClone = networkResponse.clone()

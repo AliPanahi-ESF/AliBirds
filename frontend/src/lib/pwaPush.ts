@@ -15,6 +15,11 @@ let isRefreshing = false
  * Display interactive notification when a new version of the app is available
  */
 export function notifyNewVersionAvailable(registration: ServiceWorkerRegistration): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('alibirds:app-update-available', { detail: { registration } }))
+  }
+
+  // Also show a liquid glass notification toast
   toast(
     (t) => (
       React.createElement('div', { className: 'flex items-center justify-between gap-3 w-full py-1' },
@@ -22,8 +27,8 @@ export function notifyNewVersionAvailable(registration: ServiceWorkerRegistratio
           React.createElement('span', { className: 'font-bold text-xs text-slate-100 flex items-center gap-1.5' },
             '🚀 Nieuwe AliBirds versie beschikbaar!'
           ),
-          React.createElement('span', { className: 'text-[11px] text-slate-400 mt-0.5' },
-            'Klik om bij te werken en de nieuwste functies te laden.'
+          React.createElement('span', { className: 'text-[11px] text-slate-300 mt-0.5' },
+            'Tik om direct bij te werken en te laden.'
           )
         ),
         React.createElement('button', {
@@ -40,20 +45,21 @@ export function notifyNewVersionAvailable(registration: ServiceWorkerRegistratio
             toast.dismiss(t.id)
             window.location.reload()
           },
-          className: 'px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-lg transition-colors shadow-lg shadow-indigo-600/30 shrink-0 cursor-pointer',
+          className: 'px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs rounded-xl transition-all active:scale-95 shadow-lg shadow-brand-600/30 shrink-0 cursor-pointer',
         }, 'Nu Updaten')
       )
     ),
     {
-      duration: Infinity,
+      duration: 15000,
       id: 'alibirds-app-update-toast',
       style: {
-        background: '#0f172a',
-        border: '1px solid #38bdf8',
-        padding: '10px 14px',
+        background: 'rgba(15, 23, 42, 0.88)',
+        backdropFilter: 'blur(20px)',
+        border: '1px solid rgba(255, 255, 255, 0.15)',
+        padding: '12px 16px',
         color: '#f8fafc',
-        borderRadius: '12px',
-        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
+        borderRadius: '20px',
+        boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.15)',
       },
     }
   )

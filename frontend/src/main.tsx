@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
+import AppUpdatePrompt from './components/AppUpdatePrompt'
 import { registerServiceWorker } from './lib/pwaPush'
 import './index.css'
 
@@ -40,20 +41,29 @@ const queryClient = new QueryClient({
   },
 })
 
+// Dynamic responsive toast positioning (top-center on mobile, bottom-right on desktop)
+const isMobileDevice = typeof window !== 'undefined' && window.innerWidth < 768
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
+        <AppUpdatePrompt />
         <App />
         <Toaster
-          position="bottom-right"
+          position={isMobileDevice ? 'top-center' : 'bottom-right'}
+          containerStyle={isMobileDevice ? { top: '65px', padding: '0 12px' } : undefined}
           toastOptions={{
             style: {
-              background: '#0f172a',
+              background: 'rgba(15, 23, 42, 0.88)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
               color: '#f8fafc',
-              border: '1px solid #334155',
-              borderRadius: '10px',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: '16px',
+              boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.15)',
               fontSize: '13px',
+              padding: '10px 16px',
             },
           }}
         />

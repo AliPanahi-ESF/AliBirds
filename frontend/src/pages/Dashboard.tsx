@@ -26,7 +26,7 @@ function KPICard({ title, value, sub, icon: Icon, color, loading }: KPICardProps
     green:  'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
   }
   return (
-    <div className="card p-3.5 sm:p-5 flex flex-col justify-between">
+    <div className="liquid-glass-card p-3.5 sm:p-5 flex flex-col justify-between">
       <div className="flex items-start justify-between mb-2">
         <div className={clsx('p-2 rounded-lg border', colors[color])}>
           <Icon size={16} />
@@ -138,7 +138,7 @@ export default function Dashboard() {
       {/* Quick actions + Recent invoices */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Quick Actions */}
-        <div className="card space-y-2">
+        <div className="liquid-glass-card space-y-2">
           <h2 className="text-sm font-semibold text-slate-300 mb-3">Snelle acties</h2>
           {[
             { label: 'Nieuwe factuur maken', to: '/invoices/new', icon: FileText, color: 'text-brand-400' },
@@ -161,7 +161,7 @@ export default function Dashboard() {
         </div>
 
         {/* Recent Invoices */}
-        <div className="card col-span-1 lg:col-span-2">
+        <div className="liquid-glass-card col-span-1 lg:col-span-2">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-slate-300">Recente facturen</h2>
             <button onClick={() => nav('/invoices')} className="btn-ghost btn-sm text-xs">
@@ -201,7 +201,7 @@ export default function Dashboard() {
       </div>
 
       {/* Btw-aangifte mini widget */}
-      <div className="card">
+      <div className="liquid-glass-card">
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-sm font-semibold text-slate-300">Btw-aangifte schatting</h2>

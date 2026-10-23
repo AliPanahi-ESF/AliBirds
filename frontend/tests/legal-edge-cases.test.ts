@@ -253,15 +253,52 @@ test('Security & Cache', 'Settings cache key is strictly scoped per user ID', ()
   assertEquals(anonymousKey, null, 'Unauthenticated users must not share a cached company profile')
 })
 
+// ── 6. SMART INVOICE NUMBERING & CLIENT SEQUENCE (+1) ──────────────────────
+console.log('\nSECTION 6: Smart Invoice Numbering & Client Sequence (+1)')
+
+import { incrementInvoiceNumber, findLastInvoiceForClient, getSmartInvoiceIdOptions } from '../src/lib/invoiceNumbering'
+
+test('Smart Numbering', 'Correctly increments standard sequential invoice numbers with padding', () => {
+  assertEquals(incrementInvoiceNumber('2026-0003'), '2026-0004', '2026-0003 should increment to 2026-0004')
+  assertEquals(incrementInvoiceNumber('ACM-042'), 'ACM-043', 'ACM-042 should increment to ACM-043')
+  assertEquals(incrementInvoiceNumber('INV-099'), 'INV-100', 'INV-099 should increment to INV-100')
+  assertEquals(incrementInvoiceNumber('1005'), '1006', '1005 should increment to 1006')
+})
+
+test('Smart Numbering', 'Finds most recent invoice for same client and suggests client id + 1', () => {
+  const dummyInvoices: any[] = [
+    { id: 'inv-1', client_id: 'client-A', invoice_number: '2026-0001', issue_date: '2026-01-10' },
+    { id: 'inv-2', client_id: 'client-B', invoice_number: '2026-0002', issue_date: '2026-01-15' },
+    { id: 'inv-3', client_id: 'client-A', invoice_number: '2026-0003', issue_date: '2026-02-01' },
+  ]
+
+  const clientA = { id: 'client-A', name: 'Acme BV' } as any
+  const lastForA = findLastInvoiceForClient(clientA.id, clientA.name, dummyInvoices)
+  assert(lastForA !== null, 'Should find previous invoice for client A')
+  assertEquals(lastForA?.invoice_number, '2026-0003', 'Most recent invoice for client A should be 2026-0003')
+
+  const options = getSmartInvoiceIdOptions({
+    selectedClient: clientA,
+    invoices: dummyInvoices,
+    settings: { invoice_prefix: '2026-', next_invoice_sequence: 4 } as any,
+  })
+
+  const clientSeqOpt = options.find(o => o.mode === 'CLIENT_SEQ')
+  assert(clientSeqOpt !== undefined, 'Client sequence option should exist')
+  assertEquals(clientSeqOpt?.id, '2026-0004', 'Client sequence option should be 2026-0004 (+1 from 2026-0003)')
+  assertEquals(clientSeqOpt?.isRecommended, true, 'Client sequence option should be marked recommended')
+})
+
 // ── SUMMARY REPORT ─────────────────────────────────────────────────────────
 console.log('\n=================================================================')
 const passedCount = results.filter(r => r.passed).length
 const failedCount = results.filter(r => !r.passed).length
 console.log(`TOTAL TESTS: ${results.length} | PASSED: ${passedCount} | FAILED: ${failedCount}`)
 if (failedCount === 0) {
-  console.log('STATUS: ALL 17 REAL CODE EDGE CASE TESTS PASSED SUCCESSFULLY! ✓')
+  console.log('STATUS: ALL REAL CODE EDGE CASE TESTS PASSED SUCCESSFULLY! ✓')
 } else {
   console.error('STATUS: SOME TESTS FAILED! ✗')
   process.exit(1)
 }
 console.log('=================================================================\n')
+
