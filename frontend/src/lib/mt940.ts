@@ -4,6 +4,7 @@
  * Parses statement lines (:61:) and remittance details (:86:).
  */
 import { BankTransaction } from './types'
+import { calculateInvoiceMatchScore } from './paymentReference'
 
 export interface ParsedBankStatement {
   accountIban: string
@@ -258,26 +259,19 @@ export function autoMatchTransactions(
       let bestScore = 0
 
       for (const inv of invoices) {
-        // 1. Exact Invoice Number in remittance (e.g. "2026-0001")
-        const invNum = (inv.invoice_number || '').toLowerCase()
-        if (invNum && txText.includes(invNum)) {
-          bestInvoice = inv
-          bestScore = 100
-          break
+        const matchResult = calculateInvoiceMatchScore(tx, inv)
+        let score = matchResult.score
+
+        // Slight bonus (+1) for unpaid or sent invoices when scores are tied
+        if (score > 0 && inv.status !== 'PAID') {
+          score += 1
         }
 
-        // 2. Exact amount match + unpaid invoice
-        const invTotal = Number(inv.total_incl ?? inv.total_incl_vat) || 0
-        if (Math.abs(invTotal - txAmount) < 0.01) {
-          const clientName = (inv.client?.name || '').toLowerCase()
-          if (clientName && contraName && (contraName.includes(clientName) || clientName.includes(contraName))) {
-            bestInvoice = inv
-            bestScore = 95
-            break
-          } else if (!bestInvoice) {
-            bestInvoice = inv
-            bestScore = 75
-          }
+        if (score > bestScore) {
+          bestScore = score
+          bestInvoice = inv
+          // Early exit on perfect 100% match via betalingskenmerk
+          if (score >= 100) break
         }
       }
 
@@ -288,10 +282,10 @@ export function autoMatchTransactions(
             ...tx,
             reconciliation_status: 'MATCHED' as const,
             matched_invoice_id: bestInvoice.id,
-            match_score: bestScore,
+            match_score: Math.min(bestScore, 100),
           },
           invoiceId: bestInvoice.id,
-          score: bestScore,
+          score: Math.min(bestScore, 100),
         }
       }
     }

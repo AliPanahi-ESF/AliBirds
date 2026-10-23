@@ -5,6 +5,7 @@
 import { jsPDF } from 'jspdf'
 import { Invoice, BusinessSettings, Client } from './types'
 import { fmt } from './api'
+import { generateRfReference } from './paymentReference'
 
 export function generateInvoicePdf(
   invoice: Invoice,
@@ -340,7 +341,8 @@ export function generateInvoicePdf(
   }
 
   // ── Payment Box (Bottom) ───────────────────────────────────────────────────
-  const boxHeight = resolvedPaymentLink ? 26 : 20
+  const betalingsKenmerk = invoice.payment_reference || generateRfReference(invoice.invoice_number)
+  const boxHeight = resolvedPaymentLink ? 27 : 22
   doc.setFillColor(248, 250, 252)
   doc.setDrawColor(226, 232, 240)
   doc.roundedRect(margin, y, contentWidth, boxHeight, 2, 2, 'FD')
@@ -348,7 +350,7 @@ export function generateInvoicePdf(
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
   doc.setTextColor(15, 23, 42)
-  doc.text('Betaalinstructies', margin + 4, y + 6)
+  doc.text('Betaalinstructies (SEPA Overboeking)', margin + 4, y + 5.5)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8.5)
@@ -356,18 +358,27 @@ export function generateInvoicePdf(
   doc.text(
     `Gelieve over te maken naar IBAN: ${settings?.iban || 'Zie factuur'} t.n.v. ${companyName}.`,
     margin + 4,
-    y + 11
+    y + 10.5
   )
   doc.text(
-    `Betalingskenmerk: ${invoice.invoice_number}  |  Vervaldatum: ${fmt.date(invoice.due_date)}`,
+    `Betalingskenmerk: ${betalingsKenmerk}   |   Factuurnummer: ${invoice.invoice_number}   |   Vervaldatum: ${fmt.date(invoice.due_date)}`,
     margin + 4,
-    y + 15.5
+    y + 15
+  )
+  doc.setFont('helvetica', 'italic')
+  doc.setFontSize(7.5)
+  doc.setTextColor(100, 116, 139)
+  doc.text(
+    'Vermeld s.v.p. het bovenstaande betalingskenmerk bij uw overboeking voor directe automatische verwerking.',
+    margin + 4,
+    y + 19.5
   )
 
   if (resolvedPaymentLink) {
     doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8.5)
     doc.setTextColor(r, g, b)
-    doc.text(`Directe betaallink (iDEAL): ${resolvedPaymentLink}`, margin + 4, y + 21)
+    doc.text(`Directe betaallink (iDEAL): ${resolvedPaymentLink}`, margin + 4, y + 24.5)
   }
 
   // Footer note

@@ -6,6 +6,7 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { Invoice, CalcMode, BusinessSettings, Expense, Client } from './types'
+import { generateRfReference } from './paymentReference'
 
 export function dbToSettings(row: any, userMetadata?: any): BusinessSettings {
   if (!row) {
@@ -228,15 +229,18 @@ function invoiceToDb(inv: any) {
     ? inv.client_id
     : null
 
+  const invoiceNum = inv.invoice_number || `${new Date().getFullYear()}-0001`
+  const paymentRef = inv.reference || inv.payment_reference || generateRfReference(invoiceNum)
+
   return {
-    invoice_number: inv.invoice_number || `${new Date().getFullYear()}-0001`,
+    invoice_number: invoiceNum,
     client_id: validClientId,
     issue_date: inv.issue_date || new Date().toISOString().slice(0, 10),
     due_date: inv.due_date || new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10),
     delivery_date: inv.delivery_date || null,
     calc_mode: inv.calc_mode || inv.calculation_mode || 'EXCLUSIVE',
     status: inv.status || 'DRAFT',
-    reference: inv.reference || inv.payment_reference || null,
+    reference: paymentRef,
     notes: inv.notes || null,
     payment_terms: inv.payment_terms || null,
     pdf_path: inv.pdf_path || null,

@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import {
   Plus, Trash2, Save, Send, Download, Eye, EyeOff, ChevronDown,
-  RefreshCw, ArrowLeft, Mail, Sparkles, Hash, CheckCircle
+  RefreshCw, ArrowLeft, Mail, Sparkles, Hash, CheckCircle, Copy, Check
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
@@ -17,6 +17,8 @@ import QuickClientModal from '@/components/QuickClientModal'
 import { sendInvoiceViaResend, generateMailtoUrl, isResendConfigured } from '@/lib/email'
 import { calculateLineItem } from '@/lib/vatCalculator'
 import { getSmartInvoiceIdOptions, InvoiceIdOption } from '@/lib/invoiceNumbering'
+import { generateRfReference, isValidRfReference } from '@/lib/paymentReference'
+import { triggerHaptic } from '@/lib/haptics'
 
 interface LineItemRow {
   description: string
@@ -65,6 +67,8 @@ export default function InvoiceEditor() {
   const [invoiceNumber, setInvoiceNumber] = useState<string>('')
   const [selectedNumberMode, setSelectedNumberMode] = useState<string>('AUTO')
   const [userEditedNumber, setUserEditedNumber] = useState<boolean>(false)
+  const [userEditedPaymentRef, setUserEditedPaymentRef] = useState<boolean>(false)
+  const [copiedRef, setCopiedRef] = useState<boolean>(false)
 
   const { data: settings } = useQuery<BusinessSettings>({
     queryKey: ['settings'],
@@ -134,6 +138,18 @@ export default function InvoiceEditor() {
       }
     }
   }, [selectedClientId, existing, isEdit, userEditedNumber, smartIdOptions])
+
+  // Auto-sync structured SEPA payment reference when invoice number changes
+  const watchedPaymentRef = watch('payment_reference')
+  useEffect(() => {
+    if (isEdit && existing?.payment_reference) {
+      return
+    }
+    if (!userEditedPaymentRef && invoiceNumber) {
+      const generated = generateRfReference(invoiceNumber)
+      setValue('payment_reference', generated, { shouldValidate: true })
+    }
+  }, [invoiceNumber, isEdit, existing, userEditedPaymentRef, setValue])
 
   // Pre-fill from existing invoice
   useEffect(() => {
@@ -310,10 +326,15 @@ export default function InvoiceEditor() {
     })
 
     const invoiceNum = invoiceNumber.trim() || existing?.invoice_number || `${settings?.invoice_prefix || '2026-'}${String(settings?.next_invoice_sequence || 1).padStart(4, '0')}`
+    const finalPaymentRef = (data.payment_reference && data.payment_reference.trim())
+      ? data.payment_reference.trim()
+      : generateRfReference(invoiceNum)
+
     const payload = {
       ...data,
       id: existing?.id,
       invoice_number: invoiceNum,
+      payment_reference: finalPaymentRef,
       client: selectedClient,
       client_id: data.client_id || selectedClient?.id,
       subtotal_excl: liveCalc.excl,
@@ -774,8 +795,67 @@ export default function InvoiceEditor() {
           {/* Notes & Reference */}
           <div className="liquid-glass-card p-3.5 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="label">Betalingskenmerk</label>
-              <input className="input text-xs sm:text-sm" placeholder="bijv. RF82 2026 0001" {...register('payment_reference')} />
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="label mb-0 text-xs font-semibold text-slate-200">
+                  Betalingskenmerk (SEPA ISO 11649)
+                </label>
+                {isValidRfReference(watchedPaymentRef) ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-medium flex items-center gap-1 shadow-sm">
+                    <CheckCircle size={10} /> Geldig Modulo 97 (Auto-match)
+                  </span>
+                ) : watchedPaymentRef ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 font-medium">
+                    Aangepast kenmerk
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-500/15 text-brand-400 border border-brand-500/30 font-medium">
+                    Auto-gegenereerd
+                  </span>
+                )}
+              </div>
+              <div className="relative flex items-center">
+                <input
+                  className="input text-xs sm:text-sm font-mono tracking-wider font-semibold pr-20 bg-slate-900/90 border-slate-700/80 focus:border-brand-500"
+                  placeholder="bijv. RF18 2026 0001"
+                  {...register('payment_reference', {
+                    onChange: () => setUserEditedPaymentRef(true),
+                  })}
+                />
+                <div className="absolute right-1.5 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const ref = watchedPaymentRef || generateRfReference(invoiceNumber)
+                      navigator.clipboard.writeText(ref)
+                      setCopiedRef(true)
+                      triggerHaptic('success')
+                      toast.success('Betalingskenmerk gekopieerd!')
+                      setTimeout(() => setCopiedRef(false), 2000)
+                    }}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                    title="Kopieer betalingskenmerk"
+                  >
+                    {copiedRef ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const generated = generateRfReference(invoiceNumber)
+                      setValue('payment_reference', generated, { shouldValidate: true })
+                      setUserEditedPaymentRef(false)
+                      triggerHaptic('selection')
+                      toast.success(`Betalingskenmerk opnieuw berekend: ${generated}`)
+                    }}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-brand-300 hover:bg-slate-800 transition-colors"
+                    title="Herbereken automatisch volgens ISO 11649 Modulo 97"
+                  >
+                    <RefreshCw size={13} />
+                  </button>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                SEPA-standaard voor bankafschriften (bunq, Rabobank, ING, ABN AMRO). Betalingen worden automatisch gekoppeld en op 'Betaald' gezet.
+              </p>
             </div>
             <div>
               <label className="label">Notitie (op factuur)</label>

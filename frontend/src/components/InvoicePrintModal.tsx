@@ -1,8 +1,11 @@
-import React from 'react'
-import { Printer, Download, X, Building2, CheckCircle2, Calendar, CreditCard } from 'lucide-react'
+import React, { useState } from 'react'
+import { Printer, Download, X, Building2, CheckCircle2, Calendar, CreditCard, Copy, Check } from 'lucide-react'
 import { Invoice, BusinessSettings, Client } from '@/lib/types'
 import { fmt, clientsApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
+import { generateRfReference } from '@/lib/paymentReference'
+import { triggerHaptic } from '@/lib/haptics'
+import toast from 'react-hot-toast'
 
 interface InvoicePrintModalProps {
   invoice: Invoice
@@ -12,6 +15,7 @@ interface InvoicePrintModalProps {
 }
 
 export default function InvoicePrintModal({ invoice, client: propClient, settings, onClose }: InvoicePrintModalProps) {
+  const [copiedRef, setCopiedRef] = useState(false)
   const handlePrint = () => {
     window.print()
   }
@@ -338,12 +342,45 @@ export default function InvoicePrintModal({ invoice, client: propClient, setting
           <div className="mt-6 pt-6 border-t border-slate-200 bg-slate-50/70 p-4 rounded-xl text-xs text-slate-600">
             <div className="font-bold text-slate-800 mb-1">Betalingsvoorwaarden</div>
             <div>
-              Wij verzoeken u vriendelijk het totaalbedrag van <span className="font-bold text-slate-800">{fmt.currency(totalIncl)}</span> binnen {settings?.default_payment_term_days || 14} dagen (vóór {fmt.date(invoice.due_date)}) over te maken naar rekeningnummer:
+              Wij verzoeken u vriendelijk het totaalbedrag van <span className="font-bold text-slate-800">{fmt.currency(totalIncl)}</span> binnen {settings?.default_payment_term_days || 14} dagen (vóór {fmt.date(invoice.due_date)}) over te maken naar:
             </div>
-            <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 font-mono font-semibold text-slate-800">
-              <div>IBAN: <span>{settings?.iban || 'NL00BANK0123456789'}</span></div>
-              {settings?.bic && <div>BIC: <span>{settings.bic}</span></div>}
-              <div>Onder vermelding van: <span>{invoice.invoice_number}</span></div>
+            
+            {/* Structured Payment Reference & Bank Details */}
+            <div className="mt-3 p-3 rounded-lg bg-white border border-slate-250 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Betalingskenmerk (SEPA):</span>
+                  <span className="font-mono font-bold text-sm text-brand-700 bg-brand-50 px-2 py-0.5 rounded border border-brand-200">
+                    {invoice.payment_reference || generateRfReference(invoice.invoice_number)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ref = invoice.payment_reference || generateRfReference(invoice.invoice_number)
+                    navigator.clipboard.writeText(ref)
+                    setCopiedRef(true)
+                    triggerHaptic('success')
+                    toast.success('Betalingskenmerk gekopieerd!')
+                    setTimeout(() => setCopiedRef(false), 2000)
+                  }}
+                  className="px-2 py-1 text-[11px] font-medium text-slate-600 hover:text-brand-600 bg-slate-100 hover:bg-brand-50 rounded flex items-center gap-1 transition-all"
+                  title="Kopieer betalingskenmerk"
+                >
+                  {copiedRef ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+                  <span>{copiedRef ? 'Gekopieerd' : 'Kopiëren'}</span>
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-x-6 gap-y-1 font-mono text-slate-800 text-[11px] sm:text-xs">
+                <div>IBAN: <span className="font-semibold">{settings?.iban || 'NL00BANK0123456789'}</span></div>
+                {settings?.bic && <div>BIC: <span className="font-semibold">{settings.bic}</span></div>}
+                <div>Factuurnummer: <span className="font-semibold">{invoice.invoice_number}</span></div>
+              </div>
+
+              <div className="text-[10px] text-slate-400 italic">
+                * Vermeld bij bankoverboeking s.v.p. exact het bovenstaande betalingskenmerk voor directe automatische verwerking.
+              </div>
             </div>
             {invoice.notes && (
               <div className="mt-3 pt-2 border-t border-slate-200/80 text-[11px] text-slate-500 italic">

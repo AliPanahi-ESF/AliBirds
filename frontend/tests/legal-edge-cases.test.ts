@@ -17,6 +17,14 @@ import {
   getVatDeadlineInfo,
 } from '../src/lib/vatCalculator'
 import { parseMT940, autoMatchTransactions } from '../src/lib/mt940'
+import {
+  generateRfReference,
+  isValidRfReference,
+  formatPaymentReference,
+  cleanReference,
+  calculateInvoiceMatchScore,
+  generateBetalingskenmerk16,
+} from '../src/lib/paymentReference'
 
 interface TestResult {
   suite: string
@@ -314,6 +322,84 @@ test('Tax Deadlines', 'Accurately computes Belastingdienst quarterly deadlines (
   assertEquals(q4Info.deadlineDate.getMonth(), 0, 'Q4 deadline month should be January (0)')
   assertEquals(q4Info.deadlineDate.getDate(), 31, 'Q4 deadline day should be 31')
   assertEquals(q4Info.urgency, 'urgent', 'Urgency should be urgent <= 3 days')
+})
+
+// ── 8. SEPA ISO 11649 PAYMENT REFERENCE & RECONCILIATION ENGINE ─────────────
+console.log('\nSECTION 8: SEPA ISO 11649 Betalingskenmerk & Auto-Reconciliation')
+
+test('Payment Reference', 'Calculates exact ISO 11649 Modulo 97 check digits for invoice 2026-0001', () => {
+  const ref = generateRfReference('2026-0001')
+  assertEquals(ref, 'RF31 2026 0001', 'Invoice 2026-0001 should produce RF31 2026 0001')
+  assert(isValidRfReference(ref), 'Generated reference must pass ISO 11649 validation')
+})
+
+test('Payment Reference', 'Calculates exact ISO 11649 Modulo 97 check digits for invoice 2026-0002', () => {
+  const ref = generateRfReference('2026-0002')
+  assertEquals(ref, 'RF04 2026 0002', 'Invoice 2026-0002 should produce RF04 2026 0002')
+  assert(isValidRfReference(ref), 'Generated reference must pass ISO 11649 validation')
+})
+
+test('Payment Reference', 'Calculates valid ISO 11649 reference for alphanumeric invoice FACT-2026-099', () => {
+  const ref = generateRfReference('FACT-2026-099')
+  assert(ref.startsWith('RF'), 'Should start with RF')
+  assert(isValidRfReference(ref), 'Must be mathematically valid ISO 11649 Modulo 97')
+})
+
+test('Payment Reference', 'Strictly rejects tampered or invalid check digits', () => {
+  assert(!isValidRfReference('RF99 2026 0001'), 'Tampered RF99 2026 0001 should fail validation')
+  assert(!isValidRfReference('RF00 2026 0001'), 'Invalid check digits 00 should fail')
+  assert(!isValidRfReference('INVALID'), 'Arbitrary text should fail')
+})
+
+test('Payment Reference', 'Generates valid 16-digit Dutch Betalingskenmerk with Modulo 11', () => {
+  const bk16 = generateBetalingskenmerk16('20260001')
+  assertEquals(cleanReference(bk16).length, 16, 'Should have exactly 16 digits')
+})
+
+test('Payment Reference', '100% Match Confidence when remittance contains exact Betalingskenmerk', () => {
+  const tx = {
+    amount: 1452.00,
+    type: 'CREDIT' as const,
+    description: '/REMI/RF61 2026 0003 Betaling factuur/TRTP/SEPA',
+  }
+  const invoice: any = {
+    id: 'inv-3',
+    invoice_number: '2026-0003',
+    payment_reference: 'RF61 2026 0003',
+    total_incl_vat: 1452.00,
+    status: 'SENT',
+  }
+  const result = calculateInvoiceMatchScore(tx, invoice)
+  assertEquals(result.score, 100, 'Score should be 100 for exact Betalingskenmerk match')
+  assertEquals(result.matchedReason, 'BETALINGSKENMERK_EXACT', 'Matched reason should be BETALINGSKENMERK_EXACT')
+})
+
+test('Payment Reference', 'Auto-matches bank statement with Betalingskenmerk directly to invoice', () => {
+  const txs = [
+    {
+      id: 'tx-sepa-1',
+      transaction_date: '2026-10-23',
+      amount: 2964.50,
+      currency: 'EUR',
+      type: 'CREDIT' as const,
+      description: 'Overschrijving RF31 2026 0001 van Design Studio',
+      reconciliation_status: 'UNMATCHED' as const,
+      imported_at: '2026-10-23',
+    },
+  ]
+  const invoices = [
+    {
+      id: 'inv-1',
+      invoice_number: '2026-0001',
+      payment_reference: 'RF31 2026 0001',
+      total_incl: 2964.50,
+      status: 'SENT',
+    },
+  ]
+  const { matched, results: matchResults } = autoMatchTransactions(txs, invoices as any, [])
+  assertEquals(matched, 1, 'Should match 1 transaction')
+  assertEquals(matchResults[0].invoiceId, 'inv-1', 'Should match to inv-1')
+  assertEquals(matchResults[0].score, 100, 'Match score should be 100% via Betalingskenmerk')
 })
 
 // ── SUMMARY REPORT ─────────────────────────────────────────────────────────

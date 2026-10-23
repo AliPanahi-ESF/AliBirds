@@ -268,7 +268,14 @@ export default function InvoiceList() {
                   className="flex items-start justify-between gap-2 cursor-pointer"
                 >
                   <div>
-                    <div className="font-mono text-xs font-bold text-brand-400">{inv.invoice_number}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono text-xs font-bold text-brand-400">{inv.invoice_number}</span>
+                      {inv.payment_reference && (
+                        <span className="font-mono text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                          {inv.payment_reference}
+                        </span>
+                      )}
+                    </div>
                     <div className="text-base font-semibold text-slate-100 mt-0.5">
                       {inv.client?.name ?? 'Geen klant gekoppeld'}
                     </div>
@@ -383,7 +390,12 @@ export default function InvoiceList() {
               const isOverdue = inv.status === 'SENT' && new Date(inv.due_date) < new Date()
               return (
                 <tr key={inv.id} className="hover:bg-slate-800/50 cursor-pointer transition-colors" onClick={() => nav(`/invoices/${inv.id}/edit`)}>
-                  <td className="p-3.5 font-mono text-xs text-brand-400 font-medium">{inv.invoice_number}</td>
+                  <td className="p-3.5 font-mono text-xs text-brand-400 font-medium">
+                    <div>{inv.invoice_number}</div>
+                    {inv.payment_reference && (
+                      <div className="text-[10px] text-emerald-400/90 font-mono mt-0.5">{inv.payment_reference}</div>
+                    )}
+                  </td>
                   <td className="p-3.5 font-medium text-slate-200">{inv.client?.name ?? '—'}</td>
                   <td className="p-3.5 text-slate-400 text-xs">{fmt.date(inv.issue_date)}</td>
                   <td className={clsx('p-3.5 text-xs', isOverdue ? 'text-red-400 font-medium' : 'text-slate-400')}>

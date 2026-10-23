@@ -549,10 +549,28 @@ export const bankApi = {
       // Always save to demoStore as local cache
       demoStore.saveBankTransactions(finalTxs)
 
+      // Automatically connect high-confidence matches (score >= 95: betalingskenmerk or exact invoice number)
+      let autoMatchedInvoices = 0
+      for (const r of results) {
+        if (r.invoiceId && r.tx.id && (r.score ?? 0) >= 95) {
+          try {
+            await bankApi.match(r.tx.id, r.invoiceId)
+            autoMatchedInvoices++
+          } catch (mErr) {
+            console.warn('Auto reconciliation match error:', mErr)
+          }
+        }
+      }
+
+      const autoNote = autoMatchedInvoices > 0
+        ? ` Waarvan ${autoMatchedInvoices} betaling(en) direct automatisch verbonden met facturen via betalingskenmerk!`
+        : ''
+
       return {
         success: true,
         count: finalTxs.length,
-        message: `${finalTxs.length} transacties succesvol geïmporteerd uit MT940!`,
+        autoMatchedInvoices,
+        message: `${finalTxs.length} transacties succesvol verwerkt!${autoNote}`,
       }
     } catch (err: any) {
       console.error('MT940 parse error:', err)

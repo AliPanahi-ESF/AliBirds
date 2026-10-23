@@ -1,15 +1,18 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useDropzone } from 'react-dropzone'
 import {
   Upload, CheckCircle, AlertCircle, Clock, Link2, Unlink,
-  TrendingUp, TrendingDown, RefreshCw, X, UserPlus, Receipt, Trash2, Check, Search, PlusCircle, FileText
+  TrendingUp, TrendingDown, RefreshCw, X, UserPlus, Receipt, Trash2, Check, Search, PlusCircle, FileText,
+  Sparkles, Zap
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { bankApi, invoicesApi, clientsApi, expensesApi, fmt } from '@/lib/api'
 import { BankTransaction, Invoice, Client, Expense } from '@/lib/types'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import { calculateInvoiceMatchScore, generateRfReference } from '@/lib/paymentReference'
+import { triggerHaptic } from '@/lib/haptics'
 
 const STATUS_INFO: Record<string, { label: string; icon: React.ElementType; cls: string }> = {
   MATCHED:              { label: 'Gematcht',     icon: CheckCircle,  cls: 'badge-green' },
@@ -75,9 +78,27 @@ function MatchModal({
   const expAmountExcl = expMult > 0 ? Math.round((expenseAmountIncl / (1 + expMult)) * 100) / 100 : expenseAmountIncl
   const expVatAmount = Math.round((expenseAmountIncl - expAmountExcl) * 100) / 100
 
+  // Compute best automated candidate match using ISO 11649 Betalingskenmerk
+  const bestAutoMatch = useMemo(() => {
+    let topInv: Invoice | null = null
+    let topScore = 0
+    let topReason = ''
+    for (const inv of invoices) {
+      const { score, details } = calculateInvoiceMatchScore(transaction, inv)
+      if (score > topScore) {
+        topScore = score
+        topInv = inv
+        topReason = details
+      }
+    }
+    return topScore >= 75 ? { invoice: topInv!, score: topScore, details: topReason } : null
+  }, [invoices, transaction])
+
   // Invoice form state
   const [invoiceSearch, setInvoiceSearch] = useState('')
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState(transaction.matched_invoice_id || '')
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState(
+    transaction.matched_invoice_id || (bestAutoMatch?.invoice?.id ?? '')
+  )
   const [markAsPaid, setMarkAsPaid] = useState(true)
 
   // Attempt to detect invoice number in remittance
@@ -92,17 +113,21 @@ function MatchModal({
   const [createDesc, setCreateDesc] = useState(remittance || `Diensten volgens betaling ${fmt.date(txDate)}`)
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false)
 
-  // Filter & sort invoices
+  // Filter & sort invoices with ISO 11649 Betalingskenmerk prioritisation
   const filteredInvoices = invoices.filter(inv => {
     if (!invoiceSearch) return true
     const q = invoiceSearch.toLowerCase()
     return (
       inv.invoice_number.toLowerCase().includes(q) ||
       inv.client?.name?.toLowerCase().includes(q) ||
+      (inv.payment_reference && inv.payment_reference.toLowerCase().includes(q)) ||
       String(inv.total_incl_vat).includes(q)
     )
   })
   const sortedInvoices = [...filteredInvoices].sort((a, b) => {
+    const scoreA = calculateInvoiceMatchScore(transaction, a).score
+    const scoreB = calculateInvoiceMatchScore(transaction, b).score
+    if (scoreA !== scoreB) return scoreB - scoreA
     const aAmount = Math.abs(Number(a.total_incl_vat) - Number(transaction.amount)) < 0.05
     const bAmount = Math.abs(Number(b.total_incl_vat) - Number(transaction.amount)) < 0.05
     if (aAmount && !bAmount) return -1
@@ -592,6 +617,7 @@ function MatchModal({
                     </div>
                   ) : (
                     sortedInvoices.map(inv => {
+                      const matchResult = calculateInvoiceMatchScore(transaction, inv)
                       const isExactAmount = Math.abs(Number(inv.total_incl_vat) - Number(transaction.amount)) < 0.05
                       const isSelected = selectedInvoiceId === inv.id
 
@@ -602,6 +628,8 @@ function MatchModal({
                             'flex items-center gap-3 p-2.5 sm:p-3 rounded-lg border cursor-pointer transition-colors',
                             isSelected
                               ? 'bg-brand-600/20 border-brand-500'
+                              : matchResult.score >= 95
+                              ? 'bg-emerald-950/20 border-emerald-500/50 hover:border-emerald-500/70'
                               : isExactAmount
                               ? 'bg-slate-800/80 border-emerald-500/40 hover:border-emerald-500/60'
                               : 'bg-slate-800/40 border-slate-800 hover:border-slate-700',
@@ -616,9 +644,19 @@ function MatchModal({
                             className="accent-brand-500"
                           />
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs sm:text-sm font-semibold text-slate-200 font-mono">{inv.invoice_number}</span>
-                              {isExactAmount && (
+                              {matchResult.score === 100 && (
+                                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/25 text-emerald-300 font-bold border border-emerald-500/40 flex items-center gap-1 shadow-sm">
+                                  <CheckCircle size={10} /> 100% Betalingskenmerk match
+                                </span>
+                              )}
+                              {matchResult.score === 98 && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 font-medium">
+                                  Factuurnr match
+                                </span>
+                              )}
+                              {isExactAmount && matchResult.score < 98 && (
                                 <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-medium">
                                   Exact bedrag
                                 </span>
@@ -628,6 +666,11 @@ function MatchModal({
                             <div className="text-xs text-slate-400 truncate mt-0.5">
                               {inv.client?.name || 'Onbekende klant'} · {fmt.date(inv.issue_date)}
                             </div>
+                            {inv.payment_reference && (
+                              <div className="text-[11px] font-mono text-emerald-400/90 mt-0.5 flex items-center gap-1">
+                                <span className="text-slate-500 font-sans">Kenmerk:</span> {inv.payment_reference}
+                              </div>
+                            )}
                           </div>
                           <div className="font-mono text-xs sm:text-sm font-bold text-slate-100">
                             {fmt.currency(inv.total_incl_vat)}
@@ -1122,6 +1165,16 @@ export default function BankReconciliation() {
 
   const clientNameSet = new Set(clients.map(c => c.name.toLowerCase().trim()))
 
+  // Find all unmatched incoming transactions that have high-confidence invoice matches via ISO 11649 Betalingskenmerk
+  const autoMatchable = useMemo(() => {
+    return transactions.filter(t => {
+      if (t.reconciliation_status === 'MATCHED') return false
+      const isDebit = t.type === 'DEBIT' || (t as any).transaction_type === 'DEBIT'
+      if (isDebit) return false
+      return invoices.some(inv => calculateInvoiceMatchScore(t, inv).score >= 95)
+    })
+  }, [transactions, invoices])
+
   return (
     <div className="space-y-4 sm:space-y-5 w-full">
       {/* Header */}
@@ -1167,6 +1220,40 @@ export default function BankReconciliation() {
           </div>
         ))}
       </div>
+
+      {/* Automated SEPA Reconciliation Quick-Action Banner */}
+      {autoMatchable.length > 0 && (
+        <div className="p-3.5 sm:p-4 rounded-xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-emerald-950/50 border border-emerald-500/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+              <Sparkles size={18} />
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-slate-100 flex items-center gap-2 flex-wrap">
+                <span>{autoMatchable.length} betaling(en) automatisch herkend via Betalingskenmerk</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-300 font-bold border border-emerald-500/40">
+                  100% Match
+                </span>
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                SEPA ISO 11649 referentie of factuurnummer komt exact overeen. Koppel direct en markeer de facturen als Betaald.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('success')
+              reconcileMutation.mutate()
+            }}
+            disabled={reconcileMutation.isPending}
+            className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm py-2 px-4 flex items-center gap-2 shadow-md w-full sm:w-auto justify-center font-semibold shrink-0"
+          >
+            <Zap size={14} className={reconcileMutation.isPending ? 'animate-spin' : ''} />
+            <span>{reconcileMutation.isPending ? 'Koppelen...' : 'Alles direct koppelen & facturen op betaald zetten'}</span>
+          </button>
+        </div>
+      )}
 
       {/* Upload dropzone */}
       <div
@@ -1251,41 +1338,71 @@ export default function BankReconciliation() {
                   </div>
                 </div>
 
-                <div className="text-xs text-slate-400 pt-1.5 border-t border-slate-800 flex items-center justify-between gap-2">
-                  <div className="truncate max-w-[200px]">
-                    <div className="text-slate-400 font-mono text-[11px] truncate">{remittance || '—'}</div>
-                    {matched_inv && (
-                      <div className="font-mono text-brand-400 text-xs font-semibold flex items-center gap-1 mt-0.5">
-                        <Check size={11} /> Factuur {matched_inv.invoice_number}
+                {/* Candidate auto-match for unmatched credit transactions */}
+                {(() => {
+                  const autoCand = (!isMatched && !isDebit)
+                    ? invoices.find(i => calculateInvoiceMatchScore(txn, i).score >= 95)
+                    : null
+
+                  return (
+                    <div className="text-xs text-slate-400 pt-1.5 border-t border-slate-800 flex items-center justify-between gap-2">
+                      <div className="truncate max-w-[220px]">
+                        <div className="text-slate-400 font-mono text-[11px] truncate">{remittance || '—'}</div>
+                        {matched_inv && (
+                          <div className="font-mono text-emerald-400 text-xs font-semibold flex items-center gap-1 mt-0.5">
+                            <Check size={11} /> Factuur {matched_inv.invoice_number}
+                            {matched_inv.payment_reference && (
+                              <span className="text-[10px] text-emerald-300 font-normal">({matched_inv.payment_reference})</span>
+                            )}
+                          </div>
+                        )}
+                        {autoCand && (
+                          <div className="font-mono text-emerald-400 text-xs font-semibold flex items-center gap-1 mt-0.5">
+                            <Sparkles size={11} /> Herkend: Factuur {autoCand.invoice_number}
+                          </div>
+                        )}
+                        {matched_exp && (
+                          <div className="text-purple-400 text-xs font-medium flex items-center gap-1 mt-0.5 truncate">
+                            <Receipt size={11} /> Uitgave: {matched_exp.vendor_name}
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {matched_exp && (
-                      <div className="text-purple-400 text-xs font-medium flex items-center gap-1 mt-0.5 truncate">
-                        <Receipt size={11} /> Uitgave: {matched_exp.vendor_name}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {autoCand ? (
+                          <button
+                            onClick={() => {
+                              triggerHaptic('success')
+                              matchInvoiceMutation.mutate({ txId: txn.id, invoiceId: autoCand.id })
+                            }}
+                            className="btn-sm text-xs py-1 px-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center gap-1 rounded-lg shadow-sm"
+                            title="Direct koppelen via automatisch herkend betalingskenmerk"
+                          >
+                            <Check size={11} /> Direct koppelen
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setMatchModal(txn)}
+                            className={clsx(
+                              'btn-sm text-xs py-1 px-2.5 flex items-center gap-1',
+                              isMatched ? 'btn-ghost text-slate-400 hover:text-white' : 'btn-secondary text-brand-300'
+                            )}
+                          >
+                            <Link2 size={12} /> {isMatched ? 'Wijzigen' : 'Koppelen'}
+                          </button>
+                        )}
+                        {isMatched && (
+                          <button
+                            onClick={() => unmatchMutation.mutate(txn.id)}
+                            className="btn-ghost p-1 text-red-400 hover:text-red-300"
+                            title="Koppeling ongedaan maken"
+                          >
+                            <Unlink size={13} />
+                          </button>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={() => setMatchModal(txn)}
-                      className={clsx(
-                        'btn-sm text-xs py-1 px-2.5 flex items-center gap-1',
-                        isMatched ? 'btn-ghost text-slate-400 hover:text-white' : 'btn-secondary text-brand-300'
-                      )}
-                    >
-                      <Link2 size={12} /> {isMatched ? 'Wijzigen' : 'Koppelen'}
-                    </button>
-                    {isMatched && (
-                      <button
-                        onClick={() => unmatchMutation.mutate(txn.id)}
-                        className="btn-ghost p-1 text-red-400 hover:text-red-300"
-                        title="Koppeling ongedaan maken"
-                      >
-                        <Unlink size={13} />
-                      </button>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  )
+                })()}
               </div>
             )
           })
@@ -1363,15 +1480,27 @@ export default function BankReconciliation() {
                       <div className="text-xs text-slate-500 font-mono mt-0.5">{counterpartIban}</div>
                     )}
                   </td>
-                  <td className="p-3.5 max-w-[240px]">
+                  <td className="p-3.5 max-w-[260px]">
                     <div className="text-xs text-slate-400 truncate font-mono" title={remittance}>
                       {remittance || '—'}
                     </div>
                     {matched_inv && (
-                      <div className="text-xs text-brand-400 font-mono font-medium mt-0.5 flex items-center gap-1">
+                      <div className="text-xs text-emerald-400 font-mono font-medium mt-0.5 flex items-center gap-1">
                         <Check size={12} /> Factuur {matched_inv.invoice_number}
+                        {matched_inv.payment_reference && (
+                          <span className="text-[11px] text-emerald-300">({matched_inv.payment_reference})</span>
+                        )}
                       </div>
                     )}
+                    {!isMatched && !isDebit && (() => {
+                      const autoCand = invoices.find(i => calculateInvoiceMatchScore(txn, i).score >= 95)
+                      if (!autoCand) return null
+                      return (
+                        <div className="text-xs text-emerald-400 font-medium mt-0.5 flex items-center gap-1">
+                          <Sparkles size={11} /> Herkend: Factuur {autoCand.invoice_number}
+                        </div>
+                      )
+                    })()}
                     {matched_exp && (
                       <div className="text-xs text-purple-400 font-medium mt-0.5 flex items-center gap-1">
                         <Receipt size={12} /> Uitgave: {matched_exp.vendor_name} ({fmt.currency(matched_exp.amount_incl_vat)})
@@ -1386,7 +1515,24 @@ export default function BankReconciliation() {
                     {isDebit ? '−' : '+'}{fmt.currency(txn.amount)}
                   </td>
                   <td className="p-3.5 text-right">
-                    <div className="flex gap-1 justify-end items-center">
+                    <div className="flex gap-1.5 justify-end items-center">
+                      {!isMatched && !isDebit && (() => {
+                        const autoCand = invoices.find(i => calculateInvoiceMatchScore(txn, i).score >= 95)
+                        if (!autoCand) return null
+                        return (
+                          <button
+                            onClick={() => {
+                              triggerHaptic('success')
+                              matchInvoiceMutation.mutate({ txId: txn.id, invoiceId: autoCand.id })
+                            }}
+                            className="py-1 px-2.5 rounded-lg flex items-center gap-1 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-medium shadow-sm transition-all"
+                            title="Direct koppelen via automatisch herkend betalingskenmerk"
+                          >
+                            <Check size={12} />
+                            <span>1-Klik Koppelen</span>
+                          </button>
+                        )
+                      })()}
                       <button
                         onClick={() => setMatchModal(txn)}
                         className={clsx(

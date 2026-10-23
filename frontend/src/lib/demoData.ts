@@ -3,6 +3,7 @@ import {
   DashboardKPIs, BtwAangifte, LineItem, CalcMode, VATRate, RecurringSchedule,
   Quotation
 } from './types'
+import { generateRfReference } from './paymentReference'
 
 const STORAGE_KEYS = {
   INVOICES: 'alibirds_invoices',
@@ -111,7 +112,7 @@ export const INITIAL_INVOICES: Invoice[] = [
     total_vat_amount: 514.50,
     total_incl_vat: 2964.50,
     amount_paid: 0.00,
-    payment_reference: 'RF82 2026 0001',
+    payment_reference: 'RF31 2026 0001',
     notes: 'Bedankt voor de fijne samenwerking.',
     line_items: [
       {
@@ -154,7 +155,7 @@ export const INITIAL_INVOICES: Invoice[] = [
     total_vat_amount: 0.00,
     total_incl_vat: 3800.00,
     amount_paid: 3800.00,
-    payment_reference: 'RF14 2026 0002',
+    payment_reference: 'RF04 2026 0002',
     notes: 'Btw verlegd / Reverse charge (Richtlijn 2006/112/EG art. 194).',
     paid_at: '2026-09-18T14:30:00Z',
     line_items: [
@@ -187,7 +188,7 @@ export const INITIAL_INVOICES: Invoice[] = [
     total_vat_amount: 252.00,
     total_incl_vat: 1452.00,
     amount_paid: 0.00,
-    payment_reference: 'RF59 2026 0003',
+    payment_reference: 'RF74 2026 0003',
     notes: 'Vriendelijke herinnering: betalingstermijn is verstreken.',
     line_items: [
       {
@@ -301,7 +302,7 @@ export const INITIAL_BANK: BankTransaction[] = [
     type: 'CREDIT',
     counterpart_name: 'Berlin Tech Labs GmbH',
     counterpart_iban: 'DE89370400440532013000',
-    remittance_reference: 'RF14 2026 0002 / FACTUUR 2026-0002',
+    remittance_reference: 'RF04 2026 0002 / FACTUUR 2026-0002',
     reconciliation_status: 'MATCHED',
     matched_invoice_id: 'inv-2',
     imported_at: '2026-09-19T06:00:00Z',
@@ -326,7 +327,7 @@ export const INITIAL_BANK: BankTransaction[] = [
     type: 'CREDIT',
     counterpart_name: 'Noord Media & Design',
     counterpart_iban: 'NL44INGB0002938475',
-    remittance_reference: 'Factuurnr 2026-0003 betaling',
+    remittance_reference: 'RF74 2026 0003 / Factuurnr 2026-0003 betaling',
     reconciliation_status: 'PENDING_CONFIRMATION',
     matched_invoice_id: 'inv-3',
     imported_at: '2026-09-11T06:00:00Z',
@@ -512,7 +513,7 @@ export const demoStore = {
       total_incl_vat: totalIncl,
       total_incl: totalIncl,
       amount_paid: Number(invoiceData.amount_paid || 0),
-      payment_reference: invoiceData.payment_reference || `RF${Math.floor(10 + Math.random() * 89)} ${invoiceNum.replace('-', ' ')}`,
+      payment_reference: invoiceData.payment_reference || generateRfReference(invoiceNum),
       notes: invoiceData.notes || settings.invoice_notes_default,
       line_items,
       created_at: new Date().toISOString(),
@@ -630,7 +631,7 @@ export const demoStore = {
     const inv = invoices.find(i => i.id === invoiceId)
     if (inv) {
       inv.status = 'PAID'
-      inv.paid_at = new Date().toISOString()
+      inv.paid_at = tx?.transaction_date ? new Date(tx.transaction_date).toISOString() : new Date().toISOString()
       inv.amount_paid = inv.total_incl_vat
       setStored(STORAGE_KEYS.INVOICES, invoices)
     }
