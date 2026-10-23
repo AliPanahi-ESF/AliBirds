@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
   TrendingUp, AlertTriangle, Clock, Receipt,
-  Plus, Upload, FileText, ArrowRight,
+  Plus, Upload, FileText, ArrowRight, CheckCircle2,
 } from 'lucide-react'
 import { dashboardApi, invoicesApi, fmt } from '@/lib/api'
 import { DashboardKPIs, Invoice } from '@/lib/types'
@@ -110,14 +110,19 @@ export default function Dashboard() {
           color="blue"
           loading={isLoading}
         />
-        <KPICard
-          title={t('dash.kpi.overdue', 'Verlopen')}
-          value={kpis ? fmt.currency(kpis.overdue_amount) : '—'}
-          sub={t('dash.kpi.to_collect', 'Te incasseren')}
-          icon={AlertTriangle}
-          color="red"
-          loading={isLoading}
-        />
+        {(() => {
+          const hasOverdue = !!(kpis && kpis.overdue_amount > 0)
+          return (
+            <KPICard
+              title={t('dash.kpi.overdue', 'Verlopen')}
+              value={kpis ? fmt.currency(kpis.overdue_amount) : '—'}
+              sub={hasOverdue ? t('dash.kpi.to_collect', 'Te incasseren') : t('dash.kpi.no_overdue', 'Geen achterstallige posten')}
+              icon={hasOverdue ? AlertTriangle : CheckCircle2}
+              color={hasOverdue ? 'red' : 'green'}
+              loading={isLoading}
+            />
+          )
+        })()}
         <KPICard
           title={`${t('dash.kpi.vat_estimate', 'Btw')} Q${quarter}`}
           value={kpis ? fmt.currency(kpis.projected_vat_liability) : '—'}
@@ -139,7 +144,7 @@ export default function Dashboard() {
       {/* Quick actions + Recent invoices */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Quick Actions */}
-        <div className="liquid-glass-card space-y-2">
+        <div className="liquid-glass-card p-4 sm:p-5 space-y-2">
           <h2 className="text-sm font-semibold text-slate-300 mb-3">{t('dash.quick_actions', 'Snelle acties')}</h2>
           {[
             { label: t('dash.qa_new_inv', 'Nieuwe factuur maken'), to: '/invoices/new', icon: FileText, color: 'text-brand-400' },
@@ -162,7 +167,7 @@ export default function Dashboard() {
         </div>
 
         {/* Recent Invoices */}
-        <div className="liquid-glass-card col-span-1 lg:col-span-2">
+        <div className="liquid-glass-card p-4 sm:p-5 col-span-1 lg:col-span-2">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-slate-300">{t('dash.recent_invoices', 'Recente facturen')}</h2>
             <button onClick={() => nav('/invoices')} className="btn-ghost btn-sm text-xs m3-state-layer">
@@ -202,8 +207,8 @@ export default function Dashboard() {
       </div>
 
       {/* Btw-aangifte mini widget */}
-      <div className="liquid-glass-card">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+      <div className="liquid-glass-card p-4 sm:p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-sm font-semibold text-slate-300">{t('dash.vat_estimate_title', 'Btw-aangifte schatting')}</h2>
@@ -212,15 +217,17 @@ export default function Dashboard() {
                 return (
                   <span
                     className={clsx(
-                      'text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1',
-                      deadline.urgency === 'urgent'
+                      'text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1',
+                      deadline.urgency === 'passed'
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                        : deadline.urgency === 'urgent'
                         ? 'bg-rose-500/20 text-rose-300 border-rose-500/30 animate-pulse'
                         : deadline.urgency === 'warning'
                         ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                         : 'bg-brand-500/15 text-brand-300 border-brand-500/25'
                     )}
                   >
-                    <Clock size={10} />
+                    <Clock size={11} />
                     <span>{deadline.badgeText}</span>
                   </span>
                 )

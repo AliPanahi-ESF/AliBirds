@@ -182,7 +182,7 @@ export default function TaxReturn() {
           <select
             value={year}
             onChange={e => setYear(Number(e.target.value))}
-            className="select w-24 sm:w-28 text-xs sm:text-sm py-1.5"
+            className="select w-28 sm:w-32 text-xs sm:text-sm py-1.5"
             aria-label={t('tax.year', 'Jaar')}
           >
             {[today.getFullYear() - 1, today.getFullYear()].map(y => (
@@ -209,29 +209,33 @@ export default function TaxReturn() {
       </div>
 
       {/* Deadline & Quick Export Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl liquid-glass-card border border-white/10">
-        <div className="flex items-center gap-2.5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl liquid-glass-card border border-white/10">
+        <div className="flex items-center gap-3">
           <div
             className={clsx(
-              'w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border',
-              deadlineInfo.urgency === 'urgent'
+              'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border',
+              deadlineInfo.urgency === 'passed'
+                ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                : deadlineInfo.urgency === 'urgent'
                 ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
                 : deadlineInfo.urgency === 'warning'
                 ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                 : 'bg-brand-500/15 text-brand-300 border-brand-500/25'
             )}
           >
-            <Clock size={16} />
+            <Clock size={17} />
           </div>
-          <div>
+          <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-bold text-slate-100">
+              <span className="text-xs sm:text-sm font-bold text-slate-100">
                 {t('tax.deadline_title', 'Belastingdienst Indieningsdeadline')}: {deadlineInfo.deadlineLabel}
               </span>
               <span
                 className={clsx(
-                  'text-[10px] font-bold px-2 py-0.5 rounded-full border',
-                  deadlineInfo.urgency === 'urgent'
+                  'text-[10px] font-bold px-2.5 py-0.5 rounded-full border inline-flex items-center',
+                  deadlineInfo.urgency === 'passed'
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                    : deadlineInfo.urgency === 'urgent'
                     ? 'bg-rose-500/20 text-rose-300 border-rose-500/30 animate-pulse'
                     : deadlineInfo.urgency === 'warning'
                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
@@ -260,15 +264,15 @@ export default function TaxReturn() {
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-slate-800 gap-2">
+      {/* Tabs - Modern Segmented Control */}
+      <div className="flex items-center p-1 rounded-xl bg-slate-900/90 border border-slate-800 w-full sm:w-fit gap-1 shadow-inner">
         <button
           onClick={() => setActiveTab('BTW')}
           className={clsx(
-            'flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 transition-colors m3-state-layer',
+            'flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-150 cursor-pointer m3-state-layer',
             activeTab === 'BTW'
-              ? 'border-brand-500 text-brand-300 bg-brand-500/10 rounded-t-lg'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'bg-brand-600 text-white shadow-sm shadow-brand-500/25'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
           )}
         >
           <FileText size={16} />
@@ -278,10 +282,10 @@ export default function TaxReturn() {
         <button
           onClick={() => setActiveTab('ICP')}
           className={clsx(
-            'flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 transition-colors m3-state-layer',
+            'flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-150 cursor-pointer m3-state-layer',
             activeTab === 'ICP'
-              ? 'border-brand-500 text-brand-300 bg-brand-500/10 rounded-t-lg'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'bg-brand-600 text-white shadow-sm shadow-brand-500/25'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
           )}
         >
           <Globe size={16} />
