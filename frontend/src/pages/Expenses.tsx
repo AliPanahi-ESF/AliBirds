@@ -13,6 +13,7 @@ import { clsx } from 'clsx'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { TableRowSkeleton, CardSkeleton } from '@/components/TableSkeleton'
 import { triggerHaptic } from '@/lib/haptics'
+import { useI18n } from '@/lib/i18n'
 
 const CATEGORIES = [
   'Software', 'Hardware', 'Kantoor', 'Abonnementen',
@@ -57,6 +58,7 @@ interface ExpenseForm {
 
 export default function Expenses() {
   const qc = useQueryClient()
+  const { t } = useI18n()
   const [showForm, setShowForm] = useState(false)
   const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null)
   const [activeReceiptUrl, setActiveReceiptUrl] = useState<string | null>(null)
@@ -248,23 +250,26 @@ export default function Expenses() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-100 flex items-center gap-2.5">
-            <span>Kosten & Uitgaven</span>
+            <span>{t('nav.expenses', 'Kosten & Uitgaven')}</span>
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-medium">
               Smart Inbox
             </span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Zakelijke uitgaven, automatische bonherkenning en aftrekbare voorbelasting (Rubriek 5b)
+            {t('expenses.subtitle', 'Zakelijke uitgaven, automatische bonherkenning en aftrekbare voorbelasting (Rubriek 5b)')}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={handleManualAdd}
-            className="btn-secondary text-xs sm:text-sm py-2 px-3.5 flex items-center gap-1.5"
+            onClick={() => {
+              triggerHaptic('light')
+              handleManualAdd()
+            }}
+            className="btn-secondary text-xs sm:text-sm py-2 px-3.5 flex items-center gap-1.5 min-h-[44px] active:scale-95"
           >
             <Plus size={15} />
-            <span>Handmatig invoeren</span>
+            <span>{t('btn.new_expense', 'Handmatig invoeren')}</span>
           </button>
         </div>
       </div>

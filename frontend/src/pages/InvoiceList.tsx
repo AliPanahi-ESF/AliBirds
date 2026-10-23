@@ -12,18 +12,12 @@ import { clsx } from 'clsx'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { TableRowSkeleton, CardSkeleton } from '@/components/TableSkeleton'
 import { triggerHaptic } from '@/lib/haptics'
-
-const STATUS_MAP: Record<InvoiceStatus, { label: string; cls: string }> = {
-  DRAFT:     { label: 'Concept',     cls: 'badge-gray' },
-  SENT:      { label: 'Verzonden',   cls: 'badge-blue' },
-  PAID:      { label: 'Betaald',     cls: 'badge-green' },
-  OVERDUE:   { label: 'Verlopen',    cls: 'badge-red' },
-  CANCELLED: { label: 'Geannuleerd', cls: 'badge-yellow' },
-}
+import { useI18n } from '@/lib/i18n'
 
 export default function InvoiceList() {
   const qc = useQueryClient()
   const nav = useNavigate()
+  const { t } = useI18n()
   const [filter, setFilter] = useState<string>('')
   const [search, setSearch] = useState('')
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null)
@@ -31,6 +25,14 @@ export default function InvoiceList() {
   const [showImportPdf, setShowImportPdf] = useState(false)
   const [deletingInvoice, setDeletingInvoice] = useState<Invoice | null>(null)
   const [confirmClearAll, setConfirmClearAll] = useState(false)
+
+  const statusMap: Record<InvoiceStatus, { label: string; cls: string }> = useMemo(() => ({
+    DRAFT:     { label: t('inv.status.draft', 'Concept'),     cls: 'badge-gray' },
+    SENT:      { label: t('inv.status.sent', 'Verzonden'),   cls: 'badge-blue' },
+    PAID:      { label: t('inv.status.paid', 'Betaald'),     cls: 'badge-green' },
+    OVERDUE:   { label: t('inv.status.overdue', 'Verlopen'),    cls: 'badge-red' },
+    CANCELLED: { label: t('inv.status.cancelled', 'Geannuleerd'), cls: 'badge-yellow' },
+  }), [t])
 
   const { data: settings } = useQuery<BusinessSettings>({
     queryKey: ['settings'],
@@ -51,14 +53,14 @@ export default function InvoiceList() {
     mutationFn: (id: string) => invoicesApi.delete(id),
     onSuccess: () => {
       triggerHaptic('success')
-      toast.success('Factuur succesvol verwijderd!')
+      toast.success(t('inv.toast_deleted', 'Factuur succesvol verwijderd!'))
       setDeletingInvoice(null)
       qc.invalidateQueries({ queryKey: ['invoices'] })
       qc.invalidateQueries({ queryKey: ['kpis'] })
     },
     onError: () => {
       triggerHaptic('warning')
-      toast.error('Verwijderen mislukt')
+      toast.error(t('inv.toast_delete_failed', 'Verwijderen mislukt'))
     },
   })
 
@@ -66,14 +68,14 @@ export default function InvoiceList() {
     mutationFn: () => invoicesApi.clearAll(),
     onSuccess: () => {
       triggerHaptic('success')
-      toast.success('Alle facturen zijn gewist!')
+      toast.success(t('inv.toast_cleared_all', 'Alle facturen zijn gewist!'))
       setConfirmClearAll(false)
       qc.invalidateQueries({ queryKey: ['invoices'] })
       qc.invalidateQueries({ queryKey: ['kpis'] })
     },
     onError: () => {
       triggerHaptic('warning')
-      toast.error('Wissen mislukt')
+      toast.error(t('inv.toast_clear_failed', 'Wissen mislukt'))
     },
   })
 
@@ -123,12 +125,12 @@ export default function InvoiceList() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-100 flex items-center gap-2">
-              <span>Facturen</span>
+              <span>{t('inv.title', 'Facturen')}</span>
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60">
                 {invoices.length}
               </span>
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5">Overzicht en beheer van al uw verkoopfacturen</p>
+            <p className="text-xs text-slate-400 mt-0.5">{t('inv.subtitle', 'Overzicht en beheer van al uw verkoopfacturen')}</p>
           </div>
 
           {/* Mobile only icon for safe clear-all if needed */}
@@ -137,8 +139,8 @@ export default function InvoiceList() {
               onClick={handleClearAll}
               disabled={clearAllMutation.isPending}
               className="sm:hidden p-2 rounded-xl text-slate-500 hover:text-red-400 hover:bg-red-500/10 border border-slate-800 active:scale-95 transition-all"
-              title="Alle facturen wissen"
-              aria-label="Alle facturen wissen"
+              title={t('inv.action_clear_all', 'Alle facturen wissen')}
+              aria-label={t('inv.action_clear_all', 'Alle facturen wissen')}
             >
               <Trash2 size={16} />
             </button>
@@ -152,10 +154,10 @@ export default function InvoiceList() {
               onClick={handleClearAll}
               disabled={clearAllMutation.isPending}
               className="hidden sm:inline-flex btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-2 px-3 border border-red-500/20 active:scale-95 transition-all"
-              title="Alle facturen verwijderen"
+              title={t('inv.action_clear_all', 'Alle facturen verwijderen')}
             >
               <Trash2 size={14} />
-              <span>Alle wissen</span>
+              <span>{t('inv.action_clear_all', 'Alle wissen')}</span>
             </button>
           )}
           <button
@@ -167,7 +169,7 @@ export default function InvoiceList() {
             title="Eerdere facturen importeren via PDF"
           >
             <Upload size={15} />
-            <span>PDF import</span>
+            <span>{t('inv.action_import_pdf', 'PDF import')}</span>
           </button>
           <button
             onClick={() => {
@@ -177,7 +179,7 @@ export default function InvoiceList() {
             className="flex-1 sm:flex-none btn-primary text-xs sm:text-sm py-2.5 sm:py-2 px-4 flex items-center justify-center gap-2 min-h-[44px] shadow-lg shadow-brand-500/20 active:scale-[0.98] transition-all font-semibold"
           >
             <Plus size={16} />
-            <span>Nieuwe factuur</span>
+            <span>{t('inv.action_new', 'Nieuwe factuur')}</span>
           </button>
         </div>
       </div>
@@ -188,7 +190,7 @@ export default function InvoiceList() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
           <input
             className="input pl-9 pr-9 text-xs sm:text-sm h-11 sm:h-9 w-full"
-            placeholder="Zoek nummer of klant..."
+            placeholder={t('inv.search_placeholder', 'Zoek nummer of klant...')}
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -225,7 +227,7 @@ export default function InvoiceList() {
                     : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800',
                 )}
               >
-                <span>{s === '' ? 'Alles' : STATUS_MAP[s as InvoiceStatus]?.label ?? s}</span>
+                <span>{s === '' ? t('inv.status.all', 'Alles') : statusMap[s as InvoiceStatus]?.label ?? s}</span>
                 <span
                   className={clsx(
                     'text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold',
@@ -246,11 +248,11 @@ export default function InvoiceList() {
           <CardSkeleton count={4} />
         ) : filtered.length === 0 ? (
           <div className="liquid-glass-card text-center py-12 px-4 text-xs text-slate-400 border border-slate-800/80">
-            Geen facturen gevonden voor deze selectie
+            {t('inv.empty', 'Geen facturen gevonden voor deze selectie')}
           </div>
         ) : (
           filtered.map(inv => {
-            const s = STATUS_MAP[inv.status] ?? { label: inv.status, cls: 'badge-gray' }
+            const s = statusMap[inv.status] ?? { label: inv.status, cls: 'badge-gray' }
             const isOverdue = inv.status === 'SENT' && new Date(inv.due_date) < new Date()
             return (
               <div
@@ -289,7 +291,7 @@ export default function InvoiceList() {
                     <span>{fmt.date(inv.issue_date)}</span>
                     <span className="text-slate-600">·</span>
                     <span className={clsx(isOverdue && 'text-red-400 font-medium')}>
-                      Vervalt {fmt.date(inv.due_date)}
+                      {t('inv.due', 'Vervalt')} {fmt.date(inv.due_date)}
                     </span>
                   </div>
                   <div className="font-mono font-bold text-base text-slate-100">
@@ -307,10 +309,10 @@ export default function InvoiceList() {
                         setPrintInvoice(inv)
                       }}
                       className="flex-1 py-2 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-brand-300 text-xs font-medium flex items-center justify-center gap-1.5 border border-slate-700/50 min-h-[40px] active:scale-95 transition-all"
-                      title="PDF bekijken of downloaden"
+                      title={t('inv.action_pdf', 'PDF bekijken of downloaden')}
                     >
                       <Download size={13} />
-                      <span>PDF</span>
+                      <span>{t('inv.action_pdf', 'PDF')}</span>
                     </button>
                     <button
                       onClick={(e) => {
@@ -319,10 +321,10 @@ export default function InvoiceList() {
                         setSendInvoice(inv)
                       }}
                       className="flex-1 py-2 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-emerald-300 text-xs font-medium flex items-center justify-center gap-1.5 border border-slate-700/50 min-h-[40px] active:scale-95 transition-all"
-                      title="Factuur verzenden via e-mail"
+                      title={t('inv.action_send', 'Factuur verzenden via e-mail')}
                     >
                       <Mail size={13} />
-                      <span>Verzenden</span>
+                      <span>{t('inv.action_send', 'Verzenden')}</span>
                     </button>
                   </div>
                   <div className="flex items-center gap-1">
@@ -333,8 +335,8 @@ export default function InvoiceList() {
                         nav(`/invoices/${inv.id}/edit`)
                       }}
                       className="p-2.5 rounded-xl text-slate-400 hover:text-slate-200 bg-slate-800/40 border border-slate-800 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 transition-all"
-                      title="Factuur bewerken"
-                      aria-label="Factuur bewerken"
+                      title={t('inv.action_edit', 'Factuur bewerken')}
+                      aria-label={t('inv.action_edit', 'Factuur bewerken')}
                     >
                       <Eye size={15} />
                     </button>
@@ -344,8 +346,8 @@ export default function InvoiceList() {
                         handleDelete(inv)
                       }}
                       className="p-2.5 rounded-xl text-red-400/80 hover:text-red-300 bg-red-500/10 border border-red-500/20 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 transition-all"
-                      title="Factuur verwijderen"
-                      aria-label="Factuur verwijderen"
+                      title={t('inv.action_delete', 'Factuur verwijderen')}
+                      aria-label={t('inv.action_delete', 'Factuur verwijderen')}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -362,22 +364,22 @@ export default function InvoiceList() {
         <table className="w-full text-left border-collapse text-sm">
           <thead>
             <tr className="border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
-              <th className="p-3.5 font-medium">Nummer</th>
-              <th className="p-3.5 font-medium">Klant</th>
-              <th className="p-3.5 font-medium">Datum</th>
-              <th className="p-3.5 font-medium">Vervaldatum</th>
-              <th className="p-3.5 font-medium">Status</th>
-              <th className="p-3.5 font-medium text-right">Bedrag (incl)</th>
-              <th className="p-3.5 font-medium text-right">Acties</th>
+              <th className="p-3.5 font-medium">{t('inv.number', 'Nummer')}</th>
+              <th className="p-3.5 font-medium">{t('inv.client', 'Klant')}</th>
+              <th className="p-3.5 font-medium">{t('inv.date', 'Datum')}</th>
+              <th className="p-3.5 font-medium">{t('inv.due_date', 'Vervaldatum')}</th>
+              <th className="p-3.5 font-medium">{t('dash.status', 'Status')}</th>
+              <th className="p-3.5 font-medium text-right">{t('inv.total', 'Bedrag (incl)')}</th>
+              <th className="p-3.5 font-medium text-right">{t('inv.actions', 'Acties')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60">
             {isLoading ? (
               <TableRowSkeleton cols={7} rows={5} />
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={7} className="text-center py-12 text-slate-500">Geen facturen gevonden</td></tr>
+              <tr><td colSpan={7} className="text-center py-12 text-slate-500">{t('inv.empty', 'Geen facturen gevonden')}</td></tr>
             ) : filtered.map((inv) => {
-              const s = STATUS_MAP[inv.status] ?? { label: inv.status, cls: 'badge-gray' }
+              const s = statusMap[inv.status] ?? { label: inv.status, cls: 'badge-gray' }
               const isOverdue = inv.status === 'SENT' && new Date(inv.due_date) < new Date()
               return (
                 <tr key={inv.id} className="hover:bg-slate-800/50 cursor-pointer transition-colors" onClick={() => nav(`/invoices/${inv.id}/edit`)}>

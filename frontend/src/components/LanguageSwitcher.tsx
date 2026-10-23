@@ -1,6 +1,7 @@
 import { Globe } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { clsx } from 'clsx'
+import { triggerHaptic } from '@/lib/haptics'
 
 interface LanguageSwitcherProps {
   className?: string
@@ -10,22 +11,27 @@ interface LanguageSwitcherProps {
 export default function LanguageSwitcher({ className, variant = 'pill' }: LanguageSwitcherProps) {
   const { locale, setLocale } = useI18n()
 
+  const handleToggle = () => {
+    triggerHaptic('selection')
+    setLocale(locale === 'nl' ? 'en' : 'nl')
+  }
+
   if (variant === 'compact') {
     return (
       <button
         type="button"
-        onClick={() => setLocale(locale === 'nl' ? 'en' : 'nl')}
+        onClick={handleToggle}
         className={clsx(
-          'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold tracking-wide transition-all border',
-          'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700/60 text-slate-200 active:scale-95',
+          'flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold tracking-wide transition-all border min-h-[36px]',
+          'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700/60 text-slate-200 active:scale-95 cursor-pointer',
           className
         )}
-        title={locale === 'nl' ? 'Switch to English' : 'Schakel naar Nederlands'}
+        title={locale === 'nl' ? 'Switch language to English' : 'Schakel taal naar Nederlands'}
         aria-label="Change language / Taal wijzigen"
       >
-        <Globe size={13} className="text-brand-400 shrink-0" />
-        <span className="font-mono text-[11px] font-bold uppercase">
-          {locale === 'nl' ? '🇬🇧 EN' : '🇳🇱 NL'}
+        <span className="text-sm leading-none">{locale === 'nl' ? '🇳🇱' : '🇬🇧'}</span>
+        <span className="font-mono text-[11px] font-bold uppercase text-slate-200">
+          {locale.toUpperCase()}
         </span>
       </button>
     )

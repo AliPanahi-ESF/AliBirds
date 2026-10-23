@@ -9,6 +9,7 @@ import { parsePdfInvoice } from '@/lib/pdfInvoiceParser'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { TableRowSkeleton, CardSkeleton } from '@/components/TableSkeleton'
 import { triggerHaptic } from '@/lib/haptics'
+import { useI18n } from '@/lib/i18n'
 
 const COUNTRIES = [
   { code: 'NL', name: 'Nederland' }, { code: 'BE', name: 'België' },
@@ -18,6 +19,7 @@ const COUNTRIES = [
 
 export default function Clients() {
   const qc = useQueryClient()
+  const { t } = useI18n()
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<Client | null>(null)
   const [deletingClient, setDeletingClient] = useState<Client | null>(null)
@@ -154,8 +156,8 @@ export default function Clients() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-100">Klanten</h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{clients.length} geregistreerde opdrachtgevers</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100">{t('nav.clients', 'Klanten')}</h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{clients.length} {t('clients.registered_subtitle', 'geregistreerde opdrachtgevers')}</p>
         </div>
         <div className="flex items-center gap-2">
           <input

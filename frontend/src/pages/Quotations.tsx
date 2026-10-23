@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -14,24 +14,26 @@ import SignatureCanvasModal from '@/components/SignatureCanvasModal'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { clsx } from 'clsx'
 import { triggerHaptic } from '@/lib/haptics'
-
-const STATUS_MAP: Record<QuotationStatus, { label: string; cls: string; icon: any }> = {
-  DRAFT:     { label: 'Concept',     cls: 'badge-gray',   icon: Clock },
-  SENT:      { label: 'Verzonden',   cls: 'badge-blue',   icon: Send },
-  ACCEPTED:  { label: 'Geaccepteerd',cls: 'badge-green',  icon: CheckCircle2 },
-  REJECTED:  { label: 'Geweigerd',   cls: 'badge-red',    icon: AlertTriangle },
-  CONVERTED: { label: 'Gefactureerd',cls: 'badge-purple', icon: FileCheck },
-}
+import { useI18n } from '@/lib/i18n'
 
 export default function Quotations() {
   const qc = useQueryClient()
   const nav = useNavigate()
+  const { t } = useI18n()
   const [filter, setFilter] = useState<string>('')
   const [search, setSearch] = useState('')
   const [printQuotation, setPrintQuotation] = useState<Quotation | null>(null)
   const [signQuotation, setSignQuotation] = useState<Quotation | null>(null)
   const [deletingQuotation, setDeletingQuotation] = useState<Quotation | null>(null)
   const [convertingId, setConvertingId] = useState<string | null>(null)
+
+  const statusMap: Record<QuotationStatus, { label: string; cls: string; icon: any }> = useMemo(() => ({
+    DRAFT:     { label: t('quotes.status.draft', 'Concept'),     cls: 'badge-gray',   icon: Clock },
+    SENT:      { label: t('quotes.status.sent', 'Verzonden'),   cls: 'badge-blue',   icon: Send },
+    ACCEPTED:  { label: t('quotes.status.accepted', 'Geaccepteerd'), cls: 'badge-green',  icon: CheckCircle2 },
+    REJECTED:  { label: t('quotes.status.rejected', 'Geweigerd'),   cls: 'badge-red',    icon: AlertTriangle },
+    CONVERTED: { label: t('quotes.status.converted', 'Gefactureerd'), cls: 'badge-purple', icon: FileCheck },
+  }), [t])
 
   const { data: settings } = useQuery<BusinessSettings>({
     queryKey: ['settings'],
@@ -120,21 +122,24 @@ export default function Quotations() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-100 flex items-center gap-2.5">
-            <span>Offertes</span>
+            <span>{t('quotes.title', 'Offertes')}</span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-400 font-medium">
-              Offertebeheer
+              {t('quotes.badge', 'Offertebeheer')}
             </span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Beheer voorstellen, digitale handtekeningen en 1-klik facturatie
+            {t('quotes.subtitle', 'Beheer voorstellen, digitale handtekeningen en 1-klik facturatie')}
           </p>
         </div>
         <button
-          onClick={() => nav('/quotations/new')}
-          className="btn-primary py-2.5 px-4 text-sm flex items-center gap-2 shadow-lg shadow-brand-600/25 hover:shadow-brand-600/40"
+          onClick={() => {
+            triggerHaptic('medium')
+            nav('/quotations/new')
+          }}
+          className="btn-primary py-2.5 px-4 text-sm flex items-center gap-2 shadow-lg shadow-brand-600/25 hover:shadow-brand-600/40 min-h-[44px] active:scale-95"
         >
           <Plus size={18} />
-          <span>Nieuwe Offerte</span>
+          <span>{t('quotes.new', 'Nieuwe Offerte')}</span>
         </button>
       </div>
 
@@ -193,7 +198,7 @@ export default function Quotations() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Zoek offerte of klant..."
+            placeholder={t('quotes.search_placeholder', 'Zoek offerte of klant...')}
             className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-9 py-2.5 sm:py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 min-h-[44px] sm:min-h-0"
           />
           {search && (
@@ -213,11 +218,11 @@ export default function Quotations() {
         {/* Status Filter Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 scrollbar-none touch-pan-x">
           {[
-            { id: '', label: 'Alle' },
-            { id: 'DRAFT', label: 'Concept' },
-            { id: 'SENT', label: 'Verzonden' },
-            { id: 'ACCEPTED', label: 'Geaccepteerd' },
-            { id: 'CONVERTED', label: 'Gefactureerd' },
+            { id: '', label: t('quotes.status.all', 'Alle') },
+            { id: 'DRAFT', label: t('quotes.status.draft', 'Concept') },
+            { id: 'SENT', label: t('quotes.status.sent', 'Verzonden') },
+            { id: 'ACCEPTED', label: t('quotes.status.accepted', 'Geaccepteerd') },
+            { id: 'CONVERTED', label: t('quotes.status.converted', 'Gefactureerd') },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -268,7 +273,7 @@ export default function Quotations() {
           {/* Mobile Card View (< md) */}
           <div className="md:hidden space-y-3">
             {filtered.map((quote) => {
-              const statusMeta = STATUS_MAP[quote.status] || STATUS_MAP.DRAFT
+              const statusMeta = statusMap[quote.status] || statusMap.DRAFT
               const StatusIcon = statusMeta.icon
               const isAccepted = quote.status === 'ACCEPTED'
               const isConverted = quote.status === 'CONVERTED'
@@ -419,7 +424,7 @@ export default function Quotations() {
               </thead>
               <tbody>
                 {filtered.map((quote) => {
-                  const statusMeta = STATUS_MAP[quote.status] || STATUS_MAP.DRAFT
+                  const statusMeta = statusMap[quote.status] || statusMap.DRAFT
                   const StatusIcon = statusMeta.icon
                   const isAccepted = quote.status === 'ACCEPTED'
                   const isConverted = quote.status === 'CONVERTED'
