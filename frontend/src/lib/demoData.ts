@@ -355,26 +355,36 @@ export const INITIAL_RECURRING: RecurringSchedule[] = [
   },
 ]
 
-// ── Local Storage Helper ───────────────────────────────────────────────────
+const memoryStore = new Map<string, string>()
 
 function getStored<T>(key: string, fallback: T): T {
-  if (typeof window === 'undefined') return fallback
   try {
-    const raw = localStorage.getItem(key)
+    const raw = typeof window !== 'undefined' && window.localStorage
+      ? localStorage.getItem(key)
+      : memoryStore.get(key)
     if (!raw) {
-      localStorage.setItem(key, JSON.stringify(fallback))
-      return fallback
+      const initialJson = JSON.stringify(fallback)
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem(key, initialJson)
+      } else {
+        memoryStore.set(key, initialJson)
+      }
+      return JSON.parse(initialJson) as T
     }
     return JSON.parse(raw) as T
   } catch {
-    return fallback
+    return JSON.parse(JSON.stringify(fallback)) as T
   }
 }
 
 function setStored<T>(key: string, data: T): void {
-  if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(key, JSON.stringify(data))
+    const json = JSON.stringify(data)
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem(key, json)
+    } else {
+      memoryStore.set(key, json)
+    }
   } catch (e) {
     console.error('Failed to save to localStorage', e)
   }
@@ -471,19 +481,66 @@ export const demoStore = {
     if (invoiceData.id) {
       const idx = list.findIndex(i => i.id === invoiceData.id || i.invoice_number === invoiceData.invoice_number)
       if (idx >= 0) {
-        list[idx] = {
-          ...list[idx],
-          ...invoiceData,
-          client: client || list[idx].client,
-          line_items: line_items.length > 0 ? line_items : list[idx].line_items,
-          subtotal_excl_vat: subtotalExcl,
-          subtotal_excl: subtotalExcl,
-          total_vat_amount: totalVat,
-          total_vat: totalVat,
-          total_incl_vat: totalIncl,
-          total_incl: totalIncl,
-          updated_at: new Date().toISOString(),
+        const existing = list[idx]
+        const hasExplicitItems = Array.isArray(invoiceData.line_items) && invoiceData.line_items.length > 0
+
+        if (hasExplicitItems) {
+          const calc = demoStore.calculateVat({
+            calculation_mode: invoiceData.calculation_mode || existing.calculation_mode || 'EXCLUSIVE',
+            client_id: invoiceData.client_id || existing.client_id,
+            items: invoiceData.line_items,
+          })
+
+          const line_items: LineItem[] = calc.items.map((it: any, index: number) => ({
+            id: it.id || `item-${Date.now()}-${index}`,
+            description: it.description || '',
+            quantity: Number(it.quantity) || 1,
+            unit_price: Number(it.unit_price) || 0,
+            vat_rate: it.vat_rate || '21',
+            vat_amount: Number(it.vat_amount) || 0,
+            line_total_excl: Number(it.line_total_excl) || 0,
+            line_total_incl: Number(it.line_total_incl) || 0,
+            sort_order: index + 1,
+          }))
+
+          const subtotalExcl = Number(calc.subtotal_excl ?? invoiceData.subtotal_excl ?? existing.subtotal_excl ?? 0)
+          const totalVat = Number(calc.total_vat ?? invoiceData.total_vat ?? existing.total_vat ?? 0)
+          const totalIncl = Number(calc.total_incl ?? invoiceData.total_incl ?? (subtotalExcl + totalVat))
+
+          list[idx] = {
+            ...existing,
+            ...invoiceData,
+            client: client || existing.client,
+            line_items,
+            subtotal_excl_vat: subtotalExcl,
+            subtotal_excl: subtotalExcl,
+            total_vat_amount: totalVat,
+            total_vat: totalVat,
+            total_incl_vat: totalIncl,
+            total_incl: totalIncl,
+            updated_at: new Date().toISOString(),
+          }
+        } else {
+          // Partial update (e.g. status: 'SENT', sent_at): preserve existing line items and totals!
+          const subtotalExcl = Number(invoiceData.subtotal_excl ?? invoiceData.subtotal_excl_vat ?? existing.subtotal_excl ?? existing.subtotal_excl_vat ?? 0)
+          const totalVat = Number(invoiceData.total_vat ?? invoiceData.total_vat_amount ?? existing.total_vat ?? existing.total_vat_amount ?? 0)
+          const totalIncl = Number(invoiceData.total_incl ?? invoiceData.total_incl_vat ?? existing.total_incl ?? existing.total_incl_vat ?? (subtotalExcl + totalVat))
+
+          list[idx] = {
+            ...existing,
+            ...invoiceData,
+            client: client || existing.client,
+            line_items: existing.line_items,
+            subtotal_excl_vat: subtotalExcl,
+            subtotal_excl: subtotalExcl,
+            total_vat_amount: totalVat,
+            total_vat: totalVat,
+            total_incl_vat: totalIncl,
+            total_incl: totalIncl,
+            updated_at: new Date().toISOString(),
+          }
         }
+
         setStored(STORAGE_KEYS.INVOICES, list)
         return list[idx]
       }

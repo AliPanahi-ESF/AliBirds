@@ -374,14 +374,97 @@ export const supabaseDb = {
     return dbToInvoice(data)
   },
 
+  updateInvoice: async (id: string, updates: any, items?: any[]) => {
+    if (!isSupabaseConfigured()) return null
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+    const dbPayload: Record<string, any> = {}
+    if (updates.status !== undefined) dbPayload.status = updates.status
+    if (updates.sent_at !== undefined) dbPayload.sent_at = updates.sent_at
+    if (updates.paid_at !== undefined) dbPayload.paid_at = updates.paid_at
+    if (updates.amount_paid !== undefined) dbPayload.amount_paid = Number(updates.amount_paid)
+    if (updates.invoice_number !== undefined) dbPayload.invoice_number = updates.invoice_number
+    if (updates.issue_date !== undefined) dbPayload.issue_date = updates.issue_date
+    if (updates.due_date !== undefined) dbPayload.due_date = updates.due_date
+    if (updates.delivery_date !== undefined) dbPayload.delivery_date = updates.delivery_date
+    if (updates.notes !== undefined) dbPayload.notes = updates.notes
+    if (updates.payment_link !== undefined) dbPayload.payment_link = updates.payment_link
+    if (updates.payment_reference !== undefined || updates.reference !== undefined) {
+      dbPayload.reference = updates.payment_reference || updates.reference
+    }
+    if (updates.calculation_mode !== undefined || updates.calc_mode !== undefined) {
+      dbPayload.calc_mode = updates.calculation_mode || updates.calc_mode
+    }
+    if (updates.client_id !== undefined) {
+      dbPayload.client_id = (updates.client_id && isUuid.test(updates.client_id)) ? updates.client_id : null
+    }
+    if (updates.subtotal_excl !== undefined || updates.subtotal_excl_vat !== undefined) {
+      dbPayload.subtotal_excl = Number(updates.subtotal_excl ?? updates.subtotal_excl_vat)
+    }
+    if (updates.total_vat !== undefined || updates.total_vat_amount !== undefined) {
+      dbPayload.total_vat = Number(updates.total_vat ?? updates.total_vat_amount)
+    }
+    if (updates.total_incl !== undefined || updates.total_incl_vat !== undefined) {
+      dbPayload.total_incl = Number(updates.total_incl ?? updates.total_incl_vat)
+    }
+    if (updates.is_reverse_charge !== undefined) {
+      dbPayload.is_reverse_charge = Boolean(updates.is_reverse_charge)
+    }
+
+    const { data, error } = await supabase
+      .from('invoices')
+      .update(dbPayload)
+      .eq('id', id)
+      .select('*, client:clients(*), line_items:invoice_line_items(*)')
+      .single()
+
+    if (error) throw error
+
+    const explicitItems = items ?? updates.line_items
+    if (Array.isArray(explicitItems) && explicitItems.length > 0) {
+      await supabase.from('invoice_line_items').delete().eq('invoice_id', id)
+      const lineRows = explicitItems.map((it: any, idx: number) => {
+        const qty = Number(it.quantity) || 1
+        const price = Number(it.unit_price) || 0
+        const rateNum = it.vat_rate === 'REVERSE_CHARGE' ? 0 : (Number(it.vat_rate) || 0)
+        const excl = Number(it.line_total_excl ?? it.total_excl_vat ?? (qty * price)) || 0
+        let vat = Number(it.vat_amount ?? it.total_vat ?? 0)
+        if (!vat && rateNum > 0 && excl > 0) {
+          vat = Math.round(excl * (rateNum / 100) * 100) / 100
+        }
+        const incl = Number(it.line_total_incl ?? it.total_incl_vat ?? (excl + vat)) || excl
+
+        return {
+          invoice_id: id,
+          position: idx,
+          description: it.description || `Item ${idx + 1}`,
+          quantity: qty,
+          unit_price: price || excl,
+          vat_rate: String(it.vat_rate || '21'),
+          vat_amount: vat,
+          line_total_excl: excl,
+          line_total_incl: incl,
+        }
+      })
+      await supabase.from('invoice_line_items').insert(lineRows)
+      data.line_items = lineRows
+    }
+
+    return dbToInvoice(data)
+  },
+
   saveInvoice: async (invoiceData: any, items: any[] = []) => {
     if (!isSupabaseConfigured()) return null
     const id = invoiceData.id
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     const isUpdate = Boolean(id && typeof id === 'string' && isUuid.test(id))
 
+    if (isUpdate) {
+      return await supabaseDb.updateInvoice(id, invoiceData, items && items.length > 0 ? items : invoiceData.line_items)
+    }
+
     // For new invoices without an explicit number, atomically fetch or compute the next sequence number (Art. 35a Wet OB)
-    if (!isUpdate && !invoiceData.invoice_number) {
+    if (!invoiceData.invoice_number) {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.user?.id) {
@@ -411,19 +494,6 @@ export const supabaseDb = {
     const dbPayload = invoiceToDb(invoiceData)
     const lineItems = (items && items.length > 0) ? items : (invoiceData.line_items || [])
     let invoiceId: string
-
-    if (isUpdate) {
-      const { data, error } = await supabase
-        .from('invoices')
-        .update(dbPayload)
-        .eq('id', id)
-        .select()
-        .single()
-      if (error) throw error
-      invoiceId = data.id
-      // Replace all line items
-      await supabase.from('invoice_line_items').delete().eq('invoice_id', invoiceId)
-    } else {
       let insertRes = await supabase
         .from('invoices')
         .insert(dbPayload)
@@ -467,7 +537,6 @@ export const supabaseDb = {
       } catch (seqErr) {
         console.warn('Could not auto-increment next_invoice_sequence in DB:', seqErr)
       }
-    }
 
     if (lineItems && lineItems.length > 0) {
       const lineRows = lineItems.map((it: any, idx: number) => {
@@ -1018,26 +1087,34 @@ export const supabaseDb = {
     const { id, client, created_at, updated_at, ...fields } = quoteData
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-    const dbRow = {
-      ...fields,
-      client_id: (fields.client_id && isUuid.test(fields.client_id)) ? fields.client_id : null,
-      line_items: fields.line_items || [],
-      subtotal_excl: Number(fields.subtotal_excl) || 0,
-      total_vat: Number(fields.total_vat) || 0,
-      total_amount: Number(fields.total_amount) || 0,
-    }
-
     try {
       if (id && typeof id === 'string' && isUuid.test(id)) {
+        const updatePayload: Record<string, any> = { ...fields }
+        if (fields.client_id !== undefined) {
+          updatePayload.client_id = (fields.client_id && isUuid.test(fields.client_id)) ? fields.client_id : null
+        }
+        if (fields.subtotal_excl !== undefined) updatePayload.subtotal_excl = Number(fields.subtotal_excl)
+        if (fields.total_vat !== undefined) updatePayload.total_vat = Number(fields.total_vat)
+        if (fields.total_amount !== undefined) updatePayload.total_amount = Number(fields.total_amount)
+        if (fields.line_items !== undefined) updatePayload.line_items = fields.line_items
+
         const { data, error } = await supabase
           .from('quotations')
-          .update(dbRow)
+          .update(updatePayload)
           .eq('id', id)
           .select(`*, client:clients(*)`)
           .single()
         if (error) throw error
         return data
       } else {
+        const dbRow = {
+          ...fields,
+          client_id: (fields.client_id && isUuid.test(fields.client_id)) ? fields.client_id : null,
+          line_items: fields.line_items || [],
+          subtotal_excl: Number(fields.subtotal_excl) || 0,
+          total_vat: Number(fields.total_vat) || 0,
+          total_amount: Number(fields.total_amount) || 0,
+        }
         let insertRes = await supabase
           .from('quotations')
           .insert(dbRow)

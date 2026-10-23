@@ -495,6 +495,92 @@ test('PDF Export', 'canSharePdf helper returns boolean safely in any runtime env
   assertEquals(typeof result, 'boolean', 'canSharePdf should return boolean without throwing')
 })
 
+// ── 10. JTBD: INVOICE SENDING & PARTIAL UPDATE INTEGRITY ────────────────────
+console.log('\nSECTION 10: JTBD Invoice Dispatch & Price Preservation')
+
+import { demoStore } from '../src/lib/demoData'
+import { prepareInvoiceEmail } from '../src/lib/email'
+
+test('JTBD Send Flow', 'Sending an invoice preserves all line items and total price (does NOT reset to 0.0)', () => {
+  // 1. User creates a new invoice
+  const created = demoStore.saveInvoice({
+    invoice_number: '2026-0999',
+    issue_date: '2026-10-23',
+    due_date: '2026-11-06',
+    status: 'DRAFT',
+    calculation_mode: 'EXCLUSIVE',
+    line_items: [
+      {
+        description: 'Brand Identity Design',
+        quantity: 1,
+        unit_price: 2450.0,
+        vat_rate: '21',
+        vat_amount: 514.5,
+        line_total_excl: 2450.0,
+        line_total_incl: 2964.5,
+      },
+    ],
+  })
+
+  assertEquals(created.total_incl, 2964.5, 'Newly created invoice should have total_incl = 2964.50')
+  assertEquals(created.line_items.length, 1, 'Newly created invoice should have 1 line item')
+
+  // 2. User presses Send button in modal which performs partial update: { status: 'SENT', sent_at: ... }
+  const afterSend = demoStore.saveInvoice({
+    id: created.id,
+    status: 'SENT',
+    sent_at: new Date().toISOString(),
+  })
+
+  // 3. Verify that the price is NOT 0.0, totals are fully preserved, and line items remain intact
+  assertEquals(afterSend.status, 'SENT', 'Invoice status should be SENT')
+  assertEquals(afterSend.total_incl, 2964.5, 'Invoice total_incl MUST remain 2964.50 (NOT 0.0)')
+  assertEquals(afterSend.subtotal_excl, 2450.0, 'Invoice subtotal_excl MUST remain 2450.00 (NOT 0.0)')
+  assertEquals(afterSend.line_items.length, 1, 'Invoice must retain all line items after being marked as SENT')
+
+  // 4. Verify that fetching the invoice from store retains the preserved price
+  const fetched = demoStore.getInvoice(created.id)
+  assert(fetched !== undefined, 'Invoice should exist in store')
+  assertEquals(fetched!.total_incl, 2964.5, 'Stored invoice must keep 2964.50')
+  assertEquals(fetched!.line_items.length, 1, 'Stored invoice must keep line items')
+
+  // 5. Verify email text generator formats the exact price and invoice number
+  const emailData = prepareInvoiceEmail(fetched!)
+  assert(emailData.plainBody.includes('2026-0999'), 'Email body should include invoice number')
+  assert(emailData.plainBody.includes('2.964,50'), 'Email body should include correct formatted price € 2.964,50')
+})
+
+test('JTBD Send Flow', 'Multiple sequential status changes (SENT -> PAID) maintain total integrity', () => {
+  const inv = demoStore.saveInvoice({
+    invoice_number: '2026-1000',
+    issue_date: '2026-10-23',
+    status: 'DRAFT',
+    line_items: [
+      {
+        description: 'Web development',
+        quantity: 2,
+        unit_price: 600.0,
+        vat_rate: '21',
+        vat_amount: 252.0,
+        line_total_excl: 1200.0,
+        line_total_incl: 1452.0,
+      },
+    ],
+  })
+
+  assertEquals(inv.total_incl, 1452.0, 'Initial total should be 1452.00')
+
+  // Mark sent
+  const sent = demoStore.saveInvoice({ id: inv.id, status: 'SENT', sent_at: new Date().toISOString() })
+  assertEquals(sent.total_incl, 1452.0, 'Total after SENT must be 1452.00')
+
+  // Mark paid
+  const paid = demoStore.saveInvoice({ id: inv.id, status: 'PAID', paid_at: new Date().toISOString() })
+  assertEquals(paid.total_incl, 1452.0, 'Total after PAID must be 1452.00')
+  assertEquals(paid.status, 'PAID', 'Status should be PAID')
+  assertEquals(paid.line_items.length, 1, 'Line items must be preserved through multiple status updates')
+})
+
 // ── SUMMARY REPORT ─────────────────────────────────────────────────────────
 console.log('\n=================================================================')
 const passedCount = results.filter(r => r.passed).length

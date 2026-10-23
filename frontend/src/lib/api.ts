@@ -8,7 +8,7 @@ import { classifySalesReverseChargeRubric, isEuCountry, roundBelastingdienst } f
 import { BtwAangifte } from './types'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || '/api',
   headers: { 'Content-Type': 'application/json' },
   timeout: 4000,
 })
@@ -169,7 +169,7 @@ export const invoicesApi = {
   },
   update: async (id: string, data: any) => {
     if (isSupabaseConfigured() && !isDemoMode()) {
-      const supaUpdated = await supabaseDb.saveInvoice({ ...data, id }, data.line_items)
+      const supaUpdated = await supabaseDb.updateInvoice(id, data, data.line_items)
       if (supaUpdated) return supaUpdated
     }
 
@@ -216,23 +216,8 @@ export const invoicesApi = {
     return { success: true }
   },
   send: async (id: string) => {
-    if (isSupabaseConfigured() && !isDemoMode()) {
-      await supabaseDb.saveInvoice({ id, status: 'SENT', sent_at: new Date().toISOString() })
-      return { success: true, message: 'Factuur gemarkeerd als verzonden' }
-    }
-
-    try {
-      const res = await api.post(`/invoices/${id}/send`)
-      return res.data
-    } catch (err) {
-      const inv = demoStore.getInvoice(id)
-      if (inv) {
-        inv.status = 'SENT'
-        inv.sent_at = new Date().toISOString()
-        demoStore.saveInvoice(inv)
-      }
-      return { success: true, message: 'Factuur verzonden (Demo simulatie)' }
-    }
+    await invoicesApi.update(id, { status: 'SENT', sent_at: new Date().toISOString() })
+    return { success: true, message: 'Factuur gemarkeerd als verzonden' }
   },
   renderPdf: async (id: string) => {
     try {

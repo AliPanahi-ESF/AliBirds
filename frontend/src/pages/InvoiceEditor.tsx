@@ -383,7 +383,22 @@ export default function InvoiceEditor() {
 
           <button
             type="button"
-            onClick={() => setShowSendModal(true)}
+            onClick={async () => {
+              if (!isEdit) {
+                await handleSubmit(async (formData) => {
+                  try {
+                    const saved = await invoicesApi.create(formData)
+                    qc.invalidateQueries({ queryKey: ['invoices'] })
+                    setShowSendModal(true)
+                    nav(`/invoices/${saved.id}/edit`, { replace: true })
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Sla de factuur eerst op.')
+                  }
+                })()
+              } else {
+                setShowSendModal(true)
+              }
+            }}
             className="btn-secondary text-xs sm:text-sm py-1.5 px-2.5 sm:px-3 text-emerald-400 border-emerald-500/30 flex items-center gap-1.5"
             title="Factuur verzenden per e-mail"
           >

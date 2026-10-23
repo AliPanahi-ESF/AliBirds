@@ -82,7 +82,13 @@ export default function SendInvoiceModal({
   const markInvoiceAsSent = async () => {
     try {
       if (invoice.id && !invoice.id.startsWith('new-')) {
-        await invoicesApi.update(invoice.id, { status: 'SENT', sent_at: new Date().toISOString() })
+        await invoicesApi.update(invoice.id, {
+          status: 'SENT',
+          sent_at: new Date().toISOString(),
+          subtotal_excl: Number(invoice.subtotal_excl ?? invoice.subtotal_excl_vat ?? 0),
+          total_vat: Number(invoice.total_vat ?? invoice.total_vat_amount ?? 0),
+          total_incl: Number(invoice.total_incl ?? invoice.total_incl_vat ?? totalAmount),
+        })
         qc.invalidateQueries({ queryKey: ['invoice', invoice.id] })
         qc.invalidateQueries({ queryKey: ['invoices'] })
       }

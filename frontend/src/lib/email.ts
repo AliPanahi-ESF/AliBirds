@@ -104,7 +104,9 @@ export function prepareInvoiceEmail(
   recipientOverride?: string,
   paymentLinkOverride?: string
 ): PreparedInvoiceEmail {
-  const recipient = recipientOverride || invoice.client?.email || ''
+  const rawClient = invoice.client
+  const resolvedClient = Array.isArray(rawClient) ? rawClient[0] : rawClient
+  const recipient = recipientOverride || resolvedClient?.email || ''
   const companyName = settings?.company_name || 'Studio AliBirds'
   const totalAmount = Number(
     invoice.total_incl ??
@@ -112,7 +114,7 @@ export function prepareInvoiceEmail(
     invoice.line_items?.reduce((s, it) => s + (Number(it.line_total_incl || it.line_total_excl) || 0), 0) ??
     0
   )
-  const clientName = invoice.client?.contact_person || invoice.client?.name || 'Klant'
+  const clientName = resolvedClient?.contact_person || resolvedClient?.name || 'Klant'
   const dueDate = invoice.due_date ? fmt.date(invoice.due_date) : 'in overleg'
 
   const subject = `Factuur ${invoice.invoice_number} — ${companyName}`
