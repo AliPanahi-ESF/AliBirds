@@ -13,7 +13,10 @@
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; }
+*, *::before, *::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
 
 html { font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11'; }
 
@@ -217,11 +220,11 @@ bdi[dir="ltr"] {
 }
 
 .safe-area-pb {
-  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
 }
 
 .safe-area-pt {
-  padding-top: max(0.25rem, env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 /* ── Animations ────────────────────────────────────────────────────────────── */

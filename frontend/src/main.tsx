@@ -8,9 +8,19 @@ import AppUpdatePrompt from './components/AppUpdatePrompt'
 import { registerServiceWorker } from './lib/pwaPush'
 import './index.css'
 
-// Register Service Worker for PWA & Web Push
+// Register Service Worker for PWA & Web Push in production only
 if (typeof window !== 'undefined') {
-  registerServiceWorker()
+  if (import.meta.env.DEV) {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const reg of registrations) {
+          reg.unregister()
+        }
+      }).catch(() => {})
+    }
+  } else {
+    registerServiceWorker()
+  }
 }
 
 // Guard against DOM manipulation by browser extensions/translators (Google Translate, Grammarly, etc.)

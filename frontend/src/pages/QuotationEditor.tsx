@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import { quotationsApi, clientsApi, settingsApi, fmt } from '@/lib/api'
 import { Client, Quotation, BusinessSettings } from '@/lib/types'
 import QuotationPrintModal from '@/components/QuotationPrintModal'
+import QuickClientModal from '@/components/QuickClientModal'
 import { clsx } from 'clsx'
 import { calculateLineItem } from '@/lib/vatCalculator'
 
@@ -49,6 +50,7 @@ export default function QuotationEditor() {
   const qc = useQueryClient()
   const isEdit = Boolean(id)
   const [showPrintModal, setShowPrintModal] = useState(false)
+  const [showQuickClientModal, setShowQuickClientModal] = useState(false)
   const [liveCalc, setLiveCalc] = useState({ excl: 0, vat: 0, incl: 0 })
 
   const { data: settings } = useQuery<BusinessSettings>({
@@ -279,7 +281,17 @@ export default function QuotationEditor() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Client Select */}
             <div className="sm:col-span-2">
-              <label className="label">Klant / Opdrachtgever *</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="label mb-0">Klant / Opdrachtgever *</label>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickClientModal(true)}
+                  className="text-xs text-brand-400 hover:text-brand-300 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                >
+                  <Plus size={13} />
+                  <span>Nieuwe klant</span>
+                </button>
+              </div>
               <select
                 {...register('client_id', { required: true })}
                 className="select"
@@ -524,6 +536,16 @@ export default function QuotationEditor() {
           onClose={() => setShowPrintModal(false)}
         />
       )}
+
+      {/* Quick Add Client Modal */}
+      <QuickClientModal
+        isOpen={showQuickClientModal}
+        onClose={() => setShowQuickClientModal(false)}
+        onClientCreated={(newClient) => {
+          qc.invalidateQueries({ queryKey: ['clients'] })
+          setValue('client_id', newClient.id, { shouldValidate: true })
+        }}
+      />
     </div>
   )
 }

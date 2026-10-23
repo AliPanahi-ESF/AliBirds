@@ -7,6 +7,7 @@ import {
 import { dashboardApi, invoicesApi, fmt } from '@/lib/api'
 import { DashboardKPIs, Invoice } from '@/lib/types'
 import { useI18n } from '@/lib/i18n'
+import { getVatDeadlineInfo } from '@/lib/vatCalculator'
 import { clsx } from 'clsx'
 
 interface KPICardProps {
@@ -202,36 +203,68 @@ export default function Dashboard() {
 
       {/* Btw-aangifte mini widget */}
       <div className="liquid-glass-card">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
           <div>
-            <h2 className="text-sm font-semibold text-slate-300">Btw-aangifte schatting</h2>
-            <p className="text-xs text-slate-500 mt-0.5">{year} — overzicht per kwartaal</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-sm font-semibold text-slate-300">Btw-aangifte schatting</h2>
+              {(() => {
+                const deadline = getVatDeadlineInfo(quarter, year)
+                return (
+                  <span
+                    className={clsx(
+                      'text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1',
+                      deadline.urgency === 'urgent'
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/30 animate-pulse'
+                        : deadline.urgency === 'warning'
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        : 'bg-brand-500/15 text-brand-300 border-brand-500/25'
+                    )}
+                  >
+                    <Clock size={10} />
+                    <span>{deadline.badgeText}</span>
+                  </span>
+                )
+              })()}
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">{year} — overzicht per kwartaal voor Belastingdienst</p>
           </div>
-          <button onClick={() => nav('/tax')} className="btn-secondary btn-sm text-xs">
-            Aangifte <ArrowRight size={12} />
+          <button onClick={() => nav('/tax')} className="btn-secondary btn-sm text-xs self-start sm:self-auto">
+            Aangifte openen <ArrowRight size={12} />
           </button>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          {[1, 2, 3, 4].map(q => (
-            <div
-              key={q}
-              className={clsx(
-                'rounded-lg p-2.5 sm:p-3 border text-center cursor-pointer transition-colors',
-                q === quarter
-                  ? 'bg-brand-600/15 border-brand-600/30 text-brand-400'
-                  : 'bg-slate-800/40 border-slate-800 text-slate-500 hover:bg-slate-800',
-              )}
-              onClick={() => nav('/tax')}
-            >
-              <div className="text-xs font-semibold">Q{q} {year}</div>
-              {q === quarter && kpis && (
-                <div className="text-xs sm:text-sm font-bold mt-1 font-mono text-brand-300">
-                  {fmt.currency(kpis.projected_vat_liability)}
+          {[1, 2, 3, 4].map(q => {
+            const isCurrent = q === quarter
+            const qDeadline = getVatDeadlineInfo(q, year)
+            return (
+              <div
+                key={q}
+                className={clsx(
+                  'rounded-xl p-2.5 sm:p-3 border text-center cursor-pointer transition-all active:scale-[0.98]',
+                  isCurrent
+                    ? 'bg-brand-600/15 border-brand-600/40 text-brand-300 shadow-sm shadow-brand-600/10'
+                    : 'bg-slate-800/40 border-slate-800 text-slate-500 hover:bg-slate-800/70',
+                )}
+                onClick={() => nav('/tax')}
+              >
+                <div className="text-xs font-semibold flex items-center justify-center gap-1">
+                  <span>Q{q} {year}</span>
+                  {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" />}
                 </div>
-              )}
-              {q !== quarter && <div className="text-xs mt-1 text-slate-600">—</div>}
-            </div>
-          ))}
+                {isCurrent && kpis && (
+                  <div className="text-xs sm:text-sm font-bold mt-1 font-mono text-brand-300">
+                    {fmt.currency(kpis.projected_vat_liability)}
+                  </div>
+                )}
+                {isCurrent && (
+                  <div className="text-[10px] text-slate-400 mt-1 font-medium truncate">
+                    {qDeadline.deadlineLabel}
+                  </div>
+                )}
+                {!isCurrent && <div className="text-xs mt-1 text-slate-600">—</div>}
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

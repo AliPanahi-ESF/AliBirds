@@ -8,6 +8,7 @@ import { Client, BankTransaction } from '@/lib/types'
 import { parsePdfInvoice } from '@/lib/pdfInvoiceParser'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { TableRowSkeleton, CardSkeleton } from '@/components/TableSkeleton'
+import { triggerHaptic } from '@/lib/haptics'
 
 const COUNTRIES = [
   { code: 'NL', name: 'Nederland' }, { code: 'BE', name: 'België' },
@@ -64,32 +65,44 @@ export default function Clients() {
   const createMutation = useMutation({
     mutationFn: (data: Partial<Client>) => clientsApi.create(data),
     onSuccess: () => {
+      triggerHaptic('success')
       toast.success('Klant aangemaakt')
       qc.invalidateQueries({ queryKey: ['clients'] })
       reset(); setShowForm(false)
     },
-    onError: () => toast.error('Opslaan mislukt'),
+    onError: () => {
+      triggerHaptic('warning')
+      toast.error('Opslaan mislukt')
+    },
   })
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<Client> }) => clientsApi.update(id, data),
     onSuccess: () => {
+      triggerHaptic('success')
       toast.success('Klant bijgewerkt')
       qc.invalidateQueries({ queryKey: ['clients'] })
       setEditing(null)
       setShowForm(false)
     },
-    onError: () => toast.error('Opslaan mislukt'),
+    onError: () => {
+      triggerHaptic('warning')
+      toast.error('Opslaan mislukt')
+    },
   })
 
   const removeMutation = useMutation({
     mutationFn: clientsApi.remove,
     onSuccess: () => {
+      triggerHaptic('success')
       toast.success('Klant verwijderd')
       setDeletingClient(null)
       qc.invalidateQueries({ queryKey: ['clients'] })
     },
-    onError: () => toast.error('Verwijderen mislukt'),
+    onError: () => {
+      triggerHaptic('warning')
+      toast.error('Verwijderen mislukt')
+    },
   })
 
   const onSubmit = (data: Partial<Client>) => {
@@ -233,13 +246,25 @@ export default function Clients() {
 
       {/* Search */}
       <div className="relative w-full sm:max-w-xs">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
         <input
-          className="input pl-8 text-xs sm:text-sm py-2"
+          className="input pl-9 pr-9 text-xs sm:text-sm h-11 sm:h-9 w-full"
           placeholder="Zoek opdrachtgever..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+        {search && (
+          <button
+            onClick={() => {
+              triggerHaptic('light')
+              setSearch('')
+            }}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1.5 rounded-full active:scale-90 transition-transform"
+            aria-label="Zoekopdracht wissen"
+          >
+            <X size={14} />
+          </button>
+        )}
       </div>
 
       {/* Form */}
@@ -363,22 +388,28 @@ export default function Clients() {
 
               <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-xs text-slate-500">
                 <span>Termijn: {c.default_payment_term_days} dagen</span>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => openEdit(c)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                    onClick={() => {
+                      triggerHaptic('light')
+                      openEdit(c)
+                    }}
+                    className="p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800/50 border border-slate-800 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 transition-all"
                     title="Klant bewerken"
                     aria-label={`Klant ${c.name} bewerken`}
                   >
-                    <Edit2 size={14} />
+                    <Edit2 size={15} />
                   </button>
                   <button
-                    onClick={() => setDeletingClient(c)}
-                    className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                    onClick={() => {
+                      triggerHaptic('warning')
+                      setDeletingClient(c)
+                    }}
+                    className="p-2 rounded-xl text-red-400/80 hover:text-red-300 bg-red-500/10 border border-red-500/20 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 transition-all"
                     title="Klant verwijderen"
                     aria-label={`Klant ${c.name} verwijderen`}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={15} />
                   </button>
                 </div>
               </div>

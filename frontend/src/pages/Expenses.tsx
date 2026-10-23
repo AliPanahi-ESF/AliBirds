@@ -12,6 +12,7 @@ import { Expense, OCRParsedResult } from '@/lib/types'
 import { clsx } from 'clsx'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { TableRowSkeleton, CardSkeleton } from '@/components/TableSkeleton'
+import { triggerHaptic } from '@/lib/haptics'
 
 const CATEGORIES = [
   'Software', 'Hardware', 'Kantoor', 'Abonnementen',
@@ -72,6 +73,17 @@ export default function Expenses() {
     queryKey: ['expenses'],
     queryFn: () => expensesApi.list(),
   })
+
+  const [selectedQuarter, setSelectedQuarter] = useState<number | 'ALL'>('ALL')
+
+  const filteredExpenses = expenses.filter((exp) => {
+    if (selectedQuarter === 'ALL') return true
+    if (!exp.expense_date) return true
+    const d = new Date(exp.expense_date)
+    const q = Math.ceil((d.getMonth() + 1) / 3)
+    return q === selectedQuarter
+  })
+
 
   const { register, handleSubmit, watch, setValue, reset } = useForm<ExpenseForm>({
     defaultValues: {
@@ -226,9 +238,9 @@ export default function Expenses() {
     setShowForm(true)
   }
 
-  const totalExcl = expenses.reduce((s, e) => s + Number(e.amount_excl_vat), 0)
-  const totalVat = expenses.reduce((s, e) => s + Number(e.vat_amount), 0)
-  const totalIncl = expenses.reduce((s, e) => s + Number(e.amount_incl_vat), 0)
+  const totalExcl = filteredExpenses.reduce((s, e) => s + Number(e.amount_excl_vat), 0)
+  const totalVat = filteredExpenses.reduce((s, e) => s + Number(e.vat_amount), 0)
+  const totalIncl = filteredExpenses.reduce((s, e) => s + Number(e.amount_incl_vat), 0)
 
   return (
     <div className="space-y-6 w-full animate-fade-in pb-12">
@@ -662,14 +674,54 @@ export default function Expenses() {
         </div>
       )}
 
+      {/* Quarter Filter & Summary Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-900 border border-slate-800 rounded-xl">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs text-slate-400 font-medium mr-1">Periode:</span>
+          {[
+            { id: 'ALL', label: 'Alle kosten' },
+            { id: 1, label: 'Q1' },
+            { id: 2, label: 'Q2' },
+            { id: 3, label: 'Q3' },
+            { id: 4, label: 'Q4' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                triggerHaptic('selection')
+                setSelectedQuarter(tab.id as any)
+              }}
+              className={clsx(
+                'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer min-h-[36px] active:scale-95',
+                selectedQuarter === tab.id
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3 text-xs font-mono">
+          <span className="text-slate-400">
+            Excl: <strong className="text-slate-200">{fmt.currency(totalExcl)}</strong>
+          </span>
+          <span className="text-emerald-400">
+            Voorbelasting (5b): <strong>+{fmt.currency(totalVat)}</strong>
+          </span>
+        </div>
+      </div>
+
       {/* Mobile Card List (< md) */}
       <div className="md:hidden space-y-3">
         {isLoading ? (
           <CardSkeleton count={4} />
-        ) : expenses.length === 0 ? (
-          <div className="card text-center py-10 text-xs text-slate-500">Geen kosten gevonden</div>
+        ) : filteredExpenses.length === 0 ? (
+          <div className="card text-center py-10 text-xs text-slate-500">Geen kosten gevonden voor deze periode</div>
         ) : (
-          expenses.map((exp) => (
+          filteredExpenses.map((exp) => (
             <div key={exp.id} className="card p-3.5 space-y-2">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -711,12 +763,15 @@ export default function Expenses() {
                     </span>
                   </div>
                   <button
-                    onClick={() => setDeletingExpense(exp)}
-                    className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 ml-1"
+                    onClick={() => {
+                      triggerHaptic('warning')
+                      setDeletingExpense(exp)
+                    }}
+                    className="p-2 rounded-xl text-red-400/80 hover:text-red-300 bg-red-500/10 border border-red-500/20 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 ml-1 transition-all"
                     title="Uitgave verwijderen"
                     aria-label={`Uitgave van ${exp.vendor_name} verwijderen`}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={15} />
                   </button>
                 </div>
               </div>
@@ -745,14 +800,14 @@ export default function Expenses() {
           <tbody className="divide-y divide-slate-800/60">
             {isLoading ? (
               <TableRowSkeleton cols={10} rows={5} />
-            ) : expenses.length === 0 ? (
+            ) : filteredExpenses.length === 0 ? (
               <tr>
                 <td colSpan={10} className="text-center py-10 text-slate-500">
-                  Nog geen kosten geregistreerd. Sleep een bon in de Smart Inbox hierboven!
+                  Geen kosten gevonden voor deze periode. Sleep een bon in de Smart Inbox hierboven!
                 </td>
               </tr>
             ) : (
-              expenses.map((exp) => (
+              filteredExpenses.map((exp) => (
                 <tr key={exp.id} className="hover:bg-slate-800/50 transition-colors group">
                   <td className="p-3.5 text-xs text-slate-400 whitespace-nowrap">
                     {fmt.date(exp.expense_date)}

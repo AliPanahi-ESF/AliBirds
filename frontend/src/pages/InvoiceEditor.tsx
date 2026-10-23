@@ -13,6 +13,7 @@ import { Client, Invoice, LineItem, BusinessSettings } from '@/lib/types'
 import InvoicePrintModal from '@/components/InvoicePrintModal'
 import SendInvoiceModal from '@/components/SendInvoiceModal'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import QuickClientModal from '@/components/QuickClientModal'
 import { sendInvoiceViaResend, generateMailtoUrl, isResendConfigured } from '@/lib/email'
 import { calculateLineItem } from '@/lib/vatCalculator'
 import { getSmartInvoiceIdOptions, InvoiceIdOption } from '@/lib/invoiceNumbering'
@@ -58,6 +59,7 @@ export default function InvoiceEditor() {
   const [isSendingEmail, setIsSendingEmail] = useState(false)
   const [liveCalc, setLiveCalc] = useState({ excl: 0, vat: 0, incl: 0 })
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showQuickClientModal, setShowQuickClientModal] = useState(false)
 
   // Smart Invoice ID state
   const [invoiceNumber, setInvoiceNumber] = useState<string>('')
@@ -401,15 +403,31 @@ export default function InvoiceEditor() {
           <div className="liquid-glass-card p-3.5 sm:p-5 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="label">Klant *</label>
-                <select className="select text-xs sm:text-sm" {...register('client_id', { required: 'Selecteer een klant' })}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="label mb-0">Klant *</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickClientModal(true)}
+                    className="text-xs text-brand-400 hover:text-brand-300 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                  >
+                    <Plus size={13} />
+                    <span>Nieuwe klant</span>
+                  </button>
+                </div>
+                <select
+                  className={clsx(
+                    'select text-xs sm:text-sm',
+                    errors.client_id && 'border-red-500 focus:border-red-500 ring-1 ring-red-500/30'
+                  )}
+                  {...register('client_id', { required: 'Selecteer een klant' })}
+                >
                   <option value="">— Selecteer klant —</option>
                   {clients.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
                 {errors.client_id && (
-                  <p className="text-red-400 text-[11px] mt-1">Selecteer een klant om de factuur op te slaan.</p>
+                  <p className="text-red-400 text-[11px] mt-1 font-medium">Selecteer een klant om de factuur op te slaan.</p>
                 )}
                 {selectedClient && (
                   <div className="mt-2 text-xs text-slate-400 p-2 rounded bg-slate-800/40 border border-slate-800 space-y-0.5">
@@ -586,8 +604,8 @@ export default function InvoiceEditor() {
               <h2 className="text-sm font-semibold text-slate-200">Regelitems</h2>
             </div>
 
-            {/* Responsive Line Items Container */}
-            <div className="overflow-x-auto -mx-3.5 sm:mx-0 px-3.5 sm:px-0">
+            {/* Desktop Table View (>= 640px) */}
+            <div className="hidden sm:block overflow-x-auto">
               <div className="min-w-[580px] space-y-2">
                 {/* Header row */}
                 <div className="grid grid-cols-[1fr_80px_110px_120px_40px] gap-2 px-1 text-xs text-slate-400 font-medium">
@@ -631,8 +649,9 @@ export default function InvoiceEditor() {
                         <button
                           type="button"
                           onClick={() => remove(idx)}
-                          className="p-2 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center justify-center"
+                          className="p-2 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center justify-center cursor-pointer"
                           disabled={fields.length === 1}
+                          title="Regel verwijderen"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -648,6 +667,81 @@ export default function InvoiceEditor() {
                   )
                 })}
               </div>
+            </div>
+
+            {/* Mobile Stacked Card View (< 640px) */}
+            <div className="block sm:hidden space-y-3">
+              {fields.map((field, idx) => {
+                const row = watchedItems?.[idx]
+                const { excl, vat, incl } = row ? calcLine(row, mode) : { excl: 0, vat: 0, incl: 0 }
+                return (
+                  <div
+                    key={field.id}
+                    className="p-3 bg-slate-950/60 rounded-xl border border-white/10 space-y-2.5 shadow-sm"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-slate-400">Regel #{idx + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => remove(idx)}
+                        className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/15 transition-colors disabled:opacity-30 cursor-pointer"
+                        disabled={fields.length === 1}
+                        aria-label="Verwijder regel"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-slate-400 mb-1 block">Omschrijving</label>
+                      <input
+                        className="input text-xs w-full"
+                        placeholder="Omschrijving dienst of product"
+                        {...register(`line_items.${idx}.description`)}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-400 mb-1 block">Aantal</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          className="input text-xs text-center font-mono w-full"
+                          {...register(`line_items.${idx}.quantity`, { valueAsNumber: true })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 mb-1 block truncate">
+                          {mode === 'EXCLUSIVE' ? 'Prijs excl.' : 'Prijs incl.'}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="input text-xs text-right font-mono w-full"
+                          {...register(`line_items.${idx}.unit_price`, { valueAsNumber: true })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 mb-1 block">Btw</label>
+                        <select className="select text-xs w-full px-1" {...register(`line_items.${idx}.vat_rate`)}>
+                          {VAT_OPTIONS.map(o => (
+                            <option key={o.value} value={o.value}>{o.label.split(' ')[0]}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1.5 border-t border-white/5 text-[11px] font-mono">
+                      <span className="text-slate-400">Excl: {fmt.currency(excl)}</span>
+                      <span className="text-slate-400">Btw: {fmt.currency(vat)}</span>
+                      <span className="text-brand-300 font-bold">Totaal: {fmt.currency(incl)}</span>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
 
             <button
@@ -735,6 +829,16 @@ export default function InvoiceEditor() {
         onSuccess={() => {
           qc.invalidateQueries({ queryKey: ['invoices'] })
           if (id) qc.invalidateQueries({ queryKey: ['invoice', id] })
+        }}
+      />
+
+      {/* Quick Add Client Modal */}
+      <QuickClientModal
+        isOpen={showQuickClientModal}
+        onClose={() => setShowQuickClientModal(false)}
+        onClientCreated={(newClient) => {
+          qc.invalidateQueries({ queryKey: ['clients'] })
+          setValue('client_id', newClient.id, { shouldValidate: true })
         }}
       />
 

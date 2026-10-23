@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Search, FileCheck, Eye, Edit3, Trash2,
   Copy, ArrowRight, CheckCircle2, Clock, AlertTriangle,
-  Send, ExternalLink, Calendar, Filter
+  Send, ExternalLink, Calendar, Filter, X
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { quotationsApi, settingsApi, clientsApi, fmt } from '@/lib/api'
@@ -13,6 +13,7 @@ import QuotationPrintModal from '@/components/QuotationPrintModal'
 import SignatureCanvasModal from '@/components/SignatureCanvasModal'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { clsx } from 'clsx'
+import { triggerHaptic } from '@/lib/haptics'
 
 const STATUS_MAP: Record<QuotationStatus, { label: string; cls: string; icon: any }> = {
   DRAFT:     { label: 'Concept',     cls: 'badge-gray',   icon: Clock },
@@ -187,18 +188,30 @@ export default function Quotations() {
       <div className="card p-3.5 flex flex-col md:flex-row items-center justify-between gap-3">
         {/* Search */}
         <div className="relative w-full md:w-80">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Zoek offerte of klant..."
-            className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50"
+            className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-9 py-2.5 sm:py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 min-h-[44px] sm:min-h-0"
           />
+          {search && (
+            <button
+              onClick={() => {
+                triggerHaptic('light')
+                setSearch('')
+              }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1.5 rounded-full active:scale-90 transition-transform"
+              aria-label="Zoekopdracht wissen"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
 
         {/* Status Filter Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
+        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 scrollbar-none touch-pan-x">
           {[
             { id: '', label: 'Alle' },
             { id: 'DRAFT', label: 'Concept' },
@@ -208,12 +221,15 @@ export default function Quotations() {
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setFilter(tab.id)}
+              onClick={() => {
+                triggerHaptic('selection')
+                setFilter(tab.id)
+              }}
               className={clsx(
-                'px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors',
+                'px-3.5 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all min-h-[38px] active:scale-95',
                 filter === tab.id
-                  ? 'bg-brand-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               )}
             >
               {tab.label}
@@ -248,151 +264,292 @@ export default function Quotations() {
           </button>
         </div>
       ) : (
-        <div className="table-wrapper">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Offertenummer</th>
-                <th>Klant</th>
-                <th>Offertedatum</th>
-                <th>Geldig tot</th>
-                <th className="text-right">Totaal (incl)</th>
-                <th>Status</th>
-                <th className="text-right">Acties</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((quote) => {
-                const statusMeta = STATUS_MAP[quote.status] || STATUS_MAP.DRAFT
-                const StatusIcon = statusMeta.icon
-                const isAccepted = quote.status === 'ACCEPTED'
-                const isConverted = quote.status === 'CONVERTED'
-                const isExpired = new Date(quote.valid_until_date).getTime() < Date.now() && quote.status === 'SENT'
+        <>
+          {/* Mobile Card View (< md) */}
+          <div className="md:hidden space-y-3">
+            {filtered.map((quote) => {
+              const statusMeta = STATUS_MAP[quote.status] || STATUS_MAP.DRAFT
+              const StatusIcon = statusMeta.icon
+              const isAccepted = quote.status === 'ACCEPTED'
+              const isConverted = quote.status === 'CONVERTED'
+              const isExpired = new Date(quote.valid_until_date).getTime() < Date.now() && quote.status === 'SENT'
 
-                return (
-                  <tr key={quote.id} className="group">
-                    {/* Number */}
-                    <td>
-                      <button
-                        onClick={() => setPrintQuotation(quote)}
-                        className="font-mono font-bold text-brand-400 hover:underline flex items-center gap-1.5"
-                      >
-                        <FileCheck size={14} className="shrink-0" />
+              return (
+                <div
+                  key={quote.id}
+                  className="liquid-glass-card p-4 space-y-3 border border-slate-800/80 rounded-2xl active:border-slate-700 transition-all"
+                >
+                  {/* Card Header: Quote # and Status */}
+                  <div
+                    onClick={() => {
+                      triggerHaptic('light')
+                      if (!isConverted) nav(`/quotations/${quote.id}/edit`)
+                      else setPrintQuotation(quote)
+                    }}
+                    className="flex items-start justify-between gap-2 cursor-pointer"
+                  >
+                    <div>
+                      <div className="font-mono text-xs font-bold text-brand-400 flex items-center gap-1.5">
+                        <FileCheck size={14} />
                         <span>{quote.quotation_number}</span>
-                      </button>
-                    </td>
-
-                    {/* Client */}
-                    <td>
-                      <div className="font-medium text-slate-200">
+                      </div>
+                      <div className="text-base font-semibold text-slate-100 mt-0.5">
                         {quote.client?.name || 'Onbekende klant'}
                       </div>
-                      {quote.client?.contact_person && (
-                        <div className="text-[11px] text-slate-500">
-                          {quote.client.contact_person}
-                        </div>
-                      )}
-                    </td>
+                    </div>
+                    <span className={clsx(statusMeta.cls, 'inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full font-medium')}>
+                      <StatusIcon size={12} />
+                      <span>{statusMeta.label}</span>
+                    </span>
+                  </div>
 
-                    {/* Issue date */}
-                    <td className="text-slate-400 text-xs">
-                      {fmt.date(quote.issue_date)}
-                    </td>
-
-                    {/* Validity */}
-                    <td>
-                      <div className={clsx('text-xs flex items-center gap-1', isExpired ? 'text-red-400 font-medium' : 'text-slate-400')}>
-                        <Calendar size={13} className="shrink-0" />
-                        <span>{fmt.date(quote.valid_until_date)}</span>
-                        {isExpired && <span className="text-[10px] bg-red-500/20 text-red-400 px-1 py-0.5 rounded">Verlopen</span>}
-                      </div>
-                    </td>
-
-                    {/* Total amount */}
-                    <td className="text-right font-mono font-bold text-slate-100">
-                      {fmt.currency(quote.total_amount)}
-                    </td>
-
-                    {/* Status */}
-                    <td>
-                      <span className={clsx(statusMeta.cls, 'inline-flex items-center gap-1 text-[11px]')}>
-                        <StatusIcon size={12} />
-                        <span>{statusMeta.label}</span>
+                  {/* Date and Amount row */}
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-800/60 text-slate-400">
+                    <div className="flex items-center gap-1.5">
+                      <Calendar size={13} className="text-slate-500" />
+                      <span>{fmt.date(quote.issue_date)}</span>
+                      <span className="text-slate-600">·</span>
+                      <span className={clsx(isExpired && 'text-red-400 font-medium')}>
+                        Geldig tot {fmt.date(quote.valid_until_date)}
                       </span>
-                    </td>
+                    </div>
+                    <div className="font-mono font-bold text-base text-slate-100">
+                      {fmt.currency(quote.total_amount)}
+                    </div>
+                  </div>
 
-                    {/* Actions */}
-                    <td className="text-right">
-                      <div className="flex items-center justify-end gap-1.5 opacity-90 group-hover:opacity-100">
-                        {/* 1-Click Convert to Invoice Button */}
-                        {isAccepted && (
-                          <button
-                            onClick={() => convertMutation.mutate(quote.id)}
-                            disabled={convertMutation.isPending && convertingId === quote.id}
-                            className="btn-primary py-1 px-2.5 text-xs flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 shadow-sm"
-                            title="Zet om naar officiële factuur"
-                          >
-                            <ArrowRight size={13} />
-                            <span>Factureren</span>
-                          </button>
-                        )}
-
-                        {/* Sign Button (if sent and pending signature) */}
-                        {quote.status === 'SENT' && (
-                          <button
-                            onClick={() => setSignQuotation(quote)}
-                            className="btn-ghost py-1 px-2 text-xs text-brand-400 hover:bg-brand-500/10 border border-brand-500/20"
-                            title="Digitaal ondertekenen"
-                          >
-                            <span>Ondertekenen</span>
-                          </button>
-                        )}
-
-                        {/* Copy Public Link */}
+                  {/* 1-Tap Quick Action Buttons */}
+                  <div className="flex flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-slate-800/60">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
+                      {isAccepted && (
                         <button
-                          onClick={() => copyPublicLink(quote.id)}
-                          className="btn-ghost p-1.5 text-slate-400 hover:text-white"
-                          title="Kopieer publieke ondertekenlink"
+                          onClick={() => {
+                            triggerHaptic('medium')
+                            convertMutation.mutate(quote.id)
+                          }}
+                          disabled={convertMutation.isPending && convertingId === quote.id}
+                          className="flex-1 py-2 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 min-h-[40px] shadow-sm active:scale-95 transition-all"
                         >
-                          <Copy size={14} />
+                          <ArrowRight size={14} />
+                          <span>Factureren</span>
                         </button>
+                      )}
 
-                        {/* Preview / Print */}
+                      {quote.status === 'SENT' && (
+                        <button
+                          onClick={() => {
+                            triggerHaptic('light')
+                            setSignQuotation(quote)
+                          }}
+                          className="flex-1 py-2 px-2.5 rounded-xl bg-brand-600/30 hover:bg-brand-600/40 text-brand-300 text-xs font-semibold flex items-center justify-center gap-1.5 border border-brand-500/30 min-h-[40px] active:scale-95 transition-all"
+                        >
+                          <span>Ondertekenen</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => {
+                          triggerHaptic('light')
+                          setPrintQuotation(quote)
+                        }}
+                        className="flex-1 py-2 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 border border-slate-700/50 min-h-[40px] active:scale-95 transition-all"
+                      >
+                        <Eye size={13} />
+                        <span>Bekijken</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          triggerHaptic('light')
+                          copyPublicLink(quote.id)
+                        }}
+                        className="p-2.5 rounded-xl text-slate-400 hover:text-white bg-slate-800/40 border border-slate-800 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 transition-all"
+                        title="Kopieer publieke link"
+                        aria-label="Kopieer publieke link"
+                      >
+                        <Copy size={14} />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {!isConverted && (
+                        <button
+                          onClick={() => {
+                            triggerHaptic('light')
+                            nav(`/quotations/${quote.id}/edit`)
+                          }}
+                          className="p-2.5 rounded-xl text-slate-400 hover:text-white bg-slate-800/40 border border-slate-800 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 transition-all"
+                          title="Bewerken"
+                          aria-label="Offerte bewerken"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          triggerHaptic('warning')
+                          setDeletingQuotation(quote)
+                        }}
+                        className="p-2.5 rounded-xl text-red-400/80 hover:text-red-300 bg-red-500/10 border border-red-500/20 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 transition-all"
+                        title="Verwijderen"
+                        aria-label="Offerte verwijderen"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Desktop Table View (>= md) */}
+          <div className="hidden md:block table-wrapper">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Offertenummer</th>
+                  <th>Klant</th>
+                  <th>Offertedatum</th>
+                  <th>Geldig tot</th>
+                  <th className="text-right">Totaal (incl)</th>
+                  <th>Status</th>
+                  <th className="text-right">Acties</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((quote) => {
+                  const statusMeta = STATUS_MAP[quote.status] || STATUS_MAP.DRAFT
+                  const StatusIcon = statusMeta.icon
+                  const isAccepted = quote.status === 'ACCEPTED'
+                  const isConverted = quote.status === 'CONVERTED'
+                  const isExpired = new Date(quote.valid_until_date).getTime() < Date.now() && quote.status === 'SENT'
+
+                  return (
+                    <tr key={quote.id} className="group">
+                      {/* Number */}
+                      <td>
                         <button
                           onClick={() => setPrintQuotation(quote)}
-                          className="btn-ghost p-1.5 text-slate-400 hover:text-white"
-                          title="Offerte bekijken & printen"
+                          className="font-mono font-bold text-brand-400 hover:underline flex items-center gap-1.5"
                         >
-                          <Eye size={14} />
+                          <FileCheck size={14} className="shrink-0" />
+                          <span>{quote.quotation_number}</span>
                         </button>
+                      </td>
 
-                        {/* Edit */}
-                        {!isConverted && (
-                          <button
-                            onClick={() => nav(`/quotations/${quote.id}/edit`)}
-                            className="btn-ghost p-1.5 text-slate-400 hover:text-white"
-                            title="Bewerken"
-                          >
-                            <Edit3 size={14} />
-                          </button>
+                      {/* Client */}
+                      <td>
+                        <div className="font-medium text-slate-200">
+                          {quote.client?.name || 'Onbekende klant'}
+                        </div>
+                        {quote.client?.contact_person && (
+                          <div className="text-[11px] text-slate-500">
+                            {quote.client.contact_person}
+                          </div>
                         )}
+                      </td>
 
-                        {/* Delete */}
-                        <button
-                          onClick={() => setDeletingQuotation(quote)}
-                          className="btn-ghost p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10"
-                          title="Verwijderen"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                      {/* Issue date */}
+                      <td className="text-slate-400 text-xs">
+                        {fmt.date(quote.issue_date)}
+                      </td>
+
+                      {/* Validity */}
+                      <td>
+                        <div className={clsx('text-xs flex items-center gap-1', isExpired ? 'text-red-400 font-medium' : 'text-slate-400')}>
+                          <Calendar size={13} className="shrink-0" />
+                          <span>{fmt.date(quote.valid_until_date)}</span>
+                          {isExpired && <span className="text-[10px] bg-red-500/20 text-red-400 px-1 py-0.5 rounded">Verlopen</span>}
+                        </div>
+                      </td>
+
+                      {/* Total amount */}
+                      <td className="text-right font-mono font-bold text-slate-100">
+                        {fmt.currency(quote.total_amount)}
+                      </td>
+
+                      {/* Status */}
+                      <td>
+                        <span className={clsx(statusMeta.cls, 'inline-flex items-center gap-1 text-[11px]')}>
+                          <StatusIcon size={12} />
+                          <span>{statusMeta.label}</span>
+                        </span>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="text-right">
+                        <div className="flex items-center justify-end gap-1.5 opacity-90 group-hover:opacity-100">
+                          {/* 1-Click Convert to Invoice Button */}
+                          {isAccepted && (
+                            <button
+                              onClick={() => convertMutation.mutate(quote.id)}
+                              disabled={convertMutation.isPending && convertingId === quote.id}
+                              className="btn-primary py-1 px-2.5 text-xs flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 shadow-sm"
+                              title="Zet om naar officiële factuur"
+                            >
+                              <ArrowRight size={13} />
+                              <span>Factureren</span>
+                            </button>
+                          )}
+
+                          {/* Sign Button (if sent and pending signature) */}
+                          {quote.status === 'SENT' && (
+                            <button
+                              onClick={() => setSignQuotation(quote)}
+                              className="btn-ghost py-1 px-2 text-xs text-brand-400 hover:bg-brand-500/10 border border-brand-500/20"
+                              title="Digitaal ondertekenen"
+                            >
+                              <span>Ondertekenen</span>
+                            </button>
+                          )}
+
+                          {/* Copy Public Link */}
+                          <button
+                            onClick={() => copyPublicLink(quote.id)}
+                            className="btn-ghost p-1.5 text-slate-400 hover:text-white"
+                            title="Kopieer publieke ondertekenlink"
+                          >
+                            <Copy size={14} />
+                          </button>
+
+                          {/* Preview / Print */}
+                          <button
+                            onClick={() => setPrintQuotation(quote)}
+                            className="btn-ghost p-1.5 text-slate-400 hover:text-white"
+                            title="Offerte bekijken & printen"
+                          >
+                            <Eye size={14} />
+                          </button>
+
+                          {/* Edit */}
+                          {!isConverted && (
+                            <button
+                              onClick={() => nav(`/quotations/${quote.id}/edit`)}
+                              className="btn-ghost p-1.5 text-slate-400 hover:text-white"
+                              title="Bewerken"
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                          )}
+
+                          {/* Delete */}
+                          <button
+                            onClick={() => setDeletingQuotation(quote)}
+                            className="btn-ghost p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10"
+                            title="Verwijderen"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {/* Print / Preview Modal */}

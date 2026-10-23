@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Copy, Check, TrendingUp, TrendingDown, Globe, FileText, Building2, AlertCircle } from 'lucide-react'
+import { Copy, Check, TrendingUp, TrendingDown, Globe, FileText, Building2, AlertCircle, Clock, Share2 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { clsx } from 'clsx'
 import { taxApi, fmt } from '@/lib/api'
 import { BtwAangifte, IcpDeclaration } from '@/lib/types'
+import { getVatDeadlineInfo } from '@/lib/vatCalculator'
 
 function CopyButton({ value, wholeValue }: { value: number | string; wholeValue?: number }) {
   const [copied, setCopied] = useState(false)
@@ -101,6 +103,56 @@ export default function TaxReturn() {
     enabled: activeTab === 'ICP',
   })
 
+  const deadlineInfo = getVatDeadlineInfo(quarter, year)
+
+  const handleCopyFullReport = () => {
+    if (!btw) {
+      toast.error('Geen aangiftegegevens beschikbaar om te kopiëren')
+      return
+    }
+    const reportText = [
+      `==================================================`,
+      `BELASTINGAANGIFTE OMZETBELASTING — OVERZICHT`,
+      `AliBirds ZZP Boekhouding`,
+      `Periode: Kwartaal ${quarter} ${year}`,
+      `Uiterste indieningsdatum: ${deadlineInfo.deadlineLabel}`,
+      `==================================================`,
+      ``,
+      `RUBRIEK 1: BINNENLANDSE PRESTATIES`,
+      `  1a. Leveringen/diensten 21%`,
+      `      Omzet: ${fmt.currency(btw.rubric_1a_turnover)} (Geheel: €${btw.rubric_1a_turnover_whole})`,
+      `      Btw:   ${fmt.currency(btw.rubric_1a_tax)} (Geheel: €${btw.rubric_1a_tax_whole})`,
+      `  1b. Leveringen/diensten 9%`,
+      `      Omzet: ${fmt.currency(btw.rubric_1b_turnover)} (Geheel: €${btw.rubric_1b_turnover_whole})`,
+      `      Btw:   ${fmt.currency(btw.rubric_1b_tax)} (Geheel: €${btw.rubric_1b_tax_whole})`,
+      `  1e. Leveringen/diensten 0% of verlegd`,
+      `      Omzet: ${fmt.currency(btw.rubric_1e_turnover)} (Geheel: €${btw.rubric_1e_turnover_whole})`,
+      ``,
+      `RUBRIEK 3: PRESTATIES NAAR HET BUITENLAND`,
+      `  3b. Leveringen naar landen binnen de EU (ICP)`,
+      `      Omzet: ${fmt.currency(btw.rubric_3b_turnover)} (Geheel: €${btw.rubric_3b_turnover_whole})`,
+      ``,
+      `RUBRIEK 5: BEREKENING OMZETBELASTING`,
+      `  5a. Verschuldigde omzetbelasting:`,
+      `      Totaal: ${fmt.currency(btw.rubric_5a_tax)} (Geheel: €${btw.rubric_5a_tax_whole})`,
+      `  5b. Voorbelasting (aftrekbare btw):`,
+      `      Totaal: ${fmt.currency(btw.rubric_5b_tax)} (Geheel: €${btw.rubric_5b_tax_whole})`,
+      `  5c. Subtotaal (5a minus 5b):`,
+      `      Totaal: ${fmt.currency(btw.rubric_5c_tax)}`,
+      ``,
+      `--------------------------------------------------`,
+      `EINDBEDRAG RUBRIEK 5g:`,
+      btw.rubric_5g_tax_whole >= 0
+        ? `  TE BETALEN AAN BELASTINGDIENST: €${btw.rubric_5g_tax_whole}`
+        : `  TERUG TE ONTVANGEN VAN BELASTINGDIENST: €${Math.abs(btw.rubric_5g_tax_whole)}`,
+      `--------------------------------------------------`,
+      `Aangemaakt via AliBirds ZZP Facturatie op ${new Date().toLocaleDateString('nl-NL')}`
+    ].join('\n')
+
+    navigator.clipboard.writeText(reportText)
+    toast.success('Volledig Btw-rapport gekopieerd naar klembord!')
+  }
+
   return (
     <div className="space-y-4 sm:space-y-5 w-full">
       {/* Header */}
@@ -140,6 +192,58 @@ export default function TaxReturn() {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Deadline & Quick Export Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl liquid-glass-card border border-white/10">
+        <div className="flex items-center gap-2.5">
+          <div
+            className={clsx(
+              'w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border',
+              deadlineInfo.urgency === 'urgent'
+                ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                : deadlineInfo.urgency === 'warning'
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                : 'bg-brand-500/15 text-brand-300 border-brand-500/25'
+            )}
+          >
+            <Clock size={16} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-slate-100">
+                Belastingdienst Indieningsdeadline: {deadlineInfo.deadlineLabel}
+              </span>
+              <span
+                className={clsx(
+                  'text-[10px] font-bold px-2 py-0.5 rounded-full border',
+                  deadlineInfo.urgency === 'urgent'
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/30 animate-pulse'
+                    : deadlineInfo.urgency === 'warning'
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25'
+                )}
+              >
+                {deadlineInfo.daysRemaining >= 0
+                  ? `Nog ${deadlineInfo.daysRemaining} dagen`
+                  : 'Verstreken'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Dien vóór deze datum uw kwartaalaangifte in op Mijn Belastingdienst Zakelijk.
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleCopyFullReport}
+          className="btn-secondary text-xs py-2 px-3.5 flex items-center gap-1.5 self-start sm:self-auto cursor-pointer border-brand-500/30 text-brand-300 hover:text-white"
+          title="Kopieer alle rubrieken voor uw boekhouder of administratie"
+        >
+          <Copy size={13} />
+          <span>Kopieer Volledig Btw-rapport</span>
+        </button>
       </div>
 
       {/* Tabs */}

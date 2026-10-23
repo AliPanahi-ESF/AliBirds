@@ -14,6 +14,7 @@ import {
   roundBelastingdienst,
   classifySalesReverseChargeRubric,
   isEuCountry,
+  getVatDeadlineInfo,
 } from '../src/lib/vatCalculator'
 import { parseMT940, autoMatchTransactions } from '../src/lib/mt940'
 
@@ -287,6 +288,32 @@ test('Smart Numbering', 'Finds most recent invoice for same client and suggests 
   assert(clientSeqOpt !== undefined, 'Client sequence option should exist')
   assertEquals(clientSeqOpt?.id, '2026-0004', 'Client sequence option should be 2026-0004 (+1 from 2026-0003)')
   assertEquals(clientSeqOpt?.isRecommended, true, 'Client sequence option should be marked recommended')
+})
+
+// ── 7. BELASTINGDIENST DEADLINES & JTBD ACCURACY ───────────────────────────
+console.log('\nSECTION 7: Belastingdienst Filing Deadlines & JTBD Accuracy')
+
+test('Tax Deadlines', 'Accurately computes Belastingdienst quarterly deadlines (30 Apr, 31 Jul, 31 Oct, 31 Jan)', () => {
+  // Test Q1 deadline (30 April)
+  const q1Info = getVatDeadlineInfo(1, 2026, new Date('2026-04-10T12:00:00Z'))
+  assertEquals(q1Info.deadlineDate.getMonth(), 3, 'Q1 deadline month should be April (3)')
+  assertEquals(q1Info.deadlineDate.getDate(), 30, 'Q1 deadline day should be 30')
+  assertEquals(q1Info.daysRemaining, 21, 'Should have 21 days remaining')
+  assertEquals(q1Info.urgency, 'normal', 'Urgency should be normal > 14 days')
+
+  // Test Q3 deadline (31 October) from 23 October (8 days remaining)
+  const q3Info = getVatDeadlineInfo(3, 2026, new Date('2026-10-23T12:00:00Z'))
+  assertEquals(q3Info.deadlineDate.getMonth(), 9, 'Q3 deadline month should be October (9)')
+  assertEquals(q3Info.deadlineDate.getDate(), 31, 'Q3 deadline day should be 31')
+  assertEquals(q3Info.daysRemaining, 9, 'Should have 9 days remaining on 23 Oct')
+  assertEquals(q3Info.urgency, 'warning', 'Urgency should be warning between 4 and 14 days')
+
+  // Test Q4 deadline (31 January of following year)
+  const q4Info = getVatDeadlineInfo(4, 2026, new Date('2027-01-29T12:00:00Z'))
+  assertEquals(q4Info.deadlineDate.getFullYear(), 2027, 'Q4 deadline year should be next year (2027)')
+  assertEquals(q4Info.deadlineDate.getMonth(), 0, 'Q4 deadline month should be January (0)')
+  assertEquals(q4Info.deadlineDate.getDate(), 31, 'Q4 deadline day should be 31')
+  assertEquals(q4Info.urgency, 'urgent', 'Urgency should be urgent <= 3 days')
 })
 
 // ── SUMMARY REPORT ─────────────────────────────────────────────────────────

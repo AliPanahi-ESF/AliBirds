@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Download, Eye, Calendar, Trash2, Upload, Mail } from 'lucide-react'
-import { useState } from 'react'
+import { Plus, Search, Download, Eye, Calendar, Trash2, Upload, Mail, X } from 'lucide-react'
+import { useState, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import { invoicesApi, settingsApi, clientsApi, fmt } from '@/lib/api'
 import { Invoice, InvoiceStatus, BusinessSettings, Client } from '@/lib/types'
@@ -11,6 +11,7 @@ import SendInvoiceModal from '@/components/SendInvoiceModal'
 import { clsx } from 'clsx'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { TableRowSkeleton, CardSkeleton } from '@/components/TableSkeleton'
+import { triggerHaptic } from '@/lib/haptics'
 
 const STATUS_MAP: Record<InvoiceStatus, { label: string; cls: string }> = {
   DRAFT:     { label: 'Concept',     cls: 'badge-gray' },
@@ -49,53 +50,108 @@ export default function InvoiceList() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => invoicesApi.delete(id),
     onSuccess: () => {
+      triggerHaptic('success')
       toast.success('Factuur succesvol verwijderd!')
       setDeletingInvoice(null)
       qc.invalidateQueries({ queryKey: ['invoices'] })
       qc.invalidateQueries({ queryKey: ['kpis'] })
     },
-    onError: () => toast.error('Verwijderen mislukt'),
+    onError: () => {
+      triggerHaptic('warning')
+      toast.error('Verwijderen mislukt')
+    },
   })
 
   const clearAllMutation = useMutation({
     mutationFn: () => invoicesApi.clearAll(),
     onSuccess: () => {
+      triggerHaptic('success')
       toast.success('Alle facturen zijn gewist!')
       setConfirmClearAll(false)
       qc.invalidateQueries({ queryKey: ['invoices'] })
       qc.invalidateQueries({ queryKey: ['kpis'] })
     },
-    onError: () => toast.error('Wissen mislukt'),
+    onError: () => {
+      triggerHaptic('warning')
+      toast.error('Wissen mislukt')
+    },
   })
 
   const handleDelete = (inv: Invoice) => {
+    triggerHaptic('warning')
     setDeletingInvoice(inv)
   }
 
   const handleClearAll = () => {
+    triggerHaptic('warning')
     setConfirmClearAll(true)
   }
 
-  const filtered = invoices.filter(inv =>
-    !search ||
-    inv.invoice_number.toLowerCase().includes(search.toLowerCase()) ||
-    inv.client?.name?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = useMemo(() => {
+    return invoices.filter(inv =>
+      !search ||
+      inv.invoice_number.toLowerCase().includes(search.toLowerCase()) ||
+      inv.client?.name?.toLowerCase().includes(search.toLowerCase())
+    )
+  }, [invoices, search])
+
+  // Count helper for tabs
+  const tabCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      '': invoices.length,
+      DRAFT: 0,
+      SENT: 0,
+      PAID: 0,
+      OVERDUE: 0,
+    }
+    const now = new Date()
+    invoices.forEach(inv => {
+      if (inv.status === 'DRAFT') counts.DRAFT++
+      else if (inv.status === 'SENT') {
+        counts.SENT++
+        if (new Date(inv.due_date) < now) counts.OVERDUE++
+      } else if (inv.status === 'PAID') counts.PAID++
+      else if (inv.status === 'OVERDUE') counts.OVERDUE++
+    })
+    return counts
+  }, [invoices])
 
   return (
     <div className="space-y-4 sm:space-y-5 w-full">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-100">Facturen</h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{invoices.length} facturen geregistreerd</p>
-        </div>
-        <div className="flex items-center gap-2">
+      {/* Header with mobile touch ergonomics */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-100 flex items-center gap-2">
+              <span>Facturen</span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60">
+                {invoices.length}
+              </span>
+            </h1>
+            <p className="text-xs text-slate-400 mt-0.5">Overzicht en beheer van al uw verkoopfacturen</p>
+          </div>
+
+          {/* Mobile only icon for safe clear-all if needed */}
           {invoices.length > 0 && (
             <button
               onClick={handleClearAll}
               disabled={clearAllMutation.isPending}
-              className="btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-2 px-3 border border-red-500/20"
+              className="sm:hidden p-2 rounded-xl text-slate-500 hover:text-red-400 hover:bg-red-500/10 border border-slate-800 active:scale-95 transition-all"
+              title="Alle facturen wissen"
+              aria-label="Alle facturen wissen"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
+
+        {/* Action button row: Primary CTA emphasized, secondary balanced */}
+        <div className="flex items-stretch sm:items-center gap-2">
+          {invoices.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              disabled={clearAllMutation.isPending}
+              className="hidden sm:inline-flex btn-ghost text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-2 px-3 border border-red-500/20 active:scale-95 transition-all"
               title="Alle facturen verwijderen"
             >
               <Trash2 size={14} />
@@ -103,15 +159,25 @@ export default function InvoiceList() {
             </button>
           )}
           <button
-            onClick={() => setShowImportPdf(true)}
-            className="btn-secondary text-xs sm:text-sm py-2 px-3 flex items-center gap-1.5"
+            onClick={() => {
+              triggerHaptic('light')
+              setShowImportPdf(true)
+            }}
+            className="flex-1 sm:flex-none btn-secondary text-xs sm:text-sm py-2.5 sm:py-2 px-3.5 flex items-center justify-center gap-2 min-h-[44px] active:scale-[0.98] transition-all"
             title="Eerdere facturen importeren via PDF"
           >
-            <Upload size={14} />
-            <span>PDF importeren</span>
+            <Upload size={15} />
+            <span>PDF import</span>
           </button>
-          <button onClick={() => nav('/invoices/new')} className="btn-primary text-xs sm:text-sm py-2 px-3.5">
-            <Plus size={15} /> Nieuwe factuur
+          <button
+            onClick={() => {
+              triggerHaptic('medium')
+              nav('/invoices/new')
+            }}
+            className="flex-1 sm:flex-none btn-primary text-xs sm:text-sm py-2.5 sm:py-2 px-4 flex items-center justify-center gap-2 min-h-[44px] shadow-lg shadow-brand-500/20 active:scale-[0.98] transition-all font-semibold"
+          >
+            <Plus size={16} />
+            <span>Nieuwe factuur</span>
           </button>
         </div>
       </div>
@@ -119,40 +185,69 @@ export default function InvoiceList() {
       {/* Search & Filter Bar */}
       <div className="flex flex-col sm:flex-row gap-2.5 sm:items-center justify-between">
         <div className="relative w-full sm:max-w-xs">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
           <input
-            className="input pl-8 text-xs sm:text-sm py-2"
+            className="input pl-9 pr-9 text-xs sm:text-sm h-11 sm:h-9 w-full"
             placeholder="Zoek nummer of klant..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          {search && (
+            <button
+              onClick={() => {
+                triggerHaptic('light')
+                setSearch('')
+              }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1.5 rounded-full active:scale-90 transition-transform"
+              aria-label="Zoekopdracht wissen"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
 
         {/* Filter Tabs with horizontal touch scroll */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
-          {['', 'DRAFT', 'SENT', 'PAID', 'OVERDUE'].map(s => (
-            <button
-              key={s}
-              onClick={() => setFilter(s)}
-              className={clsx(
-                'px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors shrink-0',
-                filter === s
-                  ? 'bg-brand-600 text-white shadow-sm'
-                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800',
-              )}
-            >
-              {s === '' ? 'Alles' : STATUS_MAP[s as InvoiceStatus]?.label ?? s}
-            </button>
-          ))}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none touch-pan-x -mx-1 px-1">
+          {['', 'DRAFT', 'SENT', 'PAID', 'OVERDUE'].map(s => {
+            const count = tabCounts[s] ?? 0
+            const active = filter === s
+            return (
+              <button
+                key={s}
+                onClick={() => {
+                  triggerHaptic('selection')
+                  setFilter(s)
+                }}
+                className={clsx(
+                  'px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all shrink-0 flex items-center gap-1.5 min-h-[38px] active:scale-95',
+                  active
+                    ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
+                    : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800',
+                )}
+              >
+                <span>{s === '' ? 'Alles' : STATUS_MAP[s as InvoiceStatus]?.label ?? s}</span>
+                <span
+                  className={clsx(
+                    'text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold',
+                    active ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                  )}
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
-      {/* Mobile Card View (< md) */}
-      <div className="md:hidden space-y-2.5">
+      {/* Mobile Card View (< md) with direct quick actions */}
+      <div className="md:hidden space-y-3">
         {isLoading ? (
           <CardSkeleton count={4} />
         ) : filtered.length === 0 ? (
-          <div className="liquid-glass-card text-center py-10 text-xs text-slate-500">Geen facturen gevonden</div>
+          <div className="liquid-glass-card text-center py-12 px-4 text-xs text-slate-400 border border-slate-800/80">
+            Geen facturen gevonden voor deze selectie
+          </div>
         ) : (
           filtered.map(inv => {
             const s = STATUS_MAP[inv.status] ?? { label: inv.status, cls: 'badge-gray' }
@@ -160,28 +255,100 @@ export default function InvoiceList() {
             return (
               <div
                 key={inv.id}
-                onClick={() => nav(`/invoices/${inv.id}/edit`)}
-                className="liquid-glass-card p-3.5 space-y-2.5 active:scale-[0.98] transition-all cursor-pointer"
+                className="liquid-glass-card p-4 space-y-3 border border-slate-800/80 active:border-slate-700 transition-all rounded-2xl"
               >
-                <div className="flex items-start justify-between gap-2">
+                {/* Header row: Invoice # and Status */}
+                <div
+                  onClick={() => {
+                    triggerHaptic('light')
+                    nav(`/invoices/${inv.id}/edit`)
+                  }}
+                  className="flex items-start justify-between gap-2 cursor-pointer"
+                >
                   <div>
-                    <div className="font-mono text-xs font-semibold text-brand-400">{inv.invoice_number}</div>
-                    <div className="text-sm font-medium text-slate-100 mt-0.5">{inv.client?.name ?? 'Geen klant gekoppeld'}</div>
+                    <div className="font-mono text-xs font-bold text-brand-400">{inv.invoice_number}</div>
+                    <div className="text-base font-semibold text-slate-100 mt-0.5">
+                      {inv.client?.name ?? 'Geen klant gekoppeld'}
+                    </div>
                   </div>
-                  <span className={clsx(s.cls, 'text-[11px] px-2 py-0.5')}>{s.label}</span>
+                  <span className={clsx(s.cls, 'text-[11px] px-2.5 py-1 rounded-full font-medium')}>
+                    {s.label}
+                  </span>
                 </div>
 
-                <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-800/80 text-slate-400">
-                  <div className="flex items-center gap-1">
-                    <Calendar size={12} className="text-slate-500" />
+                {/* Date and Amount summary */}
+                <div
+                  onClick={() => {
+                    triggerHaptic('light')
+                    nav(`/invoices/${inv.id}/edit`)
+                  }}
+                  className="flex items-center justify-between text-xs pt-1 border-t border-slate-800/60 text-slate-400 cursor-pointer"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Calendar size={13} className="text-slate-500" />
                     <span>{fmt.date(inv.issue_date)}</span>
                     <span className="text-slate-600">·</span>
                     <span className={clsx(isOverdue && 'text-red-400 font-medium')}>
                       Vervalt {fmt.date(inv.due_date)}
                     </span>
                   </div>
-                  <div className="font-mono font-bold text-sm text-slate-100">
-                    {fmt.currency(inv.total_incl_vat)}
+                  <div className="font-mono font-bold text-base text-slate-100">
+                    {fmt.currency(inv.total_incl ?? inv.total_incl_vat ?? 0)}
+                  </div>
+                </div>
+
+                {/* Direct 1-tap Touch Action Buttons */}
+                <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-800/60">
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        triggerHaptic('light')
+                        setPrintInvoice(inv)
+                      }}
+                      className="flex-1 py-2 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-brand-300 text-xs font-medium flex items-center justify-center gap-1.5 border border-slate-700/50 min-h-[40px] active:scale-95 transition-all"
+                      title="PDF bekijken of downloaden"
+                    >
+                      <Download size={13} />
+                      <span>PDF</span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        triggerHaptic('light')
+                        setSendInvoice(inv)
+                      }}
+                      className="flex-1 py-2 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-emerald-300 text-xs font-medium flex items-center justify-center gap-1.5 border border-slate-700/50 min-h-[40px] active:scale-95 transition-all"
+                      title="Factuur verzenden via e-mail"
+                    >
+                      <Mail size={13} />
+                      <span>Verzenden</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        triggerHaptic('light')
+                        nav(`/invoices/${inv.id}/edit`)
+                      }}
+                      className="p-2.5 rounded-xl text-slate-400 hover:text-slate-200 bg-slate-800/40 border border-slate-800 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 transition-all"
+                      title="Factuur bewerken"
+                      aria-label="Factuur bewerken"
+                    >
+                      <Eye size={15} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDelete(inv)
+                      }}
+                      className="p-2.5 rounded-xl text-red-400/80 hover:text-red-300 bg-red-500/10 border border-red-500/20 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-90 transition-all"
+                      title="Factuur verwijderen"
+                      aria-label="Factuur verwijderen"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 </div>
               </div>

@@ -112,3 +112,48 @@ export function classifySalesReverseChargeRubric(countryCode?: string, vatNumber
   return '1e' // Diensten aan afnemer buiten de EU
 }
 
+export interface VatDeadlineInfo {
+  deadlineDate: Date
+  deadlineLabel: string
+  daysRemaining: number
+  urgency: 'normal' | 'warning' | 'urgent' | 'passed'
+  badgeText: string
+}
+
+/**
+ * Returns accurate Belastingdienst filing deadline for a given Dutch VAT quarter:
+ * Q1 -> 30 April, Q2 -> 31 July, Q3 -> 31 October, Q4 -> 31 January (following year)
+ */
+export function getVatDeadlineInfo(quarter: number, year: number, currentDate: Date = new Date()): VatDeadlineInfo {
+  let deadlineDate: Date
+  if (quarter === 1) {
+    deadlineDate = new Date(year, 3, 30, 23, 59, 59) // 30 April
+  } else if (quarter === 2) {
+    deadlineDate = new Date(year, 6, 31, 23, 59, 59) // 31 July
+  } else if (quarter === 3) {
+    deadlineDate = new Date(year, 9, 31, 23, 59, 59) // 31 October
+  } else {
+    deadlineDate = new Date(year + 1, 0, 31, 23, 59, 59) // 31 January next year
+  }
+
+  const diffMs = deadlineDate.getTime() - currentDate.getTime()
+  const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+  const deadlineLabel = deadlineDate.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
+
+  let urgency: 'normal' | 'warning' | 'urgent' | 'passed' = 'normal'
+  let badgeText = `Vóór ${deadlineLabel} (${daysRemaining}d resterend)`
+
+  if (daysRemaining < 0) {
+    urgency = 'passed'
+    badgeText = `Deadline verstreken (${deadlineLabel})`
+  } else if (daysRemaining <= 3) {
+    urgency = 'urgent'
+    badgeText = `⚠️ Let op: Nog ${daysRemaining} ${daysRemaining === 1 ? 'dag' : 'dagen'} tot deadline!`
+  } else if (daysRemaining <= 14) {
+    urgency = 'warning'
+    badgeText = `⏰ Nog ${daysRemaining} dagen (vóór ${deadlineLabel})`
+  }
+
+  return { deadlineDate, deadlineLabel, daysRemaining, urgency, badgeText }
+}
+

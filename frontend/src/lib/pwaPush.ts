@@ -97,9 +97,14 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
       notifyNewVersionAvailable(registration)
     }
 
-    // 3. When new worker takes control, reload cleanly once
+    // 3. When new worker takes control, only reload if triggered by user action
+    let userTriggeredUpdate = false
+    window.addEventListener('alibirds:user-triggered-reload', () => {
+      userTriggeredUpdate = true
+    })
+
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!isRefreshing) {
+      if (userTriggeredUpdate && !isRefreshing) {
         isRefreshing = true
         window.location.reload()
       }

@@ -10,6 +10,9 @@ export default function AppUpdatePrompt() {
   // Trigger app update cleanly
   const handleUpdate = async () => {
     setIsUpdating(true)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('alibirds:user-triggered-reload'))
+    }
     try {
       if ('serviceWorker' in navigator) {
         const reg = await navigator.serviceWorker.getRegistration()

@@ -7,12 +7,12 @@ const ASSETS_TO_CACHE = [
   '/favicon.svg',
 ]
 
-// 1. Install Event: Pre-cache core shell & activate immediately if requested
+// 1. Install Event: Pre-cache core shell
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS_TO_CACHE)
-    }).then(() => self.skipWaiting())
+    })
   )
 })
 
